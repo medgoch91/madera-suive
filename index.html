@@ -12393,7 +12393,39 @@ function factProdSearch(idx,val){
 }
 
 // ─── CLIENTS ──────────────────────────────────────────────────
+var factCltSelected={}; // {id: true}
+function factCltToggle(id){ if(factCltSelected[id]) delete factCltSelected[id]; else factCltSelected[id]=true; _factCltUpdateBulkBar(); }
+function factCltToggleAll(chk){
+  factCltSelected={};
+  if(chk) factClients.forEach(function(c){factCltSelected[c.id]=true;});
+  document.querySelectorAll('.clt-chk').forEach(function(el){el.checked=!!chk;});
+  _factCltUpdateBulkBar();
+}
+function _factCltUpdateBulkBar(){
+  var n=Object.keys(factCltSelected).length;
+  var bar=document.getElementById('clt-bulk-bar');
+  if(bar) bar.style.display=n?'flex':'none';
+  var cnt=document.getElementById('clt-bulk-count'); if(cnt) cnt.textContent=n;
+}
+async function factCltBulkDelete(){
+  var ids=Object.keys(factCltSelected).map(Number);
+  if(!ids.length) return;
+  if(!confirm('حذف '+ids.length+' عميل؟ هاد العملية ما kaترجعش.')) return;
+  showLoader('🗑️ جاري الحذف...');
+  var ok=0, fail=0;
+  for(var i=0;i<ids.length;i++){
+    var r=await sbFetch('fact_clients?id=eq.'+ids[i],'DELETE');
+    if(r && r.__sbError) fail++; else ok++;
+  }
+  factClients=factClients.filter(function(c){return !factCltSelected[c.id];});
+  factCltSelected={};
+  hideLoader();
+  try{toast('🗑️ تم حذف '+ok+' عميل'+(fail?' ('+fail+' فشل)':''), fail?'warning':'success');}catch(e){}
+  renderFactures();
+}
+
 function renderFactClients(){
+  factCltSelected={}; // reset on re-render
   let html='<div class="card" style="margin-bottom:14px">'
     +'<div class="card-title" style="margin-bottom:14px">➕ عميل جديد</div>'
     +'<div class="form-grid">'
@@ -12407,9 +12439,18 @@ function renderFactClients(){
     +'<div id="clt-msg" style="text-align:center;font-size:12px;margin-top:6px;min-height:14px"></div>'
   +'</div>';
   if(!factClients.length) return html+'<div style="text-align:center;padding:30px;color:var(--text3);background:var(--bg3);border-radius:var(--radius)">لا يوجد عملاء بعد</div>';
-  html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>الاسم</th><th>المدينة</th><th>ICE</th><th></th></tr></thead><tbody>';
+  html+='<div id="clt-bulk-bar" style="display:none;align-items:center;gap:10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:10px;padding:10px 14px;margin-bottom:10px">'
+    +'<span style="font-size:13px;font-weight:700;color:var(--red)">📋 محدد: <span id="clt-bulk-count">0</span></span>'
+    +'<button onclick="factCltBulkDelete()" style="margin-right:auto;padding:7px 14px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">🗑️ حذف المحدد</button>'
+    +'<button onclick="factCltToggleAll(false)" style="padding:7px 12px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">إلغاء</button>'
+  +'</div>';
+  html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr>'
+    +'<th style="width:36px"><input type="checkbox" onchange="factCltToggleAll(this.checked)" style="cursor:pointer;width:16px;height:16px"></th>'
+    +'<th>الاسم</th><th>المدينة</th><th>ICE</th><th></th></tr></thead><tbody>';
   factClients.forEach(function(c,i){
-    html+='<tr><td style="font-weight:700">'+escB(c.nom)+'</td><td style="color:var(--text2)">'+(c.ville||'—')+'</td><td style="color:var(--text2);font-size:12px;font-family:monospace">'+(c.ice||'—')+'</td>'
+    html+='<tr>'
+      +'<td><input type="checkbox" class="clt-chk" onchange="factCltToggle('+c.id+')" style="cursor:pointer;width:16px;height:16px"></td>'
+      +'<td style="font-weight:700">'+escB(c.nom)+'</td><td style="color:var(--text2)">'+(c.ville||'—')+'</td><td style="color:var(--text2);font-size:12px;font-family:monospace">'+(c.ice||'—')+'</td>'
       +'<td><button onclick="factDeleteClient('+c.id+')" style="padding:4px 8px;border:1px solid rgba(232,64,64,0.3);border-radius:6px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🗑️</button></td></tr>';
   });
   html+='</tbody></table></div></div>';

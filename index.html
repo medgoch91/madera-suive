@@ -1640,6 +1640,22 @@ function showPage(page,btn){
   closeSidebar();
 }
 
+function toggleSidebar(){
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebar-overlay');
+  if(!sb)return;
+  const open=sb.classList.toggle('open');
+  if(ov)ov.classList.toggle('open',open);
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+function closeSidebar(){
+  const sb=document.getElementById('sidebar');
+  const ov=document.getElementById('sidebar-overlay');
+  if(sb)sb.classList.remove('open');
+  if(ov)ov.classList.remove('open');
+  document.body.style.overflow='';
+}
+
 function updateSidebar(){
   const free=bons.filter(b=>!b.chequeId).length;
   const badge=document.getElementById('badge-free');

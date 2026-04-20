@@ -4746,13 +4746,15 @@ function toWordsFR(n){
 const CHEQUE_WORDS_FILLER = ' ———';
 
 function fmtMontant(v){return Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});}
+// Wrap amount with # at start and end — security against tampering (can't add digits before/after)
+function fmtMontantCheque(v){return '#'+fmtMontant(v)+'#';}
 
 function updatePrintPreview(){
   const g=id=>(document.getElementById(id)||{value:''}).value;
   const ordre=g('pc-ordre').trim(),montant=parseFloat(g('pc-montant'))||0,date=g('pc-date'),ville=g('pc-ville').trim();
   const s=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   // "DH" label is pre-printed on the cheque — print only the number
-  s('pf-montant',montant?fmtMontant(montant):'');
+  s('pf-montant',montant?fmtMontantCheque(montant):'');
   s('pf-date',date?fmtDate(date):'');
   const words=toWordsFR(montant);
   // Line 1 fits ~60 chars (from 40mm to 125mm). Overflow on line 2 full width.
@@ -4810,7 +4812,7 @@ function buildChequePrintHTML(d){
     .mono{font-family:'Courier New',monospace;}
     .serif{font-family:'Times New Roman',serif;}
   </style></head><body><div class="w">
-    <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontant(montant))}</div>
+    <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
     <div class="f ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>
     <div class="f ${cl('lettres2')}" style="${fs('lettres2')}">${esc(l2.toUpperCase())}</div>
     <div class="f ${cl('ordre')}" style="${fs('ordre')}">${esc(ordre.toUpperCase())}</div>

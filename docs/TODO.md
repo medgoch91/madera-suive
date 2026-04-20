@@ -15,6 +15,13 @@
 - [x] Telegram `/balance` + `/stock` commands
 - [x] Audit log table + client-side logging wrapper
 - [x] Theme toggle (already wired, light mode ready)
+- [x] Cheque montant wrapped with `#` for anti-tampering
+- [x] Admin UI for audit_log (renderAdmin → AUDIT LOG section)
+- [x] Telegram `/cheque` ConversationHandler (fournisseur → montant → échéance)
+- [x] Telegram rate-limit (15 cmd / 60s per chat_id)
+- [x] Telegram monthly report (day-1 @ 09:00 auto)
+- [x] Export PDF mensuel des bons (📄 PDF شهري button in Bons toolbar)
+- [x] Dashboard charts now respect period filter (`src` instead of `bons`)
 
 ## 🔴 À tester maintenant (critique)
 - [ ] Run SQL dyal `material_returns` f Supabase (إرجاع سلعة ykhdem)
@@ -54,29 +61,32 @@
 - [x] `/balance` — total bons non-payés + cheques échéance proche
 - [x] `/listbons` — list recent bons (already present)
 - [x] `/stock` — check stock article by name
-- [ ] `/cheque` — ajout cheque sans app (conversation handler like /newbon)
+- [x] `/cheque` — ajout cheque sans app (conversation handler like /newbon)
+- [x] Rate-limit per chat_id (15 cmd/60s)
+- [x] Monthly report (day-1 @ 09:00)
+- [ ] Share cheque image via Telegram directement (needs html2canvas + sendPhoto)
 - [ ] Notifications automatiques:
   - [ ] Cheque échéance dans 3 jours (déjà planifié @08:00 — verify)
-  - [ ] Stock bas (< seuil)
+  - [x] Stock bas (< seuil) — déjà dans electricity summary @19:00
 
 ### Dashboard & Reports
 - [x] Charts: dépenses par mois (chart.js CDN) — bar chart 6 months
 - [x] Top 5 fournisseurs par volume — doughnut chart
-- [ ] Export PDF kaml (all bons du mois en un seul PDF)
-- [ ] Rapport mensuel (email/telegram)
-- [ ] Filter charts by date preset (currently uses all bons)
+- [x] Export PDF kaml (all bons du mois en un seul PDF) — button 📄 PDF شهري
+- [x] Rapport mensuel sur Telegram (day-1 @ 09:00)
+- [x] Filter charts by date preset (uses `src` = filtered bons)
 
 ### Data
 - [x] Audit log table (audit_log in Supabase — run SQL before use)
-- [ ] Admin UI to view audit_log entries (page or modal)
-- [ ] Soft delete (trash) avant hard delete
+- [x] Admin UI to view audit_log entries (renderAdmin → AUDIT LOG)
+- [ ] Soft delete (trash) avant hard delete — architectural refactor, needs design
 - [ ] Duplicate bon/cheque (clone as template)
 
 ## 🟢 Polish / Nice-to-have
 - [x] Dark/Light theme toggle (btn dyal 🌙/☀️ f topbar)
-- [ ] Offline sync queue (save locally when offline, sync when online)
+- [ ] Offline sync queue — needs careful design (localStorage queue + replay on online)
 - [ ] Multi-language (FR/AR toggle)
-- [ ] Share cheque image via Telegram directement
+- [ ] Share cheque image via Telegram directement (html2canvas → sendPhoto)
 - [ ] QR code pour chaque bon (scan → open bon dans app)
 - [ ] Global search improvements (search inside bon lignes)
 - [ ] Keyboard shortcuts help modal (Cmd+K déjà présent)

@@ -46,6 +46,30 @@ ELEC_SUMMARY_H     = 19  # 19:00 — électricité à distance (bons/retours/sto
 WORKERS_SUMMARY_H  = 20  # 20:00 — ملخص الخدامة
 LOW_STOCK_THRESHOLD = 5  # seuil d'alerte sur articles.stock
 
+# ── Rate limiter (per chat_id) ───────────────────────────────────
+import time as _time
+from collections import defaultdict as _defaultdict
+_rate_bucket = _defaultdict(list)
+RATE_WINDOW  = 60   # secondes
+RATE_MAX     = 15   # commandes max par fenêtre
+
+async def _check_rate(update: Update) -> bool:
+    """Return True si ok, False si limit dépassé (déjà répondu à l'utilisateur)."""
+    cid = update.effective_chat.id if update.effective_chat else 0
+    now = _time.time()
+    _rate_bucket[cid] = [t for t in _rate_bucket[cid] if now - t < RATE_WINDOW]
+    if len(_rate_bucket[cid]) >= RATE_MAX:
+        try:
+            if update.message:
+                await update.message.reply_text(
+                    f"⚠️ شوية! {RATE_MAX} عملية ف {RATE_WINDOW}ث — استنى لحظة."
+                )
+        except Exception:
+            pass
+        return False
+    _rate_bucket[cid].append(now)
+    return True
+
 
 def load_chat_ids() -> list:
     if not os.path.exists(CHAT_IDS_FILE):
@@ -63,6 +87,7 @@ def save_chat_ids(ids: list) -> None:
 
 # ── States ───────────────────────────────────────────────────────
 S_FOUR, S_ART, S_QTY, S_NEW_NOM, S_NEW_UNITE, S_NEW_PRIX = range(6)
+S_CHQ_FOUR, S_CHQ_MONTANT, S_CHQ_ECHEANCE = range(10, 13)
 PAGE_SIZE = 8
 UNITES = ["قطعة", "كغ", "طن", "لتر", "م", "م²", "م³"]
 
@@ -175,10 +200,14 @@ def fmt_lignes(lignes: list) -> str:
 
 # ── /start ───────────────────────────────────────────────────────
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     await update.message.reply_text(
         "👋 *سويفي Bot*\n\n"
         "📋 /newbon — إنشاء بون جديد\n"
+        "💳 /cheque — إنشاء شيك جديد\n"
         "📊 /listbons — آخر البونات\n"
+        "💰 /balance — الوضعية المالية\n"
+        "📦 /stock — بحث في المخزون\n"
         "🔔 /subscribe — فعل الإشعارات اليومية\n"
         "🔕 /unsubscribe — وقف الإشعارات\n"
         "📅 /today — خلاصة اليوم فوراً",
@@ -188,6 +217,7 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── /subscribe & /unsubscribe ────────────────────────────────────
 async def cmd_subscribe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     cid = update.effective_chat.id
     ids = load_chat_ids()
     if cid in ids:
@@ -205,6 +235,7 @@ async def cmd_subscribe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_unsubscribe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     cid = update.effective_chat.id
     ids = load_chat_ids()
     if cid in ids:
@@ -217,6 +248,7 @@ async def cmd_unsubscribe(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── /today — خلاصة فورية ─────────────────────────────────────────
 async def cmd_today(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     today = datetime.date.today().isoformat()
     cheques_msg = await build_cheques_due_message(today)
     elec_msg = await build_electricity_summary_message(today)
@@ -524,6 +556,7 @@ def _fmt_bon_num(v):
 
 
 async def cmd_listbons(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     rows = await sb_get("bons", {
         "select": "num,fournisseur,date,total_net,statut",
         "order": "id.desc",
@@ -544,6 +577,7 @@ async def cmd_listbons(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── /balance — résumé financier ──────────────────────────────────
 async def cmd_balance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     today = datetime.date.today()
     soon = (today + datetime.timedelta(days=7)).isoformat()
     today_s = today.isoformat()
@@ -582,6 +616,7 @@ async def cmd_balance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 # ── /stock — بحث ستوك سلعة ──────────────────────────────────────
 async def cmd_stock(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     query = " ".join(ctx.args).strip() if ctx.args else ""
     if not query:
         await update.message.reply_text(
@@ -607,8 +642,189 @@ async def cmd_stock(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
+# ── /cheque — إنشاء شيك جديد ────────────────────────────────────
+async def cmd_cheque(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return ConversationHandler.END
+    ctx.user_data.clear()
+    rows = await sb_get("fournisseurs", {"select": "id,nom", "order": "nom"})
+    if not rows:
+        await update.message.reply_text("⚠️ ما كاين حتى فورنيسور.")
+        return ConversationHandler.END
+    noms = [r["nom"] for r in rows]
+    ctx.user_data["chq_fournisseurs"] = rows
+    await update.message.reply_text(
+        "💳 *شيك جديد — اختار الفورنيسور:*",
+        parse_mode="Markdown",
+        reply_markup=kb_fournisseurs(noms, 0)
+    )
+    return S_CHQ_FOUR
+
+
+async def cb_chq_four_page(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    page = int(q.data.split(":")[1])
+    noms = [r["nom"] for r in ctx.user_data["chq_fournisseurs"]]
+    await q.edit_message_reply_markup(reply_markup=kb_fournisseurs(noms, page))
+    return S_CHQ_FOUR
+
+
+async def cb_chq_four(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    idx = int(q.data.split(":")[1])
+    four_obj = ctx.user_data["chq_fournisseurs"][idx]
+    ctx.user_data["chq_fournisseur"] = four_obj["nom"]
+    await q.edit_message_text(
+        f"✅ *{four_obj['nom']}*\n\n💰 اكتب المبلغ (د.م.):",
+        parse_mode="Markdown"
+    )
+    return S_CHQ_MONTANT
+
+
+async def enter_chq_montant(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().replace(",", ".").replace(" ", "")
+    try:
+        montant = float(text)
+        if montant <= 0:
+            raise ValueError
+    except ValueError:
+        await update.message.reply_text("⚠️ دخل مبلغ صحيح — مثلاً: 1500 أو 2500.50")
+        return S_CHQ_MONTANT
+    ctx.user_data["chq_montant"] = montant
+    today = datetime.date.today().isoformat()
+    await update.message.reply_text(
+        f"💰 *{montant:,.2f} د.م.*\n\n📅 اكتب تاريخ الاستحقاق (YYYY-MM-DD):\n"
+        f"_مثلاً: {today}_",
+        parse_mode="Markdown"
+    )
+    return S_CHQ_ECHEANCE
+
+
+async def enter_chq_echeance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", text):
+        await update.message.reply_text("⚠️ تنسيق غلط — استعمل YYYY-MM-DD (مثلاً 2026-05-15)")
+        return S_CHQ_ECHEANCE
+    try:
+        datetime.date.fromisoformat(text)
+    except ValueError:
+        await update.message.reply_text("⚠️ تاريخ غير صالح — حاول مرة أخرى")
+        return S_CHQ_ECHEANCE
+    echeance = text
+    four = ctx.user_data["chq_fournisseur"]
+    montant = ctx.user_data["chq_montant"]
+
+    # Auto-increment num (like bons)
+    try:
+        rows = await sb_get("cheques", {"select": "num"})
+        max_n = 0
+        for r in rows or []:
+            s = str(r.get("num") or "")
+            m = re.match(r"^CHK-(\d+)$", s)
+            if m:
+                max_n = max(max_n, int(m.group(1)))
+            elif s.isdigit():
+                max_n = max(max_n, int(s))
+        num_str = f"CHK-{max_n+1:04d}"
+    except Exception:
+        num_str = f"CHK-{datetime.datetime.now().strftime('%H%M%S')}"
+
+    today = datetime.date.today().isoformat()
+    try:
+        result = await sb_post("cheques", {
+            "num": num_str,
+            "fournisseur": four,
+            "montant": round(montant, 2),
+            "echeance": echeance,
+            "date_emission": today,
+            "status": "معلق",
+        })
+        cid = result[0]["id"] if result else "?"
+        await update.message.reply_text(
+            f"✅ *{num_str} محفوظ!*\n\n"
+            f"🏢 {four}\n"
+            f"💰 {montant:,.2f} د.م.\n"
+            f"📅 استحقاق: {echeance}\n\n"
+            f"_ID: {cid}_",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ خطأ ف حفظ الشيك: {_fmt_err(e)}")
+    ctx.user_data.clear()
+    return ConversationHandler.END
+
+
+# ── Monthly report (scheduled day-1 of each month) ───────────────
+async def build_monthly_report_message(first_of_month: datetime.date) -> str:
+    """Monthly summary: previous month totals + top fournisseurs + cheques overview."""
+    # Previous month range
+    if first_of_month.month == 1:
+        prev_month = 12
+        prev_year = first_of_month.year - 1
+    else:
+        prev_month = first_of_month.month - 1
+        prev_year = first_of_month.year
+    start = f"{prev_year}-{prev_month:02d}-01"
+    # First day of current month = end-exclusive
+    end_exclusive = first_of_month.isoformat()
+    label = f"{prev_year}-{prev_month:02d}"
+
+    try:
+        bons = await sb_get("bons", {
+            "select": "fournisseur,total_net,date",
+            "and": f"(date.gte.{start},date.lt.{end_exclusive})",
+            "limit": "5000",
+        }) or []
+        chqs_paid = await sb_get("cheques", {
+            "select": "fournisseur,montant,echeance",
+            "and": f"(echeance.gte.{start},echeance.lt.{end_exclusive})",
+            "status": "eq.مصروف",
+            "limit": "5000",
+        }) or []
+    except Exception as e:
+        return f"⚠️ خطأ ف التقرير الشهري: {_fmt_err(e)}"
+
+    total_bons = sum(float(b.get("total_net") or 0) for b in bons)
+    total_chqs = sum(float(c.get("montant") or 0) for c in chqs_paid)
+    per_four = {}
+    for b in bons:
+        f = b.get("fournisseur", "?")
+        per_four[f] = per_four.get(f, 0.0) + float(b.get("total_net") or 0)
+    top5 = sorted(per_four.items(), key=lambda x: -x[1])[:5]
+
+    lines = [
+        f"📊 *التقرير الشهري — {label}*",
+        "",
+        f"📦 البونات: *{len(bons)}* — {total_bons:,.2f} د.م.",
+        f"💳 شيكات مصروفة: *{len(chqs_paid)}* — {total_chqs:,.2f} د.م.",
+    ]
+    if top5:
+        lines.append("")
+        lines.append("🏆 *أكبر 5 فورنيسورات:*")
+        for f, v in top5:
+            lines.append(f"• {f} — {v:,.2f} د.م.")
+    return "\n".join(lines)
+
+
+async def job_monthly_report(context: ContextTypes.DEFAULT_TYPE):
+    today = datetime.date.today()
+    if today.day != 1:
+        return  # Only fire on day-1
+    ids = load_chat_ids()
+    if not ids:
+        return
+    msg = await build_monthly_report_message(today)
+    for cid in ids:
+        try:
+            await context.bot.send_message(chat_id=cid, text=msg, parse_mode="Markdown")
+        except Exception as e:
+            print(f"[job_monthly_report] fail {cid}: {e}")
+
+
 # ── /newbon — اختيار الفورنيسور ──────────────────────────────────
 async def cmd_newbon(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
     ctx.user_data.clear()
     ctx.user_data["lignes"] = []
     ctx.user_data["art_page"] = 0
@@ -951,6 +1167,21 @@ def main():
         per_message=False,
     )
 
+    chq_conv = ConversationHandler(
+        entry_points=[CommandHandler("cheque", cmd_cheque)],
+        states={
+            S_CHQ_FOUR: [
+                CallbackQueryHandler(cb_chq_four_page, pattern=r"^FP:"),
+                CallbackQueryHandler(cb_chq_four,      pattern=r"^F:\d+$"),
+                CallbackQueryHandler(cb_cancel,        pattern=r"^CANCEL$"),
+            ],
+            S_CHQ_MONTANT:  [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_chq_montant)],
+            S_CHQ_ECHEANCE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_chq_echeance)],
+        },
+        fallbacks=[CommandHandler("cancel", cmd_cancel)],
+        per_message=False,
+    )
+
     app.add_handler(CommandHandler("start",       cmd_start))
     app.add_handler(CommandHandler("listbons",    cmd_listbons))
     app.add_handler(CommandHandler("subscribe",   cmd_subscribe))
@@ -959,6 +1190,7 @@ def main():
     app.add_handler(CommandHandler("balance",     cmd_balance))
     app.add_handler(CommandHandler("stock",       cmd_stock))
     app.add_handler(conv)
+    app.add_handler(chq_conv)
 
     # Daily notifications (Africa/Casablanca timezone)
     jq = app.job_queue
@@ -978,7 +1210,13 @@ def main():
             time=datetime.time(hour=WORKERS_SUMMARY_H, minute=0, tzinfo=TZ),
             name="workers_eod",
         )
-        print(f"🔔 Jobs: cheques {CHEQUE_CHECK_H:02d}:00 | elec {ELEC_SUMMARY_H:02d}:00 | workers {WORKERS_SUMMARY_H:02d}:00 (TZ: Africa/Casablanca)")
+        # Monthly report — runs daily @ 09:00 but gated to day-1 inside the job
+        jq.run_daily(
+            job_monthly_report,
+            time=datetime.time(hour=9, minute=0, tzinfo=TZ),
+            name="monthly_report",
+        )
+        print(f"🔔 Jobs: cheques {CHEQUE_CHECK_H:02d}:00 | elec {ELEC_SUMMARY_H:02d}:00 | workers {WORKERS_SUMMARY_H:02d}:00 | monthly 09:00 (TZ: Africa/Casablanca)")
     else:
         print("⚠️ JobQueue غير متاح — ثبت: pip install python-telegram-bot[job-queue]")
 

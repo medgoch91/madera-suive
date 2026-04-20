@@ -2803,6 +2803,7 @@ function renderBons(){
         <option value="montant-asc" ${bonSort==='montant-asc'?'selected':''}>💰 أصغر مبلغ</option>
         <option value="fournisseur" ${bonSort==='fournisseur'?'selected':''}>🏢 ب الفورنيسور</option>
       </select>
+      <button onclick="exportBonsMonthPDF()" style="padding:7px 12px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer" title="تصدير PDF لكل البونات المعروضة">📄 PDF شهري</button>
       <div class="filter-pills">
         <button class="pill ${!bonFilter?'active':''}" onclick="bonFilter='';renderBons()">الكل (${hasDF?filtered.length:bons.length})</button>
         <button class="pill ${bonFilter==='باقي'?'active':''}" onclick="bonFilter='باقي';renderBons()">باقي (${filtered.filter(b=>!b.chequeId).length})</button>
@@ -2888,7 +2889,7 @@ function renderDashboardCharts(filteredBons){
                  lbl:['جانفي','فبراير','مارس','أبريل','ماي','يونيو','يوليوز','غشت','شتنبر','أكتوبر','نونبر','دجنبر'][d.getMonth()]});
   }
   var mMap={}; months.forEach(m=>mMap[m.key]=0);
-  (bons||[]).forEach(function(b){
+  (src||[]).forEach(function(b){
     var k=(b.date||'').substring(0,7);
     if(mMap.hasOwnProperty(k)) mMap[k]+=Number(b.totalNet||b.total||0);
   });
@@ -2917,9 +2918,9 @@ function renderDashboardCharts(filteredBons){
     });
   }
 
-  // Top fournisseurs — sum of totals
+  // Top fournisseurs — sum of totals (respects dashboard period filter)
   var fMap={};
-  (bons||[]).forEach(function(b){
+  (src||[]).forEach(function(b){
     var f=b.fournisseur||'?';
     fMap[f]=(fMap[f]||0)+Number(b.totalNet||b.total||0);
   });
@@ -6158,6 +6159,37 @@ function renderAdmin(){
       +'<div id="backup-status" style="margin-top:12px;font-size:12px;color:var(--text2);min-height:16px"></div>'
     +'</div>'
 
+    // ── AUDIT LOG ──
+    +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(99,102,241,0.3))"></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:6px 16px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.3);border-radius:20px">'
+        +'<span style="font-size:15px">📜</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#6366f1;letter-spacing:0.5px">AUDIT LOG</span>'
+      +'</div>'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(99,102,241,0.3),transparent)"></div>'
+    +'</div>'
+    +'<div style="background:linear-gradient(135deg,rgba(99,102,241,0.06),rgba(139,92,246,0.03));border:1px solid rgba(99,102,241,0.22);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap">'
+        +'<div>'
+          +'<div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px">سجل العمليات</div>'
+          +'<div style="font-size:11px;color:var(--text2)">آخر 100 عملية (INSERT, UPDATE, DELETE)</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+          +'<select id="audit-filter-table" onchange="loadAuditLog()" style="padding:7px 10px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:12px">'
+            +'<option value="">كل الجداول</option>'
+            +'<option value="bons">bons</option>'
+            +'<option value="cheques">cheques</option>'
+            +'<option value="articles">articles</option>'
+            +'<option value="fournisseurs">fournisseurs</option>'
+            +'<option value="salaries">salaries</option>'
+            +'<option value="factures">factures</option>'
+          +'</select>'
+          +'<button onclick="loadAuditLog()" style="padding:7px 14px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer">🔄 تحديث</button>'
+        +'</div>'
+      +'</div>'
+      +'<div id="audit-log-body" style="max-height:360px;overflow-y:auto;font-size:12px"><div style="color:var(--text2);padding:12px">⏳ جاري التحميل...</div></div>'
+    +'</div>'
+
     // Section divider
     +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
       +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,0.3))"></div>'
@@ -6224,6 +6256,152 @@ function renderAdmin(){
     +'</div>';
 
   document.getElementById('page-admin').innerHTML=html;
+  try{ loadAuditLog(); }catch(e){ /* audit_log table may not exist yet */ }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Audit log viewer (admin-only)
+// ════════════════════════════════════════════════════════════════
+async function loadAuditLog(){
+  var body=document.getElementById('audit-log-body');
+  var filter=document.getElementById('audit-filter-table');
+  if(!body) return;
+  body.innerHTML='<div style="color:var(--text2);padding:12px">⏳ جاري التحميل...</div>';
+  var tbl=filter?filter.value:'';
+  var qs='select=*&order=created_at.desc&limit=100';
+  if(tbl) qs+='&table_name=eq.'+encodeURIComponent(tbl);
+  try{
+    var rows=await sbFetch('audit_log','GET',null,qs);
+    if(rows && rows.__sbError){
+      body.innerHTML='<div style="color:#f59e0b;padding:12px">⚠️ جدول audit_log غير موجود. طبق SQL من supabase_schema.sql.</div>';
+      return;
+    }
+    if(!rows || !rows.length){
+      body.innerHTML='<div style="color:var(--text2);padding:12px">— لا توجد عمليات —</div>';
+      return;
+    }
+    var colorMap={POST:'#10b981',PATCH:'#f59e0b',DELETE:'#ef4444',PUT:'#f59e0b'};
+    var iconMap={POST:'➕',PATCH:'✏️',PUT:'✏️',DELETE:'🗑'};
+    var html='<div style="display:flex;flex-direction:column;gap:6px">';
+    rows.forEach(function(r){
+      var col=colorMap[r.action]||'#6366f1';
+      var icon=iconMap[r.action]||'•';
+      var when=r.created_at?new Date(r.created_at).toLocaleString('fr-MA'):'?';
+      var detTxt='';
+      try{
+        var d=r.details;
+        if(typeof d==='string') d=JSON.parse(d);
+        if(d && typeof d==='object'){
+          var parts=[];
+          if(d.params) parts.push('params:'+String(d.params).substring(0,60));
+          if(d.body && typeof d.body==='object'){
+            var keys=Object.keys(d.body).slice(0,4);
+            parts.push('body: '+keys.join(','));
+          }
+          detTxt=parts.join(' | ');
+        }
+      }catch(e){}
+      html+=''
+        +'<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">'
+          +'<span style="font-size:14px">'+icon+'</span>'
+          +'<span style="font-size:11px;font-weight:700;color:'+col+';min-width:56px">'+(r.action||'?')+'</span>'
+          +'<span style="font-weight:700;color:var(--text);min-width:110px;font-size:12px">'+(r.table_name||'?')+'</span>'
+          +'<span style="flex:1;color:var(--text2);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(detTxt||'—')+'</span>'
+          +'<span style="color:var(--text3);font-size:10px;white-space:nowrap">'+when+'</span>'
+          +'<span style="color:var(--text3);font-size:10px;min-width:60px">'+(r.user_name||'anon')+'</span>'
+        +'</div>';
+    });
+    html+='</div>';
+    body.innerHTML=html;
+  }catch(e){
+    body.innerHTML='<div style="color:#ef4444;padding:12px">❌ '+(e.message||e)+'</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Export all filtered bons as a single printable PDF (month/custom range)
+// ════════════════════════════════════════════════════════════════
+function exportBonsMonthPDF(){
+  var search=((document.getElementById('bon-search')||{value:''}).value||'').toLowerCase();
+  var list=filterByDate(bons,'bons').filter(function(b){
+    return (!bonFilter||(bonFilter==='باقي'&&!b.chequeId)||(bonFilter==='مربوط'&&b.chequeId))
+      &&(!bonFourFilter||b.fournisseur===bonFourFilter)
+      &&(!search||b.num.toLowerCase().includes(search)||(b.fournisseur||'').toLowerCase().includes(search));
+  }).sort(function(a,b){return (b.date||'').localeCompare(a.date||'');});
+  if(!list.length){ toast('ما كاين حتى بون للتصدير','error'); return; }
+  var df=dateFilters['bons']||{};
+  var rangeLbl='';
+  if(df.from||df.to){ rangeLbl=(df.from||'')+' → '+(df.to||''); }
+  else if(list.length){ rangeLbl=(list[list.length-1].date||'')+' → '+(list[0].date||''); }
+  var total=list.reduce(function(s,b){return s+Number(b.totalNet||b.total||0);},0);
+  var perFour={};
+  list.forEach(function(b){
+    var f=b.fournisseur||'?';
+    perFour[f]=(perFour[f]||0)+Number(b.totalNet||b.total||0);
+  });
+  var topFour=Object.keys(perFour).map(function(k){return {f:k,v:perFour[k]};}).sort(function(a,b){return b.v-a.v;});
+  var fmtN=function(n){return Number(n||0).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});};
+  var html='<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"><title>تقرير البونات '+rangeLbl+'</title>'
+    +'<style>'
+    +'@page{size:A4;margin:12mm;}'
+    +'*{box-sizing:border-box;font-family:"Arial","Cairo",sans-serif;}'
+    +'body{margin:0;padding:0;color:#0f172a;font-size:11px;}'
+    +'h1{font-size:20px;margin:0 0 6px 0;color:#9333ea;}'
+    +'.meta{display:flex;gap:18px;margin-bottom:14px;font-size:11px;color:#475569}'
+    +'.meta b{color:#0f172a}'
+    +'.box{border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;margin-bottom:12px;background:#f8fafc}'
+    +'.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}'
+    +'.stat{background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:8px 10px}'
+    +'.stat-l{font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px}'
+    +'.stat-v{font-size:14px;font-weight:800;color:#0f172a;margin-top:2px}'
+    +'table{width:100%;border-collapse:collapse;margin-bottom:14px}'
+    +'th,td{border:1px solid #e2e8f0;padding:5px 7px;text-align:right;font-size:10.5px}'
+    +'th{background:#f1f5f9;font-weight:700;color:#0f172a}'
+    +'tr:nth-child(even) td{background:#fafbfc}'
+    +'.tot{background:#fef3c7;font-weight:800}'
+    +'.no-print{position:fixed;top:6px;left:6px;display:flex;gap:6px;z-index:999}'
+    +'.no-print button{padding:6px 12px;font:600 12px sans-serif;border:0;border-radius:6px;cursor:pointer}'
+    +'@media print{.no-print{display:none}}'
+    +'</style></head><body>'
+    +'<div class="no-print"><button style="background:#9333ea;color:#fff" onclick="window.print()">💾 حفظ PDF</button><button style="background:#444;color:#fff" onclick="window.close()">✖ إغلاق</button></div>'
+    +'<h1>📋 تقرير البونات</h1>'
+    +'<div class="meta"><div>الفترة: <b>'+escB(rangeLbl||'الكل')+'</b></div>'
+    +(bonFourFilter?'<div>الفورنيسور: <b>'+escB(bonFourFilter)+'</b></div>':'')
+    +'<div>تاريخ الطبع: <b>'+new Date().toLocaleString('fr-MA')+'</b></div></div>'
+    +'<div class="grid">'
+    +'<div class="stat"><div class="stat-l">عدد البونات</div><div class="stat-v">'+list.length+'</div></div>'
+    +'<div class="stat"><div class="stat-l">المجموع TTC</div><div class="stat-v">'+fmtN(total)+'</div></div>'
+    +'<div class="stat"><div class="stat-l">فورنيسورات</div><div class="stat-v">'+Object.keys(perFour).length+'</div></div>'
+    +'<div class="stat"><div class="stat-l">متوسط البون</div><div class="stat-v">'+fmtN(total/list.length)+'</div></div>'
+    +'</div>';
+  if(topFour.length){
+    html+='<div class="box"><b>🏆 أكبر الفورنيسورات:</b><br>'
+      +topFour.slice(0,8).map(function(x,i){return (i+1)+'. '+escB(x.f)+' — <b>'+fmtN(x.v)+' د.م.</b>';}).join(' · ')
+      +'</div>';
+  }
+  html+='<table><thead><tr>'
+    +'<th style="width:22px">#</th><th>رقم البون</th><th>التاريخ</th><th>الفورنيسور</th>'
+    +'<th>السلع</th><th>المجموع TTC</th><th>شيك</th>'
+    +'</tr></thead><tbody>';
+  list.forEach(function(b,i){
+    var ln=Array.isArray(b.lignes)?b.lignes.length:0;
+    var chk=b.chequeId?'✓':'—';
+    html+='<tr>'
+      +'<td>'+(i+1)+'</td>'
+      +'<td><b>'+escB(b.num||'')+'</b></td>'
+      +'<td>'+escB(b.date||'')+'</td>'
+      +'<td>'+escB(b.fournisseur||'')+'</td>'
+      +'<td style="text-align:center">'+ln+'</td>'
+      +'<td style="text-align:left;font-weight:700">'+fmtN(b.totalNet||b.total||0)+'</td>'
+      +'<td style="text-align:center">'+chk+'</td>'
+      +'</tr>';
+  });
+  html+='<tr class="tot"><td colspan="5" style="text-align:center">المجموع</td>'
+    +'<td style="text-align:left">'+fmtN(total)+'</td><td></td></tr>';
+  html+='</tbody></table></body></html>';
+  var w=window.open('','_blank');
+  if(!w){ toast('Popup blocker — اسمح للموقع','error'); return; }
+  w.document.write(html); w.document.close();
 }
 
 // ════════════════════════════════════════════════════════════════

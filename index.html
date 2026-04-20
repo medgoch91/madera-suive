@@ -11721,13 +11721,17 @@ async function loadFacturesData(){
     factures=_asArr(factsResp);
     factClients=_asArr(clts);
     factProduits=_asArr(prods);
-    if(soc&&soc[0]) factSociete=soc[0];
-    else factSociete=JSON.parse(localStorage.getItem('fact_soc_v1')||'null')||{
-      nom:'MADERA DECO',ice:'002733643000006',if_num:'48573755',rc:'46235',
-      patente:'93100364',ville:'AGADIR',tel:'0676637608',fax:'',
-      email:'maderadeco.ma@gmail.com',web:'maderadeco.ma',
-      adresse:'COMMUNE DRARGA AGADIR',logo:''
-    };
+    if(soc && Array.isArray(soc) && soc[0]){
+      factSociete=soc[0];
+      try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete)); }catch(e){}
+    } else {
+      factSociete=JSON.parse(localStorage.getItem('fact_soc_v1')||'null')||{
+        nom:'MADERA DECO',ice:'002733643000006',if_num:'48573755',rc:'46235',
+        patente:'93100364',ville:'AGADIR',tel:'0676637608',fax:'',
+        email:'maderadeco.ma@gmail.com',web:'maderadeco.ma',
+        adresse:'COMMUNE DRARGA AGADIR',logo:''
+      };
+    }
   }catch(e){
     console.error('loadFacturesData error:',e);
     // fallback to localStorage
@@ -12743,9 +12747,24 @@ async function factSaveSoc(){
   }
   hideLoader();
   factSociete=Object.assign(factSociete||{},soc);
-  if(res&&res[0]) factSociete.id=res[0].id;
+  if(res&&Array.isArray(res)&&res[0]) factSociete.id=res[0].id;
+  // Always persist to localStorage as backup (even if Supabase save failed)
+  try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete)); }catch(e){}
   const msg=document.getElementById('soc-msg');
-  if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم الحفظ!';}
+  const sbFailed=res && res.__sbError;
+  if(msg){
+    if(sbFailed){
+      msg.style.color='var(--red)';
+      msg.textContent='⚠️ حفظ محلي فقط — Supabase: '+(sbParseError(res.msg)||'خطأ');
+    } else {
+      msg.style.color='var(--green)';
+      msg.textContent='✅ تم الحفظ!';
+    }
+  }
+  if(sbFailed){
+    try{ toast('⚠️ ماتسجلش f Supabase — راجع جدول fact_societe/RLS','warning'); }catch(e){}
+    console.error('factSaveSoc Supabase error:', res);
+  }
 }
 
 function factPrint(id){

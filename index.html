@@ -1617,6 +1617,7 @@ async function loadAllData(){
     saveCacheLS();
     dbReady=true;
     await loadSalariesData();
+    try{ await loadFacturesData(); }catch(_){}
     hideLoader();
     renderDashboard();
     updateSidebar();
@@ -11718,6 +11719,11 @@ async function loadFacturesData(){
 function renderFactures(){
   const page=document.getElementById('page-factures');
   if(!page)return;
+  // Lazy-load facture data once per session if not yet loaded
+  if(!window._factLoaded){
+    window._factLoaded=true;
+    loadFacturesData().then(function(){ try{renderFactures();}catch(_){} });
+  }
   // One-time restore of sub-tab from last session
   if(!window._factSubRestored){
     try{var sv=uiLoadFactSub(); if(sv) factSubPage=sv;}catch(e){}

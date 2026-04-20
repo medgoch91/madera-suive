@@ -12,6 +12,7 @@
 <link rel="apple-touch-icon" href="icon.svg">
 <title>سويفي — إدارة الشيكات والبونات</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
 /* ═══════════════ VARIABLES — Tablet-First Design System ═══════════════ */
 :root {
@@ -1359,8 +1360,38 @@ async function sbFetch(table, method='GET', body=null, params=''){
   if(prefer) h['Prefer']=prefer;
   const res = await fetch(url, {method, headers:h, body:body?JSON.stringify(body):null});
   if(!res.ok){ const e=await res.text(); console.error('SB Error ['+method+' '+table+']:',e); return {__sbError:true, msg:e, status:res.status}; }
+  // Audit log for writes (fire-and-forget, skip if logging itself)
+  if(method!=='GET' && table!=='audit_log'){
+    try{ _sbAudit(table, method, params, body); }catch(e){}
+  }
   if(res.status===204) return true;
   try{ return await res.json(); }catch(e){ return true; }
+}
+
+function _sbAudit(table, method, params, body){
+  // Skip noisy tables
+  var skip=['prix','supplier_products'];
+  if(skip.indexOf(table)>=0) return;
+  var user=(window.currentUser && currentUser.username) || 'anon';
+  var rowId=null;
+  var m=(params||'').match(/id=eq\.(\d+)/);
+  if(m) rowId=parseInt(m[1],10);
+  else if(Array.isArray(body) && body[0] && body[0].id) rowId=body[0].id;
+  else if(body && body.id) rowId=body.id;
+  var payload={
+    user_name: user,
+    action: method,
+    table_name: table,
+    row_id: rowId,
+    details: (body ? JSON.stringify(body).slice(0,500) : ''),
+    created_at: new Date().toISOString()
+  };
+  // Fire-and-forget — don't await, don't crash app if it fails
+  fetch(SB_URL+'/rest/v1/audit_log', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+    body: JSON.stringify(payload)
+  }).catch(function(){});
 }
 
 function sbParseError(raw){
@@ -2825,7 +2856,95 @@ function renderBons(){
         <span>${filtered.length} بون</span>
         <span style="font-weight:700;color:var(--accent)">المجموع: ${fmt(filtered.reduce((s,b)=>s+b.total,0))}</span>
       </div>`:''}
+    </div>
+
+    <!-- ═══ CHARTS: Monthly spend + Top fournisseurs ═══ -->
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-top:20px" class="dash-charts-grid">
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;min-height:300px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">📈 المصاريف الشهرية (آخر 6 أشهر)</div>
+        <div style="position:relative;height:240px"><canvas id="chart-monthly"></canvas></div>
+      </div>
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px 20px;min-height:300px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:12px">🏆 أكبر 5 فورنيسورات</div>
+        <div style="position:relative;height:240px"><canvas id="chart-top-four"></canvas></div>
+      </div>
     </div>`;
+
+    try{ renderDashboardCharts(filtered); }catch(e){ console.warn('Charts:',e); }
+}
+
+// ── Dashboard charts (Chart.js) ─────────────────────────────────
+var __dashCharts={};
+function renderDashboardCharts(filteredBons){
+  if(typeof Chart==='undefined') return;
+  var src=Array.isArray(filteredBons)&&filteredBons.length?filteredBons:bons;
+
+  // Monthly spend — last 6 months
+  var now=new Date();
+  var months=[];
+  for(var i=5;i>=0;i--){
+    var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    months.push({key:d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'),
+                 lbl:['جانفي','فبراير','مارس','أبريل','ماي','يونيو','يوليوز','غشت','شتنبر','أكتوبر','نونبر','دجنبر'][d.getMonth()]});
+  }
+  var mMap={}; months.forEach(m=>mMap[m.key]=0);
+  (bons||[]).forEach(function(b){
+    var k=(b.date||'').substring(0,7);
+    if(mMap.hasOwnProperty(k)) mMap[k]+=Number(b.totalNet||b.total||0);
+  });
+  var mCtx=document.getElementById('chart-monthly');
+  if(mCtx){
+    if(__dashCharts.monthly) __dashCharts.monthly.destroy();
+    __dashCharts.monthly=new Chart(mCtx,{
+      type:'bar',
+      data:{
+        labels:months.map(m=>m.lbl),
+        datasets:[{
+          label:'DH',
+          data:months.map(m=>Math.round(mMap[m.key])),
+          backgroundColor:'rgba(147,51,234,0.5)',
+          borderColor:'#9333ea',borderWidth:2,borderRadius:6
+        }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          y:{beginAtZero:true,ticks:{color:'#9ca3af',callback:v=>v.toLocaleString('fr-FR')},grid:{color:'rgba(255,255,255,0.05)'}},
+          x:{ticks:{color:'#9ca3af'},grid:{display:false}}
+        }
+      }
+    });
+  }
+
+  // Top fournisseurs — sum of totals
+  var fMap={};
+  (bons||[]).forEach(function(b){
+    var f=b.fournisseur||'?';
+    fMap[f]=(fMap[f]||0)+Number(b.totalNet||b.total||0);
+  });
+  var top=Object.keys(fMap).map(k=>({f:k,v:fMap[k]})).sort((a,b)=>b.v-a.v).slice(0,5);
+  var fCtx=document.getElementById('chart-top-four');
+  if(fCtx){
+    if(__dashCharts.topFour) __dashCharts.topFour.destroy();
+    __dashCharts.topFour=new Chart(fCtx,{
+      type:'doughnut',
+      data:{
+        labels:top.map(x=>x.f),
+        datasets:[{
+          data:top.map(x=>Math.round(x.v)),
+          backgroundColor:['#9333ea','#06b6d4','#10b981','#f59e0b','#ef4444'],
+          borderColor:'var(--bg2)',borderWidth:2
+        }]
+      },
+      options:{
+        responsive:true,maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'bottom',labels:{color:'#9ca3af',font:{family:'Cairo',size:11}}}
+        }
+      }
+    });
+  }
 }
 
 // Delete a bon with atomic stock rollback:

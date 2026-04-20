@@ -427,3 +427,28 @@ begin
     execute format('create policy "anon_all_%s" on %I for all to anon using (true) with check (true)', t, t);
   end loop;
 end $$;
+
+-- ╔══════════════════════════════╗
+-- ║  26. AUDIT_LOG               ║
+-- ╚══════════════════════════════╝
+-- Tracks every write operation (POST/PATCH/DELETE) for accountability
+create table if not exists audit_log (
+  id          bigint generated always as identity primary key,
+  user_name   text        default 'anon',
+  action      text        not null,          -- POST | PATCH | DELETE
+  table_name  text        not null,
+  row_id      bigint      default null,
+  details     text        default '',
+  created_at  timestamptz default now()
+);
+create index if not exists idx_audit_created  on audit_log(created_at desc);
+create index if not exists idx_audit_user     on audit_log(user_name);
+create index if not exists idx_audit_table    on audit_log(table_name);
+
+alter table audit_log enable row level security;
+drop policy if exists "anon_all_audit_log" on audit_log;
+create policy "anon_all_audit_log" on audit_log
+  for all to anon using (true) with check (true);
+
+-- reload schema cache after DDL
+notify pgrst, 'reload schema';

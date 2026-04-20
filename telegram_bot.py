@@ -4,6 +4,7 @@
 import datetime
 import json
 import os
+import re
 from typing import Optional
 import httpx
 import pytz
@@ -513,6 +514,15 @@ async def build_electricity_summary_message(today: str) -> str:
 
 
 # ── /listbons ────────────────────────────────────────────────────
+def _fmt_bon_num(v):
+    s = str(v or "")
+    if s.startswith("BON-"):
+        return s
+    if s.isdigit():
+        return f"BON-{int(s):04d}"
+    return s or "BON-?"
+
+
 async def cmd_listbons(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     rows = await sb_get("bons", {
         "select": "num,fournisseur,date,total_net,statut",
@@ -525,11 +535,76 @@ async def cmd_listbons(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     lines = []
     for b in rows:
         e = "✅" if b["statut"] == "Validé" else "⏳"
-        lines.append(f"{e} BON-{b['num']:04d} | {b['fournisseur']} | {float(b['total_net']):.2f} د.م. | {b['date']}")
+        lines.append(f"{e} {_fmt_bon_num(b['num'])} | {b['fournisseur']} | {float(b['total_net']):.2f} د.م. | {b['date']}")
     await update.message.reply_text(
         "📋 *آخر البونات:*\n\n" + "\n".join(lines),
         parse_mode="Markdown"
     )
+
+
+# ── /balance — résumé financier ──────────────────────────────────
+async def cmd_balance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    today = datetime.date.today()
+    soon = (today + datetime.timedelta(days=7)).isoformat()
+    today_s = today.isoformat()
+
+    bons = await sb_get("bons", {"select": "num,fournisseur,date,total_net,statut,cheque_id"}) or []
+    chqs = await sb_get("cheques", {"select": "num,fournisseur,montant,echeance,status"}) or []
+
+    bons_libre = [b for b in bons if not b.get("cheque_id")]
+    total_libre = sum(float(b.get("total_net") or 0) for b in bons_libre)
+
+    chq_pending = [c for c in chqs if (c.get("status") or "معلق") == "معلق"]
+    total_pending = sum(float(c.get("montant") or 0) for c in chq_pending)
+
+    chq_soon = [c for c in chq_pending
+                if c.get("echeance") and today_s <= c["echeance"] <= soon]
+
+    lines = [
+        "💰 *Balance — سويفي*",
+        "",
+        f"📦 *البونات بلا شيك:* {len(bons_libre)}",
+        f"   💸 المجموع: {total_libre:,.2f} د.م.",
+        "",
+        f"💳 *الشيكات المعلقة:* {len(chq_pending)}",
+        f"   💸 المجموع: {total_pending:,.2f} د.م.",
+    ]
+    if chq_soon:
+        lines.append("")
+        lines.append(f"⚠️ *شيكات تستحق خلال 7 أيام:* {len(chq_soon)}")
+        for c in sorted(chq_soon, key=lambda x: x.get("echeance") or ""):
+            lines.append(f"   • {c.get('num','?')} — {c.get('fournisseur','?')} — {float(c.get('montant') or 0):,.2f} د.م. — {c.get('echeance','?')}")
+    lines.append("")
+    lines.append(f"📅 {today_s}")
+
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+
+
+# ── /stock — بحث ستوك سلعة ──────────────────────────────────────
+async def cmd_stock(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    query = " ".join(ctx.args).strip() if ctx.args else ""
+    if not query:
+        await update.message.reply_text(
+            "📦 *بحث في الستوك*\n\nاستعمل: `/stock اسم_السلعة`\nمثلا: `/stock LED`",
+            parse_mode="Markdown"
+        )
+        return
+    rows = await sb_get("articles", {
+        "select": "id,nom,unite,stock",
+        "nom": f"ilike.*{query}*",
+        "order": "nom",
+        "limit": "15"
+    }) or []
+    if not rows:
+        await update.message.reply_text(f"ما لقيت حتى سلعة ب: *{query}*", parse_mode="Markdown")
+        return
+    lines = [f"📦 *نتائج البحث — {query}:*", ""]
+    for a in rows:
+        stk = a.get("stock")
+        stk_s = f"{int(float(stk))}" if stk is not None else "—"
+        emoji = "🔴" if (stk is None or float(stk or 0) == 0) else ("🟡" if float(stk) < 5 else "🟢")
+        lines.append(f"{emoji} {a['nom']} — *{stk_s}* {a.get('unite','قطعة')}")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 # ── /newbon — اختيار الفورنيسور ──────────────────────────────────
@@ -786,11 +861,20 @@ async def cb_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         for l in lignes
     ]
 
-    rows = await sb_get("bons", {"select": "num", "order": "num.desc", "limit": "1"})
-    num  = (int(rows[0]["num"]) + 1) if rows else 1
+    rows = await sb_get("bons", {"select": "num"})
+    max_n = 0
+    for r in rows or []:
+        s = str(r.get("num") or "")
+        m = re.match(r"^BON-(\d+)$", s)
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+        elif s.isdigit():
+            max_n = max(max_n, int(s))
+    next_n = max_n + 1
+    num_str = f"BON-{next_n:04d}"
 
     result = await sb_post("bons", {
-        "num": num,
+        "num": num_str,
         "fournisseur": four,
         "date": today,
         "statut": "Brouillon",
@@ -804,7 +888,7 @@ async def cb_save(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
     bon_id = result[0]["id"] if result else "?"
     await q.edit_message_text(
-        f"✅ *BON-{num:04d} محفوظ!*\n\n"
+        f"✅ *{num_str} محفوظ!*\n\n"
         f"🏢 {four}\n"
         f"📅 {today}\n\n"
         f"{fmt_lignes(lignes)}\n\n"
@@ -872,6 +956,8 @@ def main():
     app.add_handler(CommandHandler("subscribe",   cmd_subscribe))
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     app.add_handler(CommandHandler("today",       cmd_today))
+    app.add_handler(CommandHandler("balance",     cmd_balance))
+    app.add_handler(CommandHandler("stock",       cmd_stock))
     app.add_handler(conv)
 
     # Daily notifications (Africa/Casablanca timezone)

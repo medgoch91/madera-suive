@@ -11,13 +11,19 @@
 - [x] PWA (installable + offline via service worker)
 - [x] JSON backup export (Admin → BACKUP & RESTORE)
 - [x] JSON backup import (replace-all with CONFIRM)
+- [x] Dashboard charts (Chart.js: monthly spend + top 5 fournisseurs)
+- [x] Telegram `/balance` + `/stock` commands
+- [x] Audit log table + client-side logging wrapper
+- [x] Theme toggle (already wired, light mode ready)
 
 ## 🔴 À tester maintenant (critique)
 - [ ] Run SQL dyal `material_returns` f Supabase (إرجاع سلعة ykhdem)
-- [ ] Test Telegram `/newbon` → حفظ → verify f Supabase
+- [ ] Run SQL dyal `audit_log` f Supabase (tracking écritures)
+- [ ] Test Telegram commands: `/newbon`, `/balance`, `/stock LED`
 - [ ] Test PWA install sur phone (Safari/Chrome → Add to Home Screen)
 - [ ] Test Admin → "تصدير نسخة احتياطية" → verify JSON fih kolchi
 - [ ] Test Admin → "استيراد نسخة احتياطية" → verify data restored
+- [ ] Test Dashboard charts (Chart.js loaded, bars + doughnut rendering)
 - [ ] Test mobile kaml:
   - [ ] #dashboard
   - [ ] #bons (list + new bon)
@@ -28,33 +34,46 @@
 
 ## 🟡 Features essentielles à ajouter
 
-### Security (important!)
-- [ ] Supabase RLS: restrict `anon` write to authenticated only
-- [ ] App-side: block destructive actions for non-admin
-- [ ] Rate-limit Telegram bot per chat_id
+### Security (important — deferred, needs careful rollout)
+- [ ] **Supabase RLS**: switch from `anon-all` to `authenticated` role
+      - Requires: Supabase Auth (email/password) login in app
+      - Breaks: current anon key won't write after RLS tightening
+      - Plan: keep SELECT open, restrict INSERT/UPDATE/DELETE to authenticated
+      - SQL template:
+        ```sql
+        drop policy if exists "anon_all_bons" on bons;
+        create policy "anon_read_bons" on bons for select to anon using (true);
+        create policy "auth_write_bons" on bons for all to authenticated using (true) with check (true);
+        ```
+- [ ] **App-side guards**: admin-only modals already gated via `currentUser.role`;
+      audit every destructive action (now logged via `audit_log`)
+- [ ] **Rate-limit Telegram bot** per chat_id (5 req/min, use simple in-memory dict)
+- [ ] **API key rotation**: rotate `SB_KEY` every 3 months
 
 ### Telegram Bot
-- [ ] `/balance` — total bons non-payés + cheques échéance proche
-- [ ] `/bons` — list recent bons
-- [ ] `/cheque` — ajout cheque sans app
-- [ ] `/stock` — check stock article by name
+- [x] `/balance` — total bons non-payés + cheques échéance proche
+- [x] `/listbons` — list recent bons (already present)
+- [x] `/stock` — check stock article by name
+- [ ] `/cheque` — ajout cheque sans app (conversation handler like /newbon)
 - [ ] Notifications automatiques:
   - [ ] Cheque échéance dans 3 jours (déjà planifié @08:00 — verify)
   - [ ] Stock bas (< seuil)
 
 ### Dashboard & Reports
-- [ ] Charts: dépenses par mois (chart.js CDN)
-- [ ] Top 5 fournisseurs par volume
+- [x] Charts: dépenses par mois (chart.js CDN) — bar chart 6 months
+- [x] Top 5 fournisseurs par volume — doughnut chart
 - [ ] Export PDF kaml (all bons du mois en un seul PDF)
 - [ ] Rapport mensuel (email/telegram)
+- [ ] Filter charts by date preset (currently uses all bons)
 
 ### Data
-- [ ] Audit log table: user_id, action, table, row_id, old, new, at
+- [x] Audit log table (audit_log in Supabase — run SQL before use)
+- [ ] Admin UI to view audit_log entries (page or modal)
 - [ ] Soft delete (trash) avant hard delete
 - [ ] Duplicate bon/cheque (clone as template)
 
 ## 🟢 Polish / Nice-to-have
-- [ ] Dark/Light theme toggle
+- [x] Dark/Light theme toggle (btn dyal 🌙/☀️ f topbar)
 - [ ] Offline sync queue (save locally when offline, sync when online)
 - [ ] Multi-language (FR/AR toggle)
 - [ ] Share cheque image via Telegram directement

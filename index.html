@@ -9269,10 +9269,17 @@ async function handleMaterialReturn(){
     var ins=await sbFetch('material_returns','POST',body);
     if(ins && ins.__sbError){throw new Error(ins.msg);}
     if(Array.isArray(ins) && ins[0]) edReturns.unshift(ins[0]);
-    // If "bon" (good item) → return to main stock
+    // If "bon" (good item) → return to main stock via atomic RPC
+    // (same pattern as dispatch delete — avoids lost updates on PATCH fail)
     if(reason==='bon'){
-      var cur=getArtStock(articleId);
-      setArtStock(articleId,(cur==null?0:Number(cur))+qty);
+      var rpcInc=await sbRpc('increment_stock',{row_id:articleId,amount:qty});
+      if(rpcInc && rpcInc.__sbError){
+        console.error('increment_stock RPC failed after return',rpcInc);
+        try{toast('⚠️ الإرجاع تسجل ولكن المخزون ما tzadch — راجع RPC','warning');}catch(e){}
+      } else {
+        var cur=getArtStock(articleId);
+        try{ localStorage.setItem('art_stock_'+articleId, String((cur==null?0:Number(cur))+qty)); }catch(e){}
+      }
     }
     try{toast('🔄 '+bonNum+' — '+(reason==='defaut'?'خربان':'صالح')+' — رجع '+qty+' من '+techName,'success');}catch(e){}
     var qEl=document.getElementById('_ed-ret-qty'); if(qEl)qEl.value='';
@@ -9294,11 +9301,17 @@ async function edDeleteReturn(id){
   try{
     var res=await sbFetch('material_returns?id=eq.'+id,'DELETE');
     if(res && res.__sbError){throw new Error(res.msg);}
-    // Reverse main stock if it was "bon"
+    // Reverse main stock if it was "bon" — atomic RPC
     if(ret.reason==='bon'){
-      var cur=getArtStock(Number(ret.article_id));
-      var delta=(cur==null?0:Number(cur))-Number(ret.quantity||0);
-      setArtStock(Number(ret.article_id), Math.max(0,delta));
+      var aid=Number(ret.article_id), qty=Number(ret.quantity||0);
+      var rpcDec=await sbRpc('decrement_stock',{row_id:aid,amount:qty});
+      if(rpcDec && rpcDec.__sbError){
+        console.error('decrement_stock RPC failed on return delete',rpcDec);
+      } else {
+        var cur=getArtStock(aid);
+        var newVal=Math.max(0,(cur==null?0:Number(cur))-qty);
+        try{ localStorage.setItem('art_stock_'+aid, String(newVal)); }catch(e){}
+      }
     }
     edReturns=edReturns.filter(function(x){return Number(x.id)!==Number(id);});
     try{toast('🗑️ تم حذف الإرجاع','success');}catch(e){}

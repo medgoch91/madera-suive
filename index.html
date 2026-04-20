@@ -1553,13 +1553,23 @@ async function loadAllData(){
     showLoader('⏳ جاري تحميل البيانات...');
   }
   try{
+    // Fetch with soft-delete filter; fall back without filter if column not yet migrated
+    const _sbFetchSoft=async (tbl, params)=>{
+      var r=await sbFetch(tbl,'GET',null,'select=*&deleted_at=is.null&'+params);
+      if(r && r.__sbError && /deleted_at/.test(r.msg||'')){
+        console.warn('['+tbl+'] deleted_at column missing — run supabase_schema.sql section 27. Falling back.');
+        r=await sbFetch(tbl,'GET',null,'select=*&'+params);
+      }
+      return Array.isArray(r)?r:[];
+    };
+    const _asArr=(x)=>Array.isArray(x)?x:[];
     const [arts, prixRows, bonsRows, chRows, fourRows, spRows] = await Promise.all([
-      sbFetch('articles','GET',null,'select=*&order=id'),
-      sbFetch('prix','GET',null,'select=*'),
-      sbFetch('bons','GET',null,'select=*&deleted_at=is.null&order=created_at.desc'),
-      sbFetch('cheques','GET',null,'select=*&deleted_at=is.null&order=created_at.desc'),
-      sbFetch('fournisseurs','GET',null,'select=*&order=nom'),
-      sbFetch('supplier_products','GET',null,'select=supplier_id,product_id,last_purchase_price_ttc'),
+      sbFetch('articles','GET',null,'select=*&order=id').then(_asArr),
+      sbFetch('prix','GET',null,'select=*').then(_asArr),
+      _sbFetchSoft('bons','order=created_at.desc'),
+      _sbFetchSoft('cheques','order=created_at.desc'),
+      sbFetch('fournisseurs','GET',null,'select=*&order=nom').then(_asArr),
+      sbFetch('supplier_products','GET',null,'select=supplier_id,product_id,last_purchase_price_ttc').then(_asArr),
     ]);
     spLinks={};
     (spRows||[]).forEach(function(r){spLinks[r.supplier_id+'_'+r.product_id]=parseFloat(r.last_purchase_price_ttc);});
@@ -11669,15 +11679,20 @@ setInterval(function(){
 
 async function loadFacturesData(){
   try{
-    const [facts,clts,prods,soc]=await Promise.all([
-      sbFetch('factures','GET',null,'select=*&deleted_at=is.null&order=num.desc'),
+    const _asArr=(x)=>Array.isArray(x)?x:[];
+    var factsResp=await sbFetch('factures','GET',null,'select=*&deleted_at=is.null&order=num.desc');
+    if(factsResp && factsResp.__sbError && /deleted_at/.test(factsResp.msg||'')){
+      console.warn('[factures] deleted_at column missing — falling back.');
+      factsResp=await sbFetch('factures','GET',null,'select=*&order=num.desc');
+    }
+    const [clts,prods,soc]=await Promise.all([
       sbFetch('fact_clients','GET',null,'select=*&order=nom'),
       sbFetch('fact_produits','GET',null,'select=*&order=nom'),
       sbFetch('fact_societe','GET',null,'select=*&limit=1'),
     ]);
-    factures=facts||[];
-    factClients=clts||[];
-    factProduits=prods||[];
+    factures=_asArr(factsResp);
+    factClients=_asArr(clts);
+    factProduits=_asArr(prods);
     if(soc&&soc[0]) factSociete=soc[0];
     else factSociete=JSON.parse(localStorage.getItem('fact_soc_v1')||'null')||{
       nom:'MADERA DECO',ice:'002733643000006',if_num:'48573755',rc:'46235',

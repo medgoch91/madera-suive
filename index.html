@@ -1083,6 +1083,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
   <div class="topbar">
     <button class="hamburger" id="hamburger-btn" onclick="toggleSidebar()" aria-label="القائمة">☰</button>
+    <button id="back-btn" onclick="goBack()" title="رجوع" aria-label="رجوع" style="display:none;align-items:center;justify-content:center;background:var(--bg2);border:1px solid var(--border);color:var(--text);width:36px;height:36px;border-radius:10px;cursor:pointer;font-size:18px;padding:0;transition:all .2s" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background='var(--bg2)'">→</button>
     <div class="topbar-title" id="topbar-title">الداشبورد</div>
     <div class="topbar-actions" id="topbar-actions"></div>
     <button onclick="cmdkOpen()" title="بحث سريع (Cmd+K)" style="background:linear-gradient(135deg,rgba(147,51,234,.15),rgba(6,182,212,.1));border:1px solid rgba(147,51,234,.3);border-radius:10px;color:#fff;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:600;transition:all .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(147,51,234,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''">🔍 <span style="opacity:.6;font-family:monospace;font-size:10px;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:2px 5px">⌘K</span></button>
@@ -1495,6 +1496,8 @@ let nextBId=1;
 let bonLignes=[];
 let selectedBonIds=[];
 let currentPage='dashboard';
+var navHistory=[]; // page stack for back button
+var _navBack=false; // flag: true when navigating via goBack (don't re-push)
 
 // ── Loading state ────────────────────────────────────────────
 let dbReady=false;
@@ -1799,6 +1802,12 @@ const pageActions={
 };
 
 function showPage(page,btn){
+  // Push previous page to history stack (skip if it's the same page or if we're navigating via goBack)
+  if(!_navBack && currentPage && currentPage!==page){
+    navHistory.push(currentPage);
+    if(navHistory.length>50) navHistory.shift(); // cap stack size
+  }
+  _navBack=false;
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
@@ -1806,6 +1815,7 @@ function showPage(page,btn){
   document.getElementById('topbar-title').textContent=pageTitles[page]||'';
   document.getElementById('topbar-actions').innerHTML=pageActions[page]||'';
   currentPage=page;
+  try{ _updateBackBtn(); }catch(e){}
   try{if(typeof uiSavePage==='function')uiSavePage(page);}catch(e){}
   try{if(typeof uiSyncHash==='function')uiSyncHash(page);}catch(e){}
   // Scroll content area back to top on every page switch (desktop + mobile)
@@ -1817,6 +1827,20 @@ function showPage(page,btn){
   updateSidebar();
   // Close mobile sidebar after navigation
   closeSidebar();
+}
+
+function goBack(){
+  if(!navHistory.length) return;
+  var prev=navHistory.pop();
+  _navBack=true;
+  // Sync sidebar highlight by finding the matching nav-btn
+  var navBtn=document.querySelector('.nav-btn[onclick*="showPage(\''+prev+'\''+'"]');
+  showPage(prev, navBtn||null);
+}
+function _updateBackBtn(){
+  var b=document.getElementById('back-btn');
+  if(!b) return;
+  b.style.display = navHistory.length ? 'inline-flex' : 'none';
 }
 
 function toggleSidebar(){

@@ -1683,9 +1683,10 @@ function showPage(page,btn){
   currentPage=page;
   try{if(typeof uiSavePage==='function')uiSavePage(page);}catch(e){}
   try{if(typeof uiSyncHash==='function')uiSyncHash(page);}catch(e){}
-  // Scroll content area back to top on every page switch
+  // Scroll content area back to top on every page switch (desktop + mobile)
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
+  try{window.scrollTo(0,0);}catch(e){}
   const renders={admin:renderAdmin,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
   if(renders[page])renders[page]();
   updateSidebar();
@@ -7466,7 +7467,7 @@ function renderSalaries(){
     {k:'pcs',lbl:'👷 Par PCs'},
   ];
   const tabBar='<div class="sal-tabs" style="display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px">'
-    +tabs.map(t=>'<button onclick="salSubPage=\''+t.k+'\';renderSalaries()" '
+    +tabs.map(t=>'<button onclick="salSubPage=\''+t.k+'\';renderSalaries();window.scrollTo(0,0);" '
       +'style="padding:10px 16px;border-radius:var(--radius-sm);border:2px solid '+(salSubPage===t.k?'var(--accent)':'var(--border)')+';'
       +'background:'+(salSubPage===t.k?'rgba(147,51,234,0.12)':'transparent')+';'
       +'color:'+(salSubPage===t.k?'var(--accent)':'var(--text2)')+';'

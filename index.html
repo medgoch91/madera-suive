@@ -1670,6 +1670,7 @@ function showPage(page,btn){
   document.getElementById('topbar-actions').innerHTML=pageActions[page]||'';
   currentPage=page;
   try{if(typeof uiSavePage==='function')uiSavePage(page);}catch(e){}
+  try{if(typeof uiSyncHash==='function')uiSyncHash(page);}catch(e){}
   // Scroll content area back to top on every page switch
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
@@ -10899,8 +10900,13 @@ function uiSaveFactSub(k){try{if(k)localStorage.setItem(UI_FACT_SUB_KEY,k);}catc
 function uiLoadFactSub(){try{return localStorage.getItem(UI_FACT_SUB_KEY)||'';}catch(e){return '';}}
 function uiRestorePageAfterLoad(){
   try{
-    var saved=uiLoadPage();
-    if(!saved || saved==='dashboard') return;
+    // Hash wins over localStorage (direct URL access)
+    var fromHash=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
+    var saved=fromHash || uiLoadPage();
+    if(!saved || saved==='dashboard'){
+      if(fromHash==='dashboard') uiSyncHash('dashboard');
+      return;
+    }
     var btnMap={
       'dashboard':0,'bons':1,'cheques':2,'fournisseurs':3,'articles':4,
       'salaries':5,'elec-dist':6,'factures':7,'new-bon':8,'new-cheque':9
@@ -10911,6 +10917,30 @@ function uiRestorePageAfterLoad(){
     if(typeof showPage==='function') showPage(saved, btn);
   }catch(e){}
 }
+
+// ── Hash-based routing (each page = own URL like #bons, #cheques) ──
+var __routingSilent=false;
+function uiSyncHash(page){
+  try{
+    if(__routingSilent) return;
+    var want='#'+page;
+    if(location.hash!==want){
+      __routingSilent=true;
+      history.replaceState(null,'',want);
+      setTimeout(function(){__routingSilent=false;},0);
+    }
+  }catch(e){}
+}
+window.addEventListener('hashchange',function(){
+  if(__routingSilent) return;
+  var p=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
+  if(!p || p===currentPage) return;
+  var btnMap={'dashboard':0,'bons':1,'cheques':2,'fournisseurs':3,'articles':4,'salaries':5,'elec-dist':6,'factures':7,'new-bon':8,'new-cheque':9};
+  var navs=document.querySelectorAll('.nav-btn');
+  var idx=btnMap[p];
+  var btn=(idx!=null && navs[idx])?navs[idx]:null;
+  if(typeof showPage==='function') showPage(p,btn);
+});
 
 // ── Robust safety net: save drafts on unload + periodically ──
 window.addEventListener('beforeunload', function(){

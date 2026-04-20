@@ -2,7 +2,11 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#070612">
 <title>سويفي — إدارة الشيكات والبونات</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
@@ -534,62 +538,98 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
 /* ═══════════════ MOBILE RESPONSIVE ═══════════════ */
 @media(max-width:768px){
-  :root{--topbar-h:56px;}
+  :root{--topbar-h:56px;--radius:14px;--radius-sm:10px;}
 
   html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;}
-  body{flex-direction:column;}
+  body{flex-direction:column;padding-bottom:env(safe-area-inset-bottom);}
+
+  /* iOS auto-zoom fix: inputs ≥16px */
+  input[type=text],input[type=number],input[type=date],input[type=month],input[type=email],input[type=tel],input[type=password],input[type=search],select,textarea{font-size:16px!important;}
 
   .sidebar{
     position:fixed;right:0;top:0;height:100vh;
-    width:272px!important;z-index:50;
+    width:min(86vw,320px)!important;z-index:50;
     transform:translateX(100%);
     transition:transform 0.3s cubic-bezier(.4,0,.2,1);
     border-left:1px solid var(--border2);
     box-shadow:-12px 0 48px rgba(0,0,0,0.4);
+    padding-top:env(safe-area-inset-top);
   }
   .sidebar.open{transform:translateX(0);}
   .sidebar-overlay{display:block;}
   .hamburger{display:flex;}
 
-  .main{height:auto;min-height:calc(100vh - 0px);width:100%;overflow:visible;}
-  .topbar{position:sticky;top:0;z-index:20;padding:0 16px;}
-  .content{overflow:visible!important;padding:16px!important;}
-  .topbar-title{font-size:16px;}
+  .main{height:auto;min-height:100vh;width:100%;overflow:visible;}
+  .topbar{position:sticky;top:0;z-index:20;padding:0 14px;padding-top:env(safe-area-inset-top);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);background:rgba(15,13,32,0.88);}
+  .content{overflow:visible!important;padding:14px!important;padding-bottom:calc(24px + env(safe-area-inset-bottom))!important;}
+  .topbar-title{font-size:15px;}
 
-  .dash-grid{grid-template-columns:1fr 1fr!important;gap:12px!important;margin-bottom:16px!important;}
-  .dash-cols{grid-template-columns:1fr!important;gap:14px!important;}
-  .form-grid{grid-template-columns:1fr!important;}
-  .form-grid.cols3{grid-template-columns:1fr!important;}
-  .info-grid{grid-template-columns:1fr 1fr!important;}
+  /* Grids */
+  .dash-grid{grid-template-columns:1fr 1fr!important;gap:10px!important;margin-bottom:14px!important;}
+  .dash-cols{grid-template-columns:1fr!important;gap:12px!important;}
+  .form-grid,.form-grid.cols3{grid-template-columns:1fr!important;gap:12px!important;}
+  .info-grid{grid-template-columns:1fr 1fr!important;gap:10px!important;}
   .two-col{grid-template-columns:1fr!important;height:auto!important;}
-  .articles-grid{grid-template-columns:1fr!important;}
-  .users-grid{grid-template-columns:1fr!important;}
+  .articles-grid,.users-grid{grid-template-columns:1fr!important;}
   #page-new-bon > div{grid-template-columns:1fr!important;}
 
-  .kpi{padding:14px!important;}
-  .kpi-val{font-size:18px!important;}
-  .kpi-icon{font-size:20px!important;}
+  /* KPI cards */
+  .kpi{padding:12px!important;min-height:80px;}
+  .kpi-val{font-size:17px!important;line-height:1.2;}
+  .kpi-icon{font-size:18px!important;}
 
-  .data-table{font-size:12px;}
-  .data-table th,.data-table td{padding:10px 10px!important;}
-  .dash-panel{overflow-x:auto;}
+  /* Tables — horizontal scroll w/ visual hint */
+  .data-table{font-size:12.5px;}
+  .data-table th,.data-table td{padding:10px 8px!important;white-space:nowrap;}
+  .table-wrap,.dash-panel{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .table-wrap::after,.dash-panel > div[style*="overflow-x"]::after{content:'';}
 
-  .toolbar{flex-wrap:wrap;gap:8px;}
-  .search-box{min-width:0;flex:1;}
-  .filter-pills{flex-wrap:wrap;gap:4px;}
+  /* Toolbar & filters */
+  .toolbar{flex-wrap:wrap;gap:8px;padding:10px!important;}
+  .search-box{min-width:0;flex:1 1 100%;order:-1;}
+  .filter-pills{flex-wrap:wrap;gap:6px;width:100%;}
+  .filter-pills > *{flex:0 0 auto;min-height:40px;padding:8px 14px!important;font-size:13px!important;}
 
-  .modal-box{width:95vw!important;padding:20px!important;max-height:90vh;overflow-y:auto;}
+  /* Buttons — ensure touch targets */
+  .btn{min-height:44px;padding:10px 16px;font-size:14px;}
+  button{min-height:40px;}
 
-  .bon-header-body{grid-template-columns:1fr 1fr!important;padding:14px 16px!important;}
-  .bon-table{font-size:11px;}
+  /* Modals — full-screen sheet style */
+  .modal-overlay{padding:0!important;align-items:flex-end;}
+  .modal-box{width:100vw!important;max-width:100vw!important;padding:18px!important;max-height:92vh;overflow-y:auto;border-radius:20px 20px 0 0!important;-webkit-overflow-scrolling:touch;}
+
+  /* Bon / Cheque cards */
+  .bon-header-body{grid-template-columns:1fr 1fr!important;padding:14px 16px!important;gap:12px!important;}
+  .bon-table{font-size:12px;}
+  .bon-num{font-size:18px!important;}
+
+  /* Cards & panels */
+  .dash-panel{padding:14px!important;}
+
+  /* Scrollbars thicker on touch */
+  ::-webkit-scrollbar{width:6px;height:6px;}
 }
 
 @media(max-width:480px){
-  .dash-grid{grid-template-columns:1fr 1fr!important;}
+  .content{padding:12px!important;}
+  .dash-grid{grid-template-columns:1fr 1fr!important;gap:8px!important;}
+  .kpi{padding:10px!important;}
   .kpi-val{font-size:15px!important;}
+  .kpi-lbl{font-size:10.5px!important;}
   .topbar-title{font-size:14px;}
   .info-grid{grid-template-columns:1fr!important;}
   .bon-header-body{grid-template-columns:1fr!important;}
+  .data-table{font-size:12px;}
+  .data-table th,.data-table td{padding:8px 6px!important;}
+  .modal-box{padding:14px!important;}
+  h1,h2,h3{font-size:17px!important;}
+}
+
+/* Touch devices: remove hover-only styles */
+@media(hover:none){
+  .user-card:hover{transform:none;}
+  .data-table tbody tr:hover{background:transparent;}
+  .btn::after{display:none;}
 }
 
 /* ═══════════════ ADMIN PAGE ═══════════════ */

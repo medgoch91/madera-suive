@@ -1,11 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#9333ea"/>
-      <stop offset="1" stop-color="#06b6d4"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="96" fill="#070612"/>
-  <rect x="40" y="40" width="432" height="432" rx="72" fill="url(#g)"/>
-  <text x="256" y="330" font-family="Cairo,Tahoma,sans-serif" font-size="210" font-weight="900" text-anchor="middle" fill="#ffffff">س</text>
+  <rect width="512" height="512" rx="96" fill="#ffffff"/>
+  <g fill="none" stroke="#000000" stroke-width="22" stroke-linecap="square" stroke-linejoin="miter">
+    <!-- M -->
+    <polyline points="110,360 110,170 180,280 250,170 250,360"/>
+    <!-- D -->
+    <path d="M300,170 L300,360 L370,360 Q410,360 410,265 Q410,170 370,170 Z" fill="#000000" stroke="none"/>
+  </g>
+  <text x="256" y="438" font-family="Helvetica,Arial,sans-serif" font-size="36" font-weight="700" text-anchor="middle" fill="#000000" letter-spacing="2">MADERA DECO</text>
 </svg>

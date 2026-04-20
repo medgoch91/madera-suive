@@ -1,0 +1,48 @@
+# ─── Secrets ─────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ─── OS noise ────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Editor / IDE ────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ─── Python ──────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+
+# ─── Logs & runtime data ─────────────────────────
+*.log
+bot.log
+chat_ids.json
+
+# ─── Dev tooling (personal) ──────────────────────
+.claude/
+.claude-flow/
+.swarm/
+.mcp.json
+
+# ─── Node (ila zadna plus tard) ──────────────────
+node_modules/
+dist/
+build/
+
+# ─── Backups ─────────────────────────────────────
+*.bak
+*.backup
+*~

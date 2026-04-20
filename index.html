@@ -6012,6 +6012,31 @@ function renderAdmin(){
   ];
 
   html+=''
+    // ── BACKUP & RESTORE ──
+    +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.3))"></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:6px 16px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.3);border-radius:20px">'
+        +'<span style="font-size:15px">💾</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#10b981;letter-spacing:0.5px">BACKUP &amp; RESTORE</span>'
+      +'</div>'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(16,185,129,0.3),transparent)"></div>'
+    +'</div>'
+    +'<div style="background:linear-gradient(135deg,rgba(16,185,129,0.08),rgba(6,182,212,0.04));border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius);padding:20px 24px;margin-bottom:20px">'
+      +'<div style="display:flex;align-items:flex-start;gap:14px;margin-bottom:16px">'
+        +'<div style="font-size:32px;line-height:1">🛟</div>'
+        +'<div style="flex:1">'
+          +'<div style="font-size:16px;font-weight:800;color:var(--text);margin-bottom:4px">نسخة احتياطية من كل البيانات</div>'
+          +'<div style="font-size:12px;color:var(--text2);line-height:1.6">صدر ملف JSON فيه كلشي (البونات، الشيكات، الفورنيسورات، السلع، الأجراء...) و احتفظ بيه في مكان آمن. في حالة مشكل في Supabase، تقدر ترجع كلشي من الملف.</div>'
+        +'</div>'
+      +'</div>'
+      +'<div style="display:flex;gap:10px;flex-wrap:wrap">'
+        +'<button onclick="exportBackupJson()" style="flex:1;min-width:200px;padding:12px 18px;background:linear-gradient(135deg,#10b981,#059669);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">💾 <span>تصدير نسخة احتياطية (JSON)</span></button>'
+        +'<button onclick="document.getElementById(\'backup-file-input\').click()" style="flex:1;min-width:200px;padding:12px 18px;background:var(--bg3);color:var(--text);border:2px solid #f59e0b;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-weight:700;font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">📥 <span>استيراد نسخة احتياطية</span></button>'
+        +'<input type="file" id="backup-file-input" accept="application/json,.json" style="display:none" onchange="importBackupJson(event)">'
+      +'</div>'
+      +'<div id="backup-status" style="margin-top:12px;font-size:12px;color:var(--text2);min-height:16px"></div>'
+    +'</div>'
+
     // Section divider
     +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
       +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,0.3))"></div>'
@@ -6085,6 +6110,93 @@ function renderAdmin(){
 // Double-confirm: user must type "CONFIRM" before execution.
 // Each step wrapped in try/catch so partial failures don't halt the chain.
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// BACKUP & RESTORE — export/import JSON snapshot of all Supabase tables
+// ════════════════════════════════════════════════════════════════
+const BACKUP_TABLES = [
+  'articles','prix','bons','cheques','fournisseurs','supplier_products',
+  'salaries','salary_pointages','salary_payments','salary_adjustments','pc_taswiyas',
+  'technicians','products','product_recipe','material_dispatches','material_returns',
+  'subcontracting_orders','technician_payments','factures'
+];
+
+function _setBackupStatus(msg,color){
+  var el=document.getElementById('backup-status');
+  if(el){ el.textContent=msg||''; el.style.color=color||'var(--text2)'; }
+}
+
+async function exportBackupJson(){
+  if(!currentUser||currentUser.role!=='admin'){ alert('⛔ الأدمن فقط'); return; }
+  _setBackupStatus('⏳ جاري جمع البيانات...','#06b6d4');
+  var snapshot={ version:1, exported_at:new Date().toISOString(), by:currentUser.username||'admin', tables:{} };
+  var failed=[];
+  for(var i=0;i<BACKUP_TABLES.length;i++){
+    var t=BACKUP_TABLES[i];
+    try{
+      var rows=await sbFetch(t,'GET',null,'select=*');
+      if(rows && rows.__sbError){ failed.push(t); continue; }
+      snapshot.tables[t]=rows||[];
+    }catch(e){ failed.push(t); }
+  }
+  var blob=new Blob([JSON.stringify(snapshot,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  var stamp=new Date().toISOString().split('T')[0];
+  a.href=url; a.download='suivi-backup-'+stamp+'.json';
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
+  var total=Object.keys(snapshot.tables).reduce(function(s,k){return s+(snapshot.tables[k]||[]).length;},0);
+  var msg='✅ تم تصدير '+total+' صف من '+Object.keys(snapshot.tables).length+' جدول';
+  if(failed.length){ msg+=' — ⚠️ فشل: '+failed.join(', '); }
+  _setBackupStatus(msg,'#10b981');
+}
+
+async function importBackupJson(ev){
+  if(!currentUser||currentUser.role!=='admin'){ alert('⛔ الأدمن فقط'); return; }
+  var file=ev.target.files && ev.target.files[0]; if(!file) return;
+  try{
+    var text=await file.text();
+    var snap=JSON.parse(text);
+    if(!snap || !snap.tables){ alert('❌ الملف غير صالح'); return; }
+    var tnames=Object.keys(snap.tables);
+    var total=tnames.reduce(function(s,k){return s+(snap.tables[k]||[]).length;},0);
+    var proceed=confirm('⚠️ استيراد نسخة احتياطية\n\nسيتم محو كل البيانات الحالية واستبدالها بالنسخة.\n\nالملف: '+file.name+'\nتاريخ النسخة: '+(snap.exported_at||'؟')+'\nعدد الجداول: '+tnames.length+'\nعدد الصفوف: '+total+'\n\nواش متأكد؟ هاد العملية ما كاينش رجوع.');
+    if(!proceed){ ev.target.value=''; return; }
+    var typed=prompt('لتأكيد نهائي، كتب: CONFIRM');
+    if(typed!=='CONFIRM'){ _setBackupStatus('❌ تم الإلغاء','#f59e0b'); ev.target.value=''; return; }
+
+    showLoader('⏳ جاري الاستيراد... لا تغلق الصفحة');
+    var okCount=0, failCount=0, failMsgs=[];
+    for(var i=0;i<tnames.length;i++){
+      var tbl=tnames[i];
+      var rows=snap.tables[tbl]||[];
+      try{
+        // Wipe existing
+        await sbFetch(tbl,'DELETE',null,'id=gt.0');
+      }catch(e){ failMsgs.push(tbl+' (delete): '+(e.message||e)); }
+      if(!rows.length) continue;
+      // Insert in chunks of 100 (PostgREST bulk insert)
+      for(var j=0;j<rows.length;j+=100){
+        var chunk=rows.slice(j,j+100);
+        try{
+          var r=await sbFetch(tbl,'POST',chunk);
+          if(r && r.__sbError){ failCount+=chunk.length; failMsgs.push(tbl+': '+sbParseError(r.msg)); }
+          else okCount+=chunk.length;
+        }catch(e){ failCount+=chunk.length; failMsgs.push(tbl+': '+(e.message||e)); }
+      }
+    }
+    hideLoader();
+    ev.target.value='';
+    _setBackupStatus('✅ تم استيراد '+okCount+' صف'+(failCount?' — ⚠️ فشل '+failCount:''),'#10b981');
+    if(failMsgs.length){ console.warn('Import failures:',failMsgs); }
+    alert('✅ الاستيراد تم.\n\nنجح: '+okCount+'\nفشل: '+failCount+'\n\nسيتم إعادة تحميل الصفحة...');
+    setTimeout(function(){ location.reload(); },500);
+  }catch(e){
+    hideLoader();
+    alert('❌ خطأ في قراءة الملف: '+(e.message||e));
+  }
+}
+
 async function dangerReset(tier){
   if(!currentUser||currentUser.role!=='admin'){ alert('⛔ الأدمن فقط'); return; }
 

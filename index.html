@@ -174,10 +174,10 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 /* Mobile overlay */
 .sidebar-overlay{
   display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);
-  z-index:49;opacity:0;transition:opacity 0.25s ease;
+  z-index:49;opacity:0;pointer-events:none;transition:opacity 0.25s ease;
   backdrop-filter:blur(4px);
 }
-.sidebar-overlay.open{opacity:1;}
+.sidebar-overlay.open{opacity:1;pointer-events:auto;}
 
 /* ═══════════════ MAIN / TOPBAR ═══════════════ */
 .main{flex:1;display:flex;flex-direction:column;height:100vh;min-width:0;overflow:hidden;}

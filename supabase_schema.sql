@@ -463,5 +463,23 @@ create index if not exists idx_bons_deleted     on bons(deleted_at)     where de
 create index if not exists idx_cheques_deleted  on cheques(deleted_at)  where deleted_at is null;
 create index if not exists idx_factures_deleted on factures(deleted_at) where deleted_at is null;
 
+-- ╔══════════════════════════════════════════════╗
+-- ║  28. PAYMENT TYPES (cheque / effet / espece) ║
+-- ╚══════════════════════════════════════════════╝
+-- Extend the cheques table to support three payment types and a paid_at stamp.
+-- Values: 'cheque' (default), 'effet' (promissory note), 'espece' (cash)
+alter table cheques add column if not exists type text default 'cheque';
+alter table cheques add column if not exists paid_at date;
+
+-- Backfill existing rows as 'cheque'
+update cheques set type = 'cheque' where type is null;
+
+-- Drop any old check constraint then re-add (fully idempotent)
+alter table cheques drop constraint if exists cheques_type_check;
+alter table cheques add constraint cheques_type_check
+  check (type in ('cheque','effet','espece'));
+
+create index if not exists idx_cheques_type on cheques(type);
+
 -- reload schema cache after DDL
 notify pgrst, 'reload schema';

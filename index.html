@@ -13,6 +13,7 @@
 <title>سويفي — إدارة الشيكات والبونات</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
 /* ═══════════════ VARIABLES — Tablet-First Design System ═══════════════ */
 :root {
@@ -1086,6 +1087,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <div class="topbar-actions" id="topbar-actions"></div>
     <button onclick="cmdkOpen()" title="بحث سريع (Cmd+K)" style="background:linear-gradient(135deg,rgba(147,51,234,.15),rgba(6,182,212,.1));border:1px solid rgba(147,51,234,.3);border-radius:10px;color:#fff;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:600;transition:all .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(147,51,234,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''">🔍 <span style="opacity:.6;font-family:monospace;font-size:10px;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:2px 5px">⌘K</span></button>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="تبديل الوضع">🌙</button>
+    <span id="offline-badge" onclick="drainSbQueue()" style="display:none;align-items:center;gap:4px;padding:4px 9px;border-radius:12px;border:1px solid rgba(6,182,212,0.4);background:rgba(6,182,212,0.15);color:#06b6d4;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;user-select:none"></span>
     <div id="topbar-user" style="display:none;gap:8px;align-items:center"></div>
   </div>
   <div class="content">
@@ -1349,7 +1351,65 @@ async function sendTelegramNotif(bon){
   }catch(e){ console.warn('Telegram notif failed',e); }
 }
 
-async function sbFetch(table, method='GET', body=null, params=''){
+// ── Offline write queue ──────────────────────────────────────────
+// When network is down, queue PATCH/DELETE ops in localStorage.
+// On `online` event, drain the queue sequentially.
+// POST is NOT queued (caller expects a returned row id).
+const SB_QUEUE_KEY = 'sb_queue_v1';
+function _sbQueueLoad(){
+  try{ return JSON.parse(localStorage.getItem(SB_QUEUE_KEY)||'[]'); }catch(e){ return []; }
+}
+function _sbQueueSave(q){
+  try{ localStorage.setItem(SB_QUEUE_KEY, JSON.stringify(q)); }catch(e){}
+  _updateOfflineBadge();
+}
+function _sbQueuePush(op){
+  var q=_sbQueueLoad();
+  q.push(Object.assign({}, op, {queuedAt:new Date().toISOString()}));
+  _sbQueueSave(q);
+}
+function sbQueueCount(){ return _sbQueueLoad().length; }
+function _updateOfflineBadge(){
+  var el=document.getElementById('offline-badge');
+  if(!el) return;
+  var n=sbQueueCount();
+  var online=navigator.onLine!==false;
+  if(n===0 && online){ el.style.display='none'; return; }
+  el.style.display='inline-flex';
+  el.textContent = online ? ('🔄 '+n) : ('📴 '+n);
+  el.title = online
+    ? (n+' عمليات ف الطابور — انقر للمزامنة')
+    : ('بدون إنترنت — '+n+' عملية محفوظة محلياً');
+  el.style.background = online ? 'rgba(6,182,212,0.15)' : 'rgba(239,68,68,0.15)';
+  el.style.color      = online ? '#06b6d4' : '#ef4444';
+  el.style.borderColor= online ? 'rgba(6,182,212,0.4)' : 'rgba(239,68,68,0.4)';
+}
+
+async function drainSbQueue(){
+  if(navigator.onLine===false){ _updateOfflineBadge(); return; }
+  var q=_sbQueueLoad();
+  if(!q.length){ _updateOfflineBadge(); return; }
+  var remain=[];
+  for(var i=0;i<q.length;i++){
+    var op=q[i];
+    try{
+      var res=await sbFetch(op.table, op.method, op.body, op.params, /*replay=*/true);
+      if(res && res.__sbError){ remain.push(op); }
+    }catch(e){ remain.push(op); break; }
+  }
+  _sbQueueSave(remain);
+  if(typeof toast==='function'){
+    var done=q.length-remain.length;
+    if(done>0) toast('✅ تم مزامنة '+done+' عمليات','success');
+    if(remain.length) toast('⚠️ '+remain.length+' عمليات ما tsifto','warning');
+  }
+}
+
+window.addEventListener('online', function(){ drainSbQueue(); });
+window.addEventListener('offline', function(){ _updateOfflineBadge(); });
+window.addEventListener('DOMContentLoaded', function(){ _updateOfflineBadge(); if(navigator.onLine!==false) drainSbQueue(); });
+
+async function sbFetch(table, method='GET', body=null, params='', replay=false){
   const url = SB_URL+'/rest/v1/'+table+(params?'?'+params:'');
   const prefer=(method==='POST'||method==='PATCH')?'return=representation':'';
   const h = {
@@ -1358,14 +1418,33 @@ async function sbFetch(table, method='GET', body=null, params=''){
     'Authorization': 'Bearer '+SB_KEY,
   };
   if(prefer) h['Prefer']=prefer;
-  const res = await fetch(url, {method, headers:h, body:body?JSON.stringify(body):null});
-  if(!res.ok){ const e=await res.text(); console.error('SB Error ['+method+' '+table+']:',e); return {__sbError:true, msg:e, status:res.status}; }
-  // Audit log for writes (fire-and-forget, skip if logging itself)
-  if(method!=='GET' && table!=='audit_log'){
-    try{ _sbAudit(table, method, params, body); }catch(e){}
+  // Offline queue: only for idempotent-ish writes (PATCH/DELETE)
+  // POST is skipped so caller gets the error + can retry (needs returned id)
+  var queueable = (method==='PATCH' || method==='DELETE') && !replay;
+  if(queueable && navigator.onLine===false){
+    _sbQueuePush({table, method, body, params});
+    if(typeof toast==='function') toast('📴 offline — العملية مخزنة محلياً','info');
+    return {__queued:true};
   }
-  if(res.status===204) return true;
-  try{ return await res.json(); }catch(e){ return true; }
+  try{
+    const res = await fetch(url, {method, headers:h, body:body?JSON.stringify(body):null});
+    if(!res.ok){ const e=await res.text(); console.error('SB Error ['+method+' '+table+']:',e); return {__sbError:true, msg:e, status:res.status}; }
+    // Audit log for writes (fire-and-forget, skip if logging itself)
+    if(method!=='GET' && table!=='audit_log'){
+      try{ _sbAudit(table, method, params, body); }catch(e){}
+    }
+    if(res.status===204) return true;
+    try{ return await res.json(); }catch(e){ return true; }
+  }catch(netErr){
+    // Network failure (TypeError / DNS) — queue if eligible
+    if(queueable){
+      _sbQueuePush({table, method, body, params});
+      if(typeof toast==='function') toast('📴 شبكة مقطوعة — العملية مخزنة محلياً','info');
+      return {__queued:true};
+    }
+    console.error('SB Network Error ['+method+' '+table+']:', netErr);
+    return {__sbError:true, msg:String(netErr), status:0};
+  }
 }
 
 function _sbAudit(table, method, params, body){
@@ -1474,8 +1553,8 @@ async function loadAllData(){
     const [arts, prixRows, bonsRows, chRows, fourRows, spRows] = await Promise.all([
       sbFetch('articles','GET',null,'select=*&order=id'),
       sbFetch('prix','GET',null,'select=*'),
-      sbFetch('bons','GET',null,'select=*&order=created_at.desc'),
-      sbFetch('cheques','GET',null,'select=*&order=created_at.desc'),
+      sbFetch('bons','GET',null,'select=*&deleted_at=is.null&order=created_at.desc'),
+      sbFetch('cheques','GET',null,'select=*&deleted_at=is.null&order=created_at.desc'),
       sbFetch('fournisseurs','GET',null,'select=*&order=nom'),
       sbFetch('supplier_products','GET',null,'select=supplier_id,product_id,last_purchase_price_ttc'),
     ]);
@@ -1618,12 +1697,25 @@ async function sbSaveFournisseur(f){
   saveCacheLS();
 }
 
+// ── Soft delete helpers (for bons / cheques / factures) ────────
+// Tables with a `deleted_at` column: row is kept but hidden.
+const SOFT_DEL_TABLES = ['bons','cheques','factures'];
+async function softDeleteRow(table, id){
+  var res=await sbFetch(table+'?id=eq.'+id,'PATCH',{deleted_at:new Date().toISOString()});
+  return res;
+}
+async function restoreRow(table, id){
+  return await sbFetch(table+'?id=eq.'+id,'PATCH',{deleted_at:null});
+}
+async function permanentDelete(table, id){
+  return await sbFetch(table+'?id=eq.'+id,'DELETE');
+}
 async function sbDeleteBon(id){
-  await sbFetch('bons?id=eq.'+id,'DELETE');
+  await softDeleteRow('bons', id);
   saveCacheLS();
 }
 async function sbDeleteCheque(id){
-  await sbFetch('cheques?id=eq.'+id,'DELETE');
+  await softDeleteRow('cheques', id);
   saveCacheLS();
 }
 async function sbDeleteFournisseur(id){
@@ -2689,7 +2781,7 @@ async function bonBulkDelete(){
         const c=cheques.find(x=>x.id===b.chequeId);
         if(c) c.bonIds=(c.bonIds||[]).filter(bid=>bid!==id);
       }
-      await sbFetch('bons?id=eq.'+id,'DELETE');
+      await softDeleteRow('bons', id);
       const idx=bons.findIndex(x=>x.id===id);
       if(idx>=0) bons.splice(idx,1);
     }
@@ -2993,8 +3085,8 @@ async function deleteBon(id){
 
   showLoader('جاري حذف البون...');
   try{
-    // ── Step 2: Delete from Supabase first (source of truth) ──
-    var sbRes=await sbFetch('bons?id=eq.'+id,'DELETE');
+    // ── Step 2: Soft-delete from Supabase (row kept with deleted_at) ──
+    var sbRes=await softDeleteRow('bons', id);
     if(sbRes && sbRes.__sbError){ throw new Error(sbParseError(sbRes.msg)); }
 
     // ── Step 3: Subtract stock (best-effort — Supabase already consistent) ──
@@ -3072,7 +3164,7 @@ async function _deleteBonCore(id){
     return {ok:false, err:'الستوك غير كافي لـ '+shortages.map(function(s){return s.nom+' (ناقص '+(s.qte-s.available)+')';}).join('، ')};
   }
   try{
-    var r=await sbFetch('bons?id=eq.'+id,'DELETE');
+    var r=await softDeleteRow('bons', id);
     if(r && r.__sbError) return {ok:false, err:sbParseError(r.msg)};
     (b.lignes||[]).forEach(function(li){
       var aid=Number(li.articleId||0), qte=Number(li.qte||0);
@@ -3791,7 +3883,7 @@ async function ckBulkDelete(){
           if(b){ b.chequeId = null; await sbFetch('bons?id=eq.'+bid,'PATCH',{chequeId:null}); }
         }
       }
-      await sbFetch('cheques?id=eq.'+id,'DELETE');
+      await softDeleteRow('cheques', id);
       const idx = cheques.findIndex(x=>x.id===id);
       if(idx>=0) cheques.splice(idx,1);
     }
@@ -4444,6 +4536,46 @@ function exportChequePDF(){
   toast('📄 اختر "Save as PDF" من نافذة الطباعة','info');
 }
 
+// ═══ Share cheque image to Telegram ═══
+async function shareChequeToTelegram(){
+  var msgEl=document.getElementById('pc-msg');
+  var setMsg=function(t,c){ if(msgEl){ msgEl.style.color=c||'var(--text2)'; msgEl.textContent=t||''; } };
+  if(typeof html2canvas==='undefined'){ setMsg('❌ html2canvas ma t7mlch — 3awad l-page','var(--red)'); return; }
+  var chatId=localStorage.getItem('tg_chat_id');
+  if(!chatId){
+    chatId=prompt('Telegram Chat ID (sift /start l-bot + @userinfobot):');
+    if(!chatId||!chatId.trim()) return;
+    localStorage.setItem('tg_chat_id',chatId.trim());
+  }
+  var wrap=document.getElementById('pc-cheque-wrap');
+  if(!wrap){ setMsg('❌ ma lqit pc-cheque-wrap','var(--red)'); return; }
+  var g=function(id){return (document.getElementById(id)||{value:''}).value;};
+  var ordre=g('pc-ordre').trim();
+  var montant=parseFloat(g('pc-montant'))||0;
+  var date=g('pc-date');
+  if(!montant||!date){ setMsg('⚠️ عبّي l-mblgh + تاريخ','var(--amber)'); return; }
+  setMsg('⏳ جاري التقاط الصورة...','#06b6d4');
+  try{
+    var canvas=await html2canvas(wrap,{backgroundColor:'#ffffff',scale:2,useCORS:true,logging:false});
+    var blob=await new Promise(function(res){ canvas.toBlob(res,'image/png',0.92); });
+    if(!blob){ setMsg('❌ فشل التقاط','var(--red)'); return; }
+    setMsg('⏳ جاري الإرسال ل Telegram...','#06b6d4');
+    var caption='💳 شيك — '+ordre+'\n'
+      +'💰 '+Number(montant).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})+' د.م.\n'
+      +'📅 '+date;
+    var fd=new FormData();
+    fd.append('chat_id',chatId);
+    fd.append('caption',caption);
+    fd.append('photo',blob,'cheque.png');
+    var r=await fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendPhoto',{method:'POST',body:fd});
+    var j=await r.json();
+    if(j && j.ok){ setMsg('✅ tsift!','#10b981'); toast('✅ تم إرسال الشيك عبر Telegram','success'); }
+    else{ setMsg('❌ '+(j.description||'فشل الإرسال'),'var(--red)'); }
+  }catch(e){
+    setMsg('❌ '+(e.message||e),'var(--red)');
+  }
+}
+
 // ═══ Double-print detection — find similar entries in history ═══
 function findDuplicatePrint(ordre, montant, date){
   if(!Array.isArray(printHistory)) return null;
@@ -4594,6 +4726,7 @@ function renderPrintCheque(){
           <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="printAlignmentTest()" title="طبع تجريبي على ورقة فاضية لمعايرة المحاذاة">🎯 طبع tjarib</button>
           <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="exportChequePDF()" title="فتح في نافذة جديدة للحفظ PDF">📄 PDF</button>
         </div>
+        <button class="btn btn-outline" style="width:100%;padding:9px;font-size:12px;margin-bottom:8px;background:rgba(6,182,212,0.08);border-color:rgba(6,182,212,0.35);color:#06b6d4" onclick="shareChequeToTelegram()" title="تصدير صورة الشيك وإرسالها عبر Telegram">📤 أرسل عبر Telegram</button>
         <button class="btn btn-outline" style="width:100%;padding:9px" onclick="resetPrintForm()">↺ تفريغ</button>
         <div id="pc-msg" style="text-align:center;font-size:12px;margin-top:8px;min-height:16px"></div>
         <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:11px;color:var(--amber)">
@@ -6190,6 +6323,33 @@ function renderAdmin(){
       +'<div id="audit-log-body" style="max-height:360px;overflow-y:auto;font-size:12px"><div style="color:var(--text2);padding:12px">⏳ جاري التحميل...</div></div>'
     +'</div>'
 
+    // ── TRASH (soft-deleted rows) ──
+    +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,0.3))"></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:6px 16px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.3);border-radius:20px">'
+        +'<span style="font-size:15px">🗑️</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#f59e0b;letter-spacing:0.5px">TRASH / سلة المهملات</span>'
+      +'</div>'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(245,158,11,0.3),transparent)"></div>'
+    +'</div>'
+    +'<div style="background:linear-gradient(135deg,rgba(245,158,11,0.06),rgba(249,115,22,0.03));border:1px solid rgba(245,158,11,0.22);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap">'
+        +'<div>'
+          +'<div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px">الصفوف المحذوفة (soft delete)</div>'
+          +'<div style="font-size:11px;color:var(--text2)">bons + cheques + factures — تقدر ترجعها أو تمحيها نهائياً</div>'
+        +'</div>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap">'
+          +'<select id="trash-table" onchange="loadTrash()" style="padding:7px 10px;background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:12px">'
+            +'<option value="bons">bons</option>'
+            +'<option value="cheques">cheques</option>'
+            +'<option value="factures">factures</option>'
+          +'</select>'
+          +'<button onclick="loadTrash()" style="padding:7px 14px;background:#f59e0b;color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer">🔄 تحديث</button>'
+        +'</div>'
+      +'</div>'
+      +'<div id="trash-body" style="max-height:360px;overflow-y:auto;font-size:12px"><div style="color:var(--text2);padding:12px">⏳ جاري التحميل...</div></div>'
+    +'</div>'
+
     // Section divider
     +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
       +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,0.3))"></div>'
@@ -6257,6 +6417,73 @@ function renderAdmin(){
 
   document.getElementById('page-admin').innerHTML=html;
   try{ loadAuditLog(); }catch(e){ /* audit_log table may not exist yet */ }
+  try{ loadTrash(); }catch(e){ /* deleted_at column may not exist yet */ }
+}
+
+// ════════════════════════════════════════════════════════════════
+// Trash viewer (admin-only) — soft-deleted rows with restore / purge
+// ════════════════════════════════════════════════════════════════
+async function loadTrash(){
+  var body=document.getElementById('trash-body');
+  var sel=document.getElementById('trash-table');
+  if(!body) return;
+  var tbl=sel?sel.value:'bons';
+  body.innerHTML='<div style="color:var(--text2);padding:12px">⏳ جاري التحميل...</div>';
+  try{
+    var rows=await sbFetch(tbl,'GET',null,'select=*&deleted_at=not.is.null&order=deleted_at.desc&limit=100');
+    if(rows && rows.__sbError){
+      body.innerHTML='<div style="color:#f59e0b;padding:12px">⚠️ عمود deleted_at غير موجود. طبق SQL من supabase_schema.sql.</div>';
+      return;
+    }
+    if(!rows || !rows.length){
+      body.innerHTML='<div style="color:var(--text2);padding:12px">— سلة المهملات فارغة —</div>';
+      return;
+    }
+    var html='<div style="display:flex;flex-direction:column;gap:6px">';
+    rows.forEach(function(r){
+      var when=r.deleted_at?new Date(r.deleted_at).toLocaleString('fr-MA'):'?';
+      var label='';
+      if(tbl==='bons'){
+        label=(r.num||'?')+' — '+(r.fournisseur||'?')+' — '+Number(r.total_net||r.total||0).toFixed(2)+' د.م.';
+      } else if(tbl==='cheques'){
+        label=(r.num||'?')+' — '+(r.fournisseur||'?')+' — '+Number(r.montant||0).toFixed(2)+' د.م.';
+      } else if(tbl==='factures'){
+        label=(r.num||'?')+' — '+(r.client||'?')+' — '+Number(r.total_ttc||0).toFixed(2)+' د.م.';
+      }
+      html+=''
+        +'<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">'
+          +'<span style="flex:1;color:var(--text);font-size:12px">'+escB(label)+'</span>'
+          +'<span style="color:var(--text3);font-size:10px;white-space:nowrap">'+when+'</span>'
+          +'<button onclick="restoreTrashItem(\''+tbl+'\','+r.id+')" style="padding:5px 10px;background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3);border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">↻ استرجاع</button>'
+          +'<button onclick="purgeTrashItem(\''+tbl+'\','+r.id+')" style="padding:5px 10px;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">✕ نهائي</button>'
+        +'</div>';
+    });
+    html+='</div>';
+    body.innerHTML=html;
+  }catch(e){
+    body.innerHTML='<div style="color:#ef4444;padding:12px">❌ '+(e.message||e)+'</div>';
+  }
+}
+
+async function restoreTrashItem(table, id){
+  if(!confirm('استرجاع هذا الصف من سلة المهملات؟')) return;
+  try{
+    await restoreRow(table, id);
+    toast('✅ تم الاسترجاع — حدث البيانات','success');
+    loadTrash();
+    loadData(true);
+  }catch(e){ toast('فشل: '+(e.message||e),'error'); }
+}
+
+async function purgeTrashItem(table, id){
+  if(!confirm('⚠️ حذف نهائي — لا يمكن التراجع. متأكد؟')) return;
+  var typed=prompt('كتب "DELETE" للتأكيد:');
+  if(typed!=='DELETE'){ toast('تم الإلغاء','info'); return; }
+  try{
+    await permanentDelete(table, id);
+    toast('🗑 تم الحذف النهائي','success');
+    loadTrash();
+  }catch(e){ toast('فشل: '+(e.message||e),'error'); }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -11406,7 +11633,7 @@ setInterval(function(){
 async function loadFacturesData(){
   try{
     const [facts,clts,prods,soc]=await Promise.all([
-      sbFetch('factures','GET',null,'select=*&order=num.desc'),
+      sbFetch('factures','GET',null,'select=*&deleted_at=is.null&order=num.desc'),
       sbFetch('fact_clients','GET',null,'select=*&order=nom'),
       sbFetch('fact_produits','GET',null,'select=*&order=nom'),
       sbFetch('fact_societe','GET',null,'select=*&limit=1'),
@@ -12039,8 +12266,8 @@ async function factToggleStatut(id){
 }
 
 async function factDelete(id){
-  if(!confirm('حذف الفاتورة؟'))return;
-  await sbFetch('factures?id=eq.'+id,'DELETE');
+  if(!confirm('حذف الفاتورة؟ (الحذف ناعم — تقدر ترجعها من "سلة المهملات" في Admin)'))return;
+  await softDeleteRow('factures', id);
   factures=factures.filter(function(x){return x.id!==id;});
   renderFactures();
 }

@@ -26,6 +26,7 @@
 ## 🔴 À tester maintenant (critique)
 - [ ] Run SQL dyal `material_returns` f Supabase (إرجاع سلعة ykhdem)
 - [ ] Run SQL dyal `audit_log` f Supabase (tracking écritures)
+- [ ] Run SQL dyal `deleted_at` columns (section 27 of supabase_schema.sql — soft delete)
 - [ ] Test Telegram commands: `/newbon`, `/balance`, `/stock LED`
 - [ ] Test PWA install sur phone (Safari/Chrome → Add to Home Screen)
 - [ ] Test Admin → "تصدير نسخة احتياطية" → verify JSON fih kolchi
@@ -64,7 +65,7 @@
 - [x] `/cheque` — ajout cheque sans app (conversation handler like /newbon)
 - [x] Rate-limit per chat_id (15 cmd/60s)
 - [x] Monthly report (day-1 @ 09:00)
-- [ ] Share cheque image via Telegram directement (needs html2canvas + sendPhoto)
+- [x] Share cheque image via Telegram directement (html2canvas + sendPhoto — 📤 button in print-cheque)
 - [ ] Notifications automatiques:
   - [ ] Cheque échéance dans 3 jours (déjà planifié @08:00 — verify)
   - [x] Stock bas (< seuil) — déjà dans electricity summary @19:00
@@ -79,14 +80,13 @@
 ### Data
 - [x] Audit log table (audit_log in Supabase — run SQL before use)
 - [x] Admin UI to view audit_log entries (renderAdmin → AUDIT LOG)
-- [ ] Soft delete (trash) avant hard delete — architectural refactor, needs design
+- [x] Soft delete (trash) avant hard delete — bons/cheques/factures + Admin Trash UI (restore/purge)
 - [ ] Duplicate bon/cheque (clone as template)
 
 ## 🟢 Polish / Nice-to-have
 - [x] Dark/Light theme toggle (btn dyal 🌙/☀️ f topbar)
-- [ ] Offline sync queue — needs careful design (localStorage queue + replay on online)
+- [x] Offline sync queue (localStorage queue, PATCH/DELETE, auto-drain on online, topbar badge)
 - [ ] Multi-language (FR/AR toggle)
-- [ ] Share cheque image via Telegram directement (html2canvas → sendPhoto)
 - [ ] QR code pour chaque bon (scan → open bon dans app)
 - [ ] Global search improvements (search inside bon lignes)
 - [ ] Keyboard shortcuts help modal (Cmd+K déjà présent)

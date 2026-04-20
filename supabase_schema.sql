@@ -450,5 +450,18 @@ drop policy if exists "anon_all_audit_log" on audit_log;
 create policy "anon_all_audit_log" on audit_log
   for all to anon using (true) with check (true);
 
+-- ╔══════════════════════════════╗
+-- ║  27. SOFT DELETE             ║
+-- ╚══════════════════════════════╝
+-- Add deleted_at to core transaction tables. Rows with deleted_at IS NOT NULL
+-- are treated as trashed. Client queries filter `deleted_at=is.null` by default.
+alter table bons     add column if not exists deleted_at timestamptz;
+alter table cheques  add column if not exists deleted_at timestamptz;
+alter table factures add column if not exists deleted_at timestamptz;
+
+create index if not exists idx_bons_deleted     on bons(deleted_at)     where deleted_at is null;
+create index if not exists idx_cheques_deleted  on cheques(deleted_at)  where deleted_at is null;
+create index if not exists idx_factures_deleted on factures(deleted_at) where deleted_at is null;
+
 -- reload schema cache after DDL
 notify pgrst, 'reload schema';

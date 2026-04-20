@@ -12792,6 +12792,14 @@ async function loadFacturesData(){
     factProduits=_asArr(prods);
     if(soc && Array.isArray(soc) && soc[0]){
       factSociete=soc[0];
+      // Preserve locally-saved signature when Supabase column is missing/empty
+      // (user may not have run the SQL migration yet). Server data wins when present.
+      if(!factSociete.signature){
+        try{
+          const localSoc=JSON.parse(localStorage.getItem('fact_soc_v1')||'null');
+          if(localSoc && localSoc.signature) factSociete.signature=localSoc.signature;
+        }catch(_){}
+      }
       try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete)); }catch(e){}
     } else {
       factSociete=JSON.parse(localStorage.getItem('fact_soc_v1')||'null')||{
@@ -13813,6 +13821,25 @@ function factLoadLogo(input){
 }
 
 // ── Company signature (cachet) — persisted to fact_societe.signature
+// Targeted PATCH so the signature is saved immediately without requiring the
+// "💾 حفظ المعلومات" button (localStorage is also kept as a fallback).
+async function persistSocSignature(){
+  if(!factSociete) return;
+  if(!factSociete.id){
+    // No row yet on Supabase — do a full upsert via the main save path
+    try{ await factSaveSoc(); }catch(e){}
+    return;
+  }
+  try{
+    const res = await sbFetch('fact_societe?id=eq.'+factSociete.id,'PATCH',{signature:factSociete.signature||''});
+    if(res && res.__sbError){
+      toast('⚠️ توقيع محفوظ محلياً فقط — شغل SQL migration فـ Supabase','warning');
+      console.error('persistSocSignature error:', res);
+    } else {
+      toast('✅ تم حفظ التوقيع فـ Supabase','success');
+    }
+  }catch(e){ console.error(e); }
+}
 function factLoadSignature(input){
   const file=input.files[0];
   if(!file)return;
@@ -13832,7 +13859,7 @@ function factLoadSignature(input){
       factSociete.signature = cv.toDataURL('image/png');
       try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete)); }catch(_){}
       renderFactures();
-      toast('تم حفظ التوقيع محلياً — اضغط 💾 لحفظه فـ Supabase','info');
+      persistSocSignature();
     };
     img.onerror=function(){ toast('ملف غير صالح','error'); };
     img.src=e.target.result;
@@ -13844,6 +13871,7 @@ function factClearSignature(){
   if(factSociete) factSociete.signature='';
   try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete||{})); }catch(_){}
   renderFactures();
+  persistSocSignature();
 }
 function openSocSignaturePad(){
   // Reuse modal-main with a canvas drawing surface (no bonId — writes to factSociete)
@@ -13907,7 +13935,7 @@ function saveSocSignature(){
   try{ localStorage.setItem('fact_soc_v1', JSON.stringify(factSociete)); }catch(_){}
   document.getElementById('modal-main').classList.remove('open');
   renderFactures();
-  toast('تم الحفظ محلياً — اضغط 💾 لحفظ فـ Supabase','info');
+  persistSocSignature();
 }
 
 async function factSaveSoc(){

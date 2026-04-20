@@ -5312,7 +5312,7 @@ function renderArticles(){
         +'</div>'
       +'</div>'
       +(fps.length
-        ?'<div class="prices-list" style="margin-top:10px;display:flex;flex-direction:column;gap:4px">'+fps.map(({f,p})=>'<div class="price-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px"><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">'+escB(f)+'</span><span style="font-weight:600;color:var(--accent);flex-shrink:0">\u2066'+fmtN(p)+' DH\u2069</span></div>').join('')+'</div>'
+        ?'<div class="prices-list" style="margin-top:10px;display:flex;flex-direction:column;gap:4px">'+fps.map(({f,p})=>'<div class="price-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px"><span style="font-weight:600;color:var(--accent);flex-shrink:0">\u2066'+fmtN(p)+' DH\u2069</span><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">'+escB(f)+'</span></div>').join('')+'</div>'
         :'<div style="font-size:11px;color:var(--text2);margin-top:6px">لا يوجد سعر بعد</div>')
       +'</div>';
   };

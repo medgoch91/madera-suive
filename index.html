@@ -632,6 +632,18 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   .btn::after{display:none;}
 }
 
+/* Hide scrollbar on horizontal scroll containers (tabs etc) */
+.sal-tabs::-webkit-scrollbar,.tabs-scroll::-webkit-scrollbar{display:none;}
+
+@media(max-width:768px){
+  /* Salaries page — preserve weekly grid readability on mobile */
+  .sal-tabs{margin-bottom:14px!important;}
+  .sal-tabs button{padding:10px 14px!important;font-size:12.5px!important;}
+
+  /* Kill double-rendering flash when page loads from #hash — force opacity transition */
+  .page{animation:fadeIn 0.15s ease-out;}
+}
+
 /* ═══════════════ ADMIN PAGE ═══════════════ */
 .admin-hero{
   background:linear-gradient(135deg,rgba(79,142,247,0.12),rgba(124,92,252,0.08));
@@ -7453,12 +7465,12 @@ function renderSalaries(){
     {k:'ajout',lbl:'👤 الأجراء'},
     {k:'pcs',lbl:'👷 Par PCs'},
   ];
-  const tabBar='<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">'
+  const tabBar='<div class="sal-tabs" style="display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px">'
     +tabs.map(t=>'<button onclick="salSubPage=\''+t.k+'\';renderSalaries()" '
-      +'style="padding:8px 16px;border-radius:var(--radius-sm);border:2px solid '+(salSubPage===t.k?'var(--accent)':'var(--border)')+';'
-      +'background:'+(salSubPage===t.k?'rgba(79,142,247,0.1)':'transparent')+';'
+      +'style="padding:10px 16px;border-radius:var(--radius-sm);border:2px solid '+(salSubPage===t.k?'var(--accent)':'var(--border)')+';'
+      +'background:'+(salSubPage===t.k?'rgba(147,51,234,0.12)':'transparent')+';'
       +'color:'+(salSubPage===t.k?'var(--accent)':'var(--text2)')+';'
-      +'font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;">'+t.lbl+'</button>'
+      +'font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;min-height:42px">'+t.lbl+'</button>'
     ).join('')+'</div>';
   let body='';
   if(salSubPage==='pointage')   body=renderSalPointage();

@@ -1430,10 +1430,19 @@ async function sbFetch(table, method='GET', body=null, params='', replay=false){
   }
   try{
     const res = await fetch(url, {method, headers:h, body:body?JSON.stringify(body):null});
-    if(!res.ok){ const e=await res.text(); console.error('SB Error ['+method+' '+table+']:',e); return {__sbError:true, msg:e, status:res.status}; }
+    if(!res.ok){
+      const e=await res.text();
+      console.error('SB Error ['+method+' '+table+' '+res.status+']:',e);
+      // Surface write errors to user (don't spam on GET failures — those degrade gracefully)
+      if(method!=='GET' && typeof toast==='function'){
+        var short=(sbParseError?sbParseError(e):e).slice(0,80);
+        _sbToastThrottled('⚠️ Supabase ['+table+' '+method+']: '+short,'error');
+      }
+      return {__sbError:true, msg:e, status:res.status};
+    }
     // Audit log for writes (fire-and-forget, skip if logging itself)
     if(method!=='GET' && table!=='audit_log'){
-      try{ _sbAudit(table, method, params, body); }catch(e){}
+      try{ _sbAudit(table, method, params, body); }catch(e){ console.warn('audit failed:', e); }
     }
     if(res.status===204) return true;
     try{ return await res.json(); }catch(e){ return true; }
@@ -1445,8 +1454,22 @@ async function sbFetch(table, method='GET', body=null, params='', replay=false){
       return {__queued:true};
     }
     console.error('SB Network Error ['+method+' '+table+']:', netErr);
+    if(method!=='GET' && typeof toast==='function'){
+      _sbToastThrottled('⚠️ شبكة مقطوعة ['+table+']','error');
+    }
     return {__sbError:true, msg:String(netErr), status:0};
   }
+}
+
+// Throttle error toasts so a burst of failing writes doesn't spam the UI
+var _sbLastToast={};
+function _sbToastThrottled(msg, level){
+  try{
+    var now=Date.now();
+    if(_sbLastToast[msg] && (now-_sbLastToast[msg])<3000) return;
+    _sbLastToast[msg]=now;
+    toast(msg, level||'error');
+  }catch(e){}
 }
 
 function _sbAudit(table, method, params, body){
@@ -1670,6 +1693,23 @@ async function sbSavePrix(articleId, fournisseur, prixVal){
   });
 }
 
+// Race-safe helper: bump a "PREFIX-NNNN" num past server max before POST
+// Pattern example: prefix='BON-', current='BON-0042' → returns 'BON-0055' if server has up to 54
+async function _bumpNumIfStale(table, prefix, currentNum){
+  try{
+    var srv=await sbFetch(table,'GET',null,'select=num&num=like.'+encodeURIComponent(prefix+'%')+'&order=num.desc&limit=1');
+    if(!Array.isArray(srv) || !srv.length) return currentNum;
+    var m=String(srv[0].num||'').match(/(\d+)\s*$/);
+    var srvMax=m?Number(m[1]):0;
+    var cm=String(currentNum||'').match(/(\d+)\s*$/);
+    var curN=cm?Number(cm[1]):0;
+    if(srvMax>=curN){
+      return prefix+String(srvMax+1).padStart(4,'0');
+    }
+    return currentNum;
+  }catch(e){ console.warn('_bumpNumIfStale failed:', e); return currentNum; }
+}
+
 async function sbSaveBon(bon){
   const data={
     num:bon.num, fournisseur:bon.fournisseur, date:bon.date, note:bon.note||'',
@@ -1680,8 +1720,20 @@ async function sbSaveBon(bon){
   if(bon.id && bons.find(b=>b.id===bon.id)&&bon.id>0){
     await sbFetch('bons?id=eq.'+bon.id,'PATCH',data);
   } else {
-    const res=await sbFetch('bons','POST',data);
-    if(res&&res[0]) bon.id=res[0].id;
+    // Race-safe: bump num past server max, retry on 409 unique conflict
+    var saved=null;
+    for(var attempt=0; attempt<5 && !saved; attempt++){
+      if(attempt>0 || String(bon.num||'').startsWith('BON-')){
+        data.num = await _bumpNumIfStale('bons','BON-', data.num);
+      }
+      var res=await sbFetch('bons','POST',data);
+      if(res && Array.isArray(res) && res[0]){ saved=res; bon.num=data.num; bon.id=res[0].id; break; }
+      if(res && res.__sbError && (res.status===409 || /duplicate|unique/i.test(res.msg||''))){
+        console.warn('sbSaveBon unique conflict on '+data.num+', retrying...');
+        continue;
+      }
+      if(res && res.__sbError){ console.error('sbSaveBon error:', res); break; }
+    }
   }
   saveCacheLS();
 }
@@ -1695,8 +1747,24 @@ async function sbSaveCheque(cheque){
   if(cheque.id && cheques.find(c=>c.id===cheque.id)&&cheque.id>0){
     await sbFetch('cheques?id=eq.'+cheque.id,'PATCH',data);
   } else {
-    const res=await sbFetch('cheques','POST',data);
-    if(res&&res[0]) cheque.id=res[0].id;
+    // Race-safe: check server max before POST, retry on unique conflict
+    var saved=null;
+    for(var attempt=0; attempt<5 && !saved; attempt++){
+      // Cheque num may be bare digits (user enters), only bump if numeric pattern
+      if(attempt>0 && /^\d+$/.test(String(data.num||''))){
+        var srv=await sbFetch('cheques','GET',null,'select=num&order=num.desc&limit=1');
+        if(Array.isArray(srv) && srv[0] && Number(srv[0].num) >= Number(data.num)){
+          data.num = Number(srv[0].num)+1;
+        }
+      }
+      var res=await sbFetch('cheques','POST',data);
+      if(res && Array.isArray(res) && res[0]){ saved=res; cheque.num=data.num; cheque.id=res[0].id; break; }
+      if(res && res.__sbError && (res.status===409 || /duplicate|unique/i.test(res.msg||''))){
+        console.warn('sbSaveCheque unique conflict on '+data.num+', retrying...');
+        continue;
+      }
+      if(res && res.__sbError){ console.error('sbSaveCheque error:', res); break; }
+    }
   }
   saveCacheLS();
 }

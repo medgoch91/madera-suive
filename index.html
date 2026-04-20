@@ -1002,70 +1002,70 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- Dashboard -->
     <button class="nav-btn active" onclick="showPage('dashboard',this)" style="margin-top:4px">
-      <span class="nav-icon">📊</span> الداشبورد
+      <span class="nav-icon">📊</span> <span data-i18n="nav.dashboard">الداشبورد</span>
     </button>
 
     <!-- Section: الإدارة -->
     <div class="nav-section-sep">
       <span class="nav-section-line"></span>
-      <span class="nav-section-label">الإدارة</span>
+      <span class="nav-section-label" data-i18n="sec.gestion">الإدارة</span>
       <span class="nav-section-line"></span>
     </div>
     <button class="nav-btn" onclick="showPage('bons',this)" id="nav-bons">
-      <span class="nav-icon">📋</span> البونات
+      <span class="nav-icon">📋</span> <span data-i18n="nav.bons">البونات</span>
       <span class="nav-badge" id="badge-free" style="display:none">0</span>
     </button>
     <button class="nav-btn" onclick="showPage('cheques',this)">
-      <span class="nav-icon">🗒️</span> الشيكات
+      <span class="nav-icon">🗒️</span> <span data-i18n="nav.cheques">الشيكات</span>
     </button>
     <button class="nav-btn" onclick="showPage('fournisseurs',this)">
-      <span class="nav-icon">🏢</span> الفورنيسورات
+      <span class="nav-icon">🏢</span> <span data-i18n="nav.fournisseurs">الفورنيسورات</span>
     </button>
     <button class="nav-btn" onclick="showPage('articles',this)">
-      <span class="nav-icon">📦</span> السلع
+      <span class="nav-icon">📦</span> <span data-i18n="nav.articles">السلع</span>
     </button>
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
-      <span class="nav-icon">👥</span> الأجراء
+      <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
     <button class="nav-btn" onclick="showPage('elec-dist',this)" id="nav-elec-dist">
-      <span class="nav-icon">⚡</span> électricité à distance
+      <span class="nav-icon">⚡</span> <span data-i18n="nav.elec">électricité à distance</span>
     </button>
     <button class="nav-btn" onclick="showPage('factures',this)" id="nav-factures">
-      <span class="nav-icon">🧾</span> الفواتير
+      <span class="nav-icon">🧾</span> <span data-i18n="nav.factures">الفواتير</span>
     </button>
 
     <!-- Section: إضافة -->
     <div class="nav-section-sep">
       <span class="nav-section-line"></span>
-      <span class="nav-section-label">إضافة</span>
+      <span class="nav-section-label" data-i18n="sec.add">إضافة</span>
       <span class="nav-section-line"></span>
     </div>
     <button class="nav-btn" onclick="showPage('new-bon',this)">
-      <span class="nav-icon">➕</span> بون جديد
+      <span class="nav-icon">➕</span> <span data-i18n="nav.newBon">بون جديد</span>
     </button>
 
     <button class="nav-btn" onclick="showPage('new-cheque',this)">
-      <span class="nav-icon">✏️</span> شيك جديد
+      <span class="nav-icon">✏️</span> <span data-i18n="nav.newCheque">شيك جديد</span>
     </button>
 
     <!-- Section: أدوات -->
     <div class="nav-section-sep">
       <span class="nav-section-line"></span>
-      <span class="nav-section-label">أدوات</span>
+      <span class="nav-section-label" data-i18n="sec.tools">أدوات</span>
       <span class="nav-section-line"></span>
     </div>
     <button class="nav-btn" onclick="showPage('print-cheque',this)">
-      <span class="nav-icon">🖨️</span> طباعة الشيك
+      <span class="nav-icon">🖨️</span> <span data-i18n="nav.printCheque">طباعة الشيك</span>
     </button>
 
     <!-- Admin section -->
     <div class="nav-section-sep admin-only" id="nav-section-admin" style="display:none">
       <span class="nav-section-line"></span>
-      <span class="nav-section-label">الإدارة</span>
+      <span class="nav-section-label" data-i18n="sec.admin">الإدارة</span>
       <span class="nav-section-line"></span>
     </div>
     <button class="nav-btn admin-only" id="nav-admin-btn" style="display:none" onclick="showPage('admin',this)">
-      <span class="nav-icon">⚙️</span> إدارة المستخدمين
+      <span class="nav-icon">⚙️</span> <span data-i18n="nav.admin">إدارة المستخدمين</span>
     </button>
 
   </nav>
@@ -1088,6 +1088,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <div class="topbar-actions" id="topbar-actions"></div>
     <button onclick="cmdkOpen()" title="بحث سريع (Cmd+K)" style="background:linear-gradient(135deg,rgba(147,51,234,.15),rgba(6,182,212,.1));border:1px solid rgba(147,51,234,.3);border-radius:10px;color:#fff;padding:7px 12px;cursor:pointer;display:flex;align-items:center;gap:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:600;transition:all .2s" onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 12px rgba(147,51,234,.25)'" onmouseout="this.style.transform='';this.style.boxShadow=''">🔍 <span style="opacity:.6;font-family:monospace;font-size:10px;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:2px 5px">⌘K</span></button>
     <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="تبديل الوضع">🌙</button>
+    <button class="theme-btn" id="lang-btn" onclick="toggleLang()" title="Changer la langue" style="min-width:48px;padding:0 10px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px">AR</button>
     <span id="offline-badge" onclick="drainSbQueue()" style="display:none;align-items:center;gap:4px;padding:4px 9px;border-radius:12px;border:1px solid rgba(6,182,212,0.4);background:rgba(6,182,212,0.15);color:#06b6d4;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;user-select:none"></span>
     <div id="topbar-user" style="display:none;gap:8px;align-items:center"></div>
   </div>
@@ -1408,7 +1409,7 @@ async function drainSbQueue(){
 
 window.addEventListener('online', function(){ drainSbQueue(); });
 window.addEventListener('offline', function(){ _updateOfflineBadge(); });
-window.addEventListener('DOMContentLoaded', function(){ _updateOfflineBadge(); if(navigator.onLine!==false) drainSbQueue(); });
+window.addEventListener('DOMContentLoaded', function(){ _updateOfflineBadge(); if(navigator.onLine!==false) drainSbQueue(); try{applyI18n();}catch(e){} });
 
 async function sbFetch(table, method='GET', body=null, params='', replay=false){
   const url = SB_URL+'/rest/v1/'+table+(params?'?'+params:'');
@@ -1805,6 +1806,58 @@ function printCheque(id){
 }
 
 // NAV
+// ===== i18n (minimal FR/AR) =====
+var I18N={
+  ar:{
+    'nav.dashboard':'الداشبورد','nav.bons':'البونات','nav.cheques':'الشيكات',
+    'nav.fournisseurs':'الفورنيسورات','nav.articles':'السلع','nav.salaries':'الأجراء',
+    'nav.elec':'électricité à distance','nav.factures':'الفواتير','nav.newBon':'بون جديد',
+    'nav.newCheque':'شيك جديد','nav.printCheque':'طباعة الشيك','nav.admin':'إدارة المستخدمين',
+    'sec.gestion':'الإدارة','sec.add':'إضافة','sec.tools':'أدوات','sec.admin':'الإدارة',
+    'pt.admin':'⚙️ إدارة المستخدمين','pt.dashboard':'الداشبورد','pt.bons':'البونات',
+    'pt.new-bon':'بون جديد','pt.cheques':'الشيكات','pt.fournisseurs':'الفورنيسورات',
+    'pt.articles':'السلع','pt.new-cheque':'شيك جديد','pt.print-cheque':'🖨️ طباعة الشيك',
+    'pt.elec-dist':'⚡ électricité à distance','pt.salaries':'الأجراء','pt.factures':'الفواتير',
+  },
+  fr:{
+    'nav.dashboard':'Tableau de bord','nav.bons':'Bons','nav.cheques':'Chèques',
+    'nav.fournisseurs':'Fournisseurs','nav.articles':'Articles','nav.salaries':'Salariés',
+    'nav.elec':'Électricité à distance','nav.factures':'Factures','nav.newBon':'Nouveau bon',
+    'nav.newCheque':'Nouveau chèque','nav.printCheque':'Imprimer chèque','nav.admin':'Utilisateurs',
+    'sec.gestion':'Gestion','sec.add':'Ajouter','sec.tools':'Outils','sec.admin':'Administration',
+    'pt.admin':'⚙️ Gestion utilisateurs','pt.dashboard':'Tableau de bord','pt.bons':'Bons',
+    'pt.new-bon':'Nouveau bon','pt.cheques':'Chèques','pt.fournisseurs':'Fournisseurs',
+    'pt.articles':'Articles','pt.new-cheque':'Nouveau chèque','pt.print-cheque':'🖨️ Imprimer chèque',
+    'pt.elec-dist':'⚡ Électricité à distance','pt.salaries':'Salariés','pt.factures':'Factures',
+  }
+};
+var CURRENT_LANG=(function(){try{return localStorage.getItem('app_lang')||'ar';}catch(e){return 'ar';}})();
+function t(k){ try{return (I18N[CURRENT_LANG]&&I18N[CURRENT_LANG][k])||(I18N.ar[k])||k;}catch(e){return k;} }
+function applyI18n(){
+  try{
+    document.querySelectorAll('[data-i18n]').forEach(function(el){
+      var k=el.getAttribute('data-i18n'); if(!k) return;
+      var txt=t(k); if(txt) el.textContent=txt;
+    });
+    document.documentElement.setAttribute('lang', CURRENT_LANG);
+    document.documentElement.setAttribute('dir', CURRENT_LANG==='fr'?'ltr':'rtl');
+    var btn=document.getElementById('lang-btn');
+    if(btn) btn.textContent = CURRENT_LANG==='fr'?'FR':'AR';
+    // refresh topbar title for current page
+    var ptEl=document.getElementById('topbar-title');
+    if(ptEl && typeof currentPage==='string' && pageTitles){
+      var tk='pt.'+currentPage; var v=t(tk);
+      ptEl.textContent = (v && v!==tk) ? v : (pageTitles[currentPage]||'');
+    }
+  }catch(e){}
+}
+function toggleLang(){
+  CURRENT_LANG = CURRENT_LANG==='ar'?'fr':'ar';
+  try{localStorage.setItem('app_lang', CURRENT_LANG);}catch(e){}
+  applyI18n();
+  try{ if(typeof toast==='function') toast(CURRENT_LANG==='fr'?'Langue : Français':'اللغة: العربية','info'); }catch(e){}
+}
+
 const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'الشيكات',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'شيك جديد','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance'};
 const pageActions={
   'new-bon':'',
@@ -1823,7 +1876,8 @@ function showPage(page,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   if(btn)btn.classList.add('active');
-  document.getElementById('topbar-title').textContent=pageTitles[page]||'';
+  var _tk='pt.'+page; var _tv=(typeof t==='function')?t(_tk):null;
+  document.getElementById('topbar-title').textContent=(_tv && _tv!==_tk) ? _tv : (pageTitles[page]||'');
   document.getElementById('topbar-actions').innerHTML=pageActions[page]||'';
   currentPage=page;
   try{ _updateBackBtn(); }catch(e){}
@@ -2877,7 +2931,15 @@ function renderBons(){
   filtered=filtered.filter(b=>
     (!bonFilter||(bonFilter==='باقي'&&!b.chequeId)||(bonFilter==='مربوط'&&b.chequeId))
     &&(!bonFourFilter||b.fournisseur===bonFourFilter)
-    &&(!search||b.num.toLowerCase().includes(search)||b.fournisseur.toLowerCase().includes(search))
+    &&(!search
+       || b.num.toLowerCase().includes(search)
+       || (b.fournisseur||'').toLowerCase().includes(search)
+       || (b.note||'').toLowerCase().includes(search)
+       || (Array.isArray(b.lignes)?b.lignes:[]).some(function(l){
+            return (bonGetLineName(l)||'').toLowerCase().includes(search)
+                || (l && l.ref && String(l.ref).toLowerCase().includes(search));
+          })
+      )
   );
   const sorters={
     'date-desc':(a,b)=>b.date.localeCompare(a.date),
@@ -2918,7 +2980,7 @@ function renderBons(){
     buildDateBar('bons','renderBons')
     +_dupBanner
     +`<div class="toolbar">
-      <input class="search-box" id="bon-search" placeholder="🔍 بحث بالرقم أو الفورنيسور..." oninput="renderBons()" value="${search}">
+      <input class="search-box" id="bon-search" placeholder="🔍 بحث بالرقم، الفورنيسور، سلعة أو ملاحظة..." oninput="renderBons()" value="${search}">
       <select onchange="setBonFourFilter(this.value)" style="padding:7px 10px;font-size:12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:inherit;cursor:pointer;max-width:200px" title="تصفية بالفورنيسور">
         <option value="">🏢 كل الفورنيسورات</option>
         ${fourOpts}
@@ -3784,6 +3846,8 @@ function printBon(id){
         + '<div class="doc-badge '+(b.chequeId?'badge-ok':'badge-pending')+'">'
           + (b.chequeId ? '✓ Payé par chèque'+(cheque?' — '+escB(cheque.num):'') : '⏳ En attente')
         + '</div>'
+        + '<div id="bon-qr" style="margin-top:10px;display:inline-block;padding:6px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;line-height:0"></div>'
+        + '<div style="font-size:8.5px;color:#94a3b8;margin-top:4px;font-family:monospace">Scan pour ouvrir</div>'
       + '</div>'
     + '</div>'
 
@@ -3865,7 +3929,15 @@ function printBon(id){
       + '<button class="close" onclick="window.close()">Fermer</button>'
     + '</div>'
 
-    + '<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},300);});<\/script>'
+    + '<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"><\/script>'
+    + '<script>'
+    +   'var appUrl='+JSON.stringify((location.origin+location.pathname).replace(/\/$/,''))+';'
+    +   'var qrTxt=appUrl+"#bons?open="+'+JSON.stringify(String(b.num||''))+';'
+    +   'window.addEventListener("load",function(){'
+    +     'try{new QRCode(document.getElementById("bon-qr"),{text:qrTxt,width:82,height:82,correctLevel:QRCode.CorrectLevel.M});}catch(e){}'
+    +     'setTimeout(function(){window.print();},400);'
+    +   '});'
+    + '<\/script>'
     + '</body></html>';
 
   const win = window.open('', '_blank', 'width=900,height=820');
@@ -11626,6 +11698,32 @@ function uiSavePage(p){try{if(p)localStorage.setItem(UI_PAGE_KEY,p);}catch(e){}}
 function uiLoadPage(){try{return localStorage.getItem(UI_PAGE_KEY)||'';}catch(e){return '';}}
 function uiSaveFactSub(k){try{if(k)localStorage.setItem(UI_FACT_SUB_KEY,k);}catch(e){}}
 function uiLoadFactSub(){try{return localStorage.getItem(UI_FACT_SUB_KEY)||'';}catch(e){return '';}}
+function _parseHashQuery(){
+  try{
+    var h=(location.hash||'').replace(/^#\/?/,'');
+    var qIdx=h.indexOf('?');
+    if(qIdx<0) return {};
+    var out={};
+    h.slice(qIdx+1).split('&').forEach(function(pair){
+      var eq=pair.indexOf('=');
+      if(eq<0) return;
+      out[decodeURIComponent(pair.slice(0,eq))]=decodeURIComponent(pair.slice(eq+1));
+    });
+    return out;
+  }catch(e){return {};}
+}
+function _applyHashDeeplink(){
+  try{
+    var page=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
+    var qs=_parseHashQuery();
+    if(page==='bons' && qs.open){
+      setTimeout(function(){
+        var inp=document.getElementById('bon-search');
+        if(inp){ inp.value=qs.open; if(typeof renderBons==='function') renderBons(); }
+      },150);
+    }
+  }catch(e){}
+}
 function uiRestorePageAfterLoad(){
   try{
     // Hash wins over localStorage (direct URL access)
@@ -11633,6 +11731,7 @@ function uiRestorePageAfterLoad(){
     var saved=fromHash || uiLoadPage();
     if(!saved || saved==='dashboard'){
       if(fromHash==='dashboard') uiSyncHash('dashboard');
+      _applyHashDeeplink();
       return;
     }
     var btnMap={
@@ -11643,6 +11742,7 @@ function uiRestorePageAfterLoad(){
     var idx=btnMap[saved];
     var btn=(idx!=null && navs[idx])?navs[idx]:null;
     if(typeof showPage==='function') showPage(saved, btn);
+    _applyHashDeeplink();
   }catch(e){}
 }
 
@@ -11662,12 +11762,14 @@ function uiSyncHash(page){
 window.addEventListener('hashchange',function(){
   if(__routingSilent) return;
   var p=(location.hash||'').replace(/^#\/?/,'').split('?')[0];
-  if(!p || p===currentPage) return;
+  if(!p){ _applyHashDeeplink(); return; }
+  if(p===currentPage){ _applyHashDeeplink(); return; }
   var btnMap={'dashboard':0,'bons':1,'cheques':2,'fournisseurs':3,'articles':4,'salaries':5,'elec-dist':6,'factures':7,'new-bon':8,'new-cheque':9};
   var navs=document.querySelectorAll('.nav-btn');
   var idx=btnMap[p];
   var btn=(idx!=null && navs[idx])?navs[idx]:null;
   if(typeof showPage==='function') showPage(p,btn);
+  _applyHashDeeplink();
 });
 
 // ── Robust safety net: save drafts on unload + periodically ──
@@ -13096,7 +13198,31 @@ function cmdkBuildIndex(query){
   try {
     (bons||[]).forEach(function(b){
       var lbl = 'BON-'+String(b.num||'').padStart(4,'0')+' — '+(b.fournisseur||'?');
-      if(lbl.toLowerCase().indexOf(q)>=0) results.push({group:'بون', icon:'📋', title:lbl, sub:(b.date||'')+' · \u2066'+fmtN(b.total||0)+' DH\u2069', action:function(){ cmdkGoPage('bons'); }});
+      var lbll = lbl.toLowerCase();
+      var matchHdr = lbll.indexOf(q)>=0;
+      var matchLigne = null;
+      if(!matchHdr){
+        var lignes = Array.isArray(b.lignes)?b.lignes:[];
+        for(var li=0; li<lignes.length; li++){
+          var nm = (bonGetLineName(lignes[li])||'').toLowerCase();
+          var rf = (lignes[li]&&lignes[li].ref?String(lignes[li].ref):'').toLowerCase();
+          if(nm.indexOf(q)>=0 || (rf && rf.indexOf(q)>=0)){ matchLigne=lignes[li]; break; }
+        }
+      }
+      if(matchHdr || matchLigne){
+        var subTxt = (b.date||'')+' · \u2066'+fmtN(b.total||0)+' DH\u2069';
+        if(matchLigne) subTxt += ' · 📦 '+(bonGetLineName(matchLigne)||'');
+        var bonNum = b.num;
+        results.push({group:'بون', icon:'📋', title:lbl, sub:subTxt, action:function(){
+          cmdkClose();
+          var btn = document.querySelector('.nav-btn[onclick*="\'bons\'"]');
+          showPage('bons', btn);
+          setTimeout(function(){
+            var inp=document.getElementById('bon-search');
+            if(inp){ inp.value=bonNum; renderBons(); }
+          },100);
+        }});
+      }
     });
   } catch(e){}
   return results.slice(0, 30);

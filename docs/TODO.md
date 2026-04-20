@@ -85,7 +85,7 @@
 
 ## 🟢 Polish / Nice-to-have
 - [x] Dark/Light theme toggle (btn dyal 🌙/☀️ f topbar)
-- [x] Offline sync queue (localStorage queue, PATCH/DELETE, auto-drain on online, topbar badge)
+- [x] Offline sync queue (localStorage queue, PATCH/DELETE, auto-drain on online, topbar badge) ✅ tested
 - [ ] Multi-language (FR/AR toggle)
 - [ ] QR code pour chaque bon (scan → open bon dans app)
 - [ ] Global search improvements (search inside bon lignes)

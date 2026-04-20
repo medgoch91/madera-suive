@@ -481,5 +481,11 @@ alter table cheques add constraint cheques_type_check
 
 create index if not exists idx_cheques_type on cheques(type);
 
+-- ╔══════════════════════════════════════════════╗
+-- ║  29. COMPANY SIGNATURE (fact_societe)       ║
+-- ╚══════════════════════════════════════════════╝
+-- Reusable "cachet + signature" stored with company info, shown on factures + cheques.
+alter table fact_societe add column if not exists signature text default '';
+
 -- reload schema cache after DDL
 notify pgrst, 'reload schema';

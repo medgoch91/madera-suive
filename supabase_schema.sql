@@ -487,5 +487,31 @@ create index if not exists idx_cheques_type on cheques(type);
 -- Reusable "cachet + signature" stored with company info, shown on factures + cheques.
 alter table fact_societe add column if not exists signature text default '';
 
+-- ╔══════════════════════════════════════════════╗
+-- ║  30. CHANTIERS / PROJETS                    ║
+-- ╚══════════════════════════════════════════════╝
+-- Tag bons & cheques with a project/site so costs can be rolled up per chantier.
+create table if not exists chantiers (
+  id         bigint generated always as identity primary key,
+  nom        text        not null,
+  couleur    text        default '#4f8ef7',
+  statut     text        default 'actif',  -- actif / terminé / en_pause
+  notes      text        default '',
+  created_at timestamptz default now(),
+  deleted_at timestamptz
+);
+create index if not exists idx_chantiers_deleted on chantiers(deleted_at) where deleted_at is null;
+
+-- Nullable FKs (SET NULL on delete so existing bons/cheques keep working)
+alter table bons     add column if not exists chantier_id bigint references chantiers(id) on delete set null;
+alter table cheques  add column if not exists chantier_id bigint references chantiers(id) on delete set null;
+create index if not exists idx_bons_chantier    on bons(chantier_id);
+create index if not exists idx_cheques_chantier on cheques(chantier_id);
+
+-- RLS (matches the rest of the app: anon-all while auth migration is pending)
+alter table chantiers enable row level security;
+drop policy if exists "anon_all_chantiers" on chantiers;
+create policy "anon_all_chantiers" on chantiers for all to anon using (true) with check (true);
+
 -- reload schema cache after DDL
 notify pgrst, 'reload schema';

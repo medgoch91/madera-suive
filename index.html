@@ -1203,9 +1203,17 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
                   </div>
                 </div>
               </div>
-              <div style="margin-top:12px">
-                <label class="nb-label">ملاحظة</label>
-                <input class="nb-input" id="b-note" placeholder="اختياري..." oninput="try{bonSaveDraft();}catch(e){}">
+              <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div>
+                  <label class="nb-label">ملاحظة</label>
+                  <input class="nb-input" id="b-note" placeholder="اختياري..." oninput="try{bonSaveDraft();}catch(e){}">
+                </div>
+                <div>
+                  <label class="nb-label">🏗️ الورش / المشروع</label>
+                  <select class="nb-input" id="b-chantier" onchange="try{bonSaveDraft();}catch(e){}">
+                    <option value="">— بلا ورش —</option>
+                  </select>
+                </div>
               </div>
             </div>
           </div>
@@ -1580,6 +1588,8 @@ let prix={};
 let bons=[];
 let cheques=[];
 let fournisseurs=[];
+let chantiers=[];
+let chantierFilter=null; // null = all, or chantier id
 let nextBId=1;
 let bonLignes=[];
 let selectedBonIds=[];
@@ -1651,14 +1661,29 @@ async function loadAllData(){
       return Array.isArray(r)?r:[];
     };
     const _asArr=(x)=>Array.isArray(x)?x:[];
-    const [arts, prixRows, bonsRows, chRows, fourRows, spRows] = await Promise.all([
+    // Try to load chantiers; tolerate missing table (pre-migration)
+    const _loadChantiers = async ()=>{
+      let r = await sbFetch('chantiers','GET',null,'select=*&deleted_at=is.null&order=nom');
+      if(r && r.__sbError){
+        if(/does not exist|relation|column|deleted_at/.test(r.msg||'')){
+          // Try without deleted_at filter
+          r = await sbFetch('chantiers','GET',null,'select=*&order=nom');
+        }
+      }
+      return Array.isArray(r)?r:[];
+    };
+    const [arts, prixRows, bonsRows, chRows, fourRows, spRows, chtRows] = await Promise.all([
       sbFetch('articles','GET',null,'select=*&order=id').then(_asArr),
       sbFetch('prix','GET',null,'select=*').then(_asArr),
       _sbFetchSoft('bons','order=created_at.desc'),
       _sbFetchSoft('cheques','order=created_at.desc'),
       sbFetch('fournisseurs','GET',null,'select=*&order=nom').then(_asArr),
       sbFetch('supplier_products','GET',null,'select=supplier_id,product_id,last_purchase_price_ttc').then(_asArr),
+      _loadChantiers(),
     ]);
+    chantiers = (chtRows||[]).map(function(c){
+      return {id:c.id, nom:c.nom, couleur:c.couleur||'#4f8ef7', statut:c.statut||'actif', notes:c.notes||''};
+    });
     spLinks={};
     (spRows||[]).forEach(function(r){spLinks[r.supplier_id+'_'+r.product_id]=parseFloat(r.last_purchase_price_ttc);});
 
@@ -1681,6 +1706,7 @@ async function loadAllData(){
         date:b.date, note:b.note||'',
         statut:b.statut||'Bon',
         chequeId:b.cheque_id||null,
+        chantierId:b.chantier_id||null,
         lignes:Array.isArray(b.lignes)?b.lignes:(b.lignes?JSON.parse(b.lignes):[]),
         total:parseFloat(b.total)||0,
         totalNet:parseFloat(b.total_net)||0,
@@ -1695,6 +1721,7 @@ async function loadAllData(){
         status:c.status||'معلق',
         type:c.type||'cheque',
         paid_at:c.paid_at||null,
+        chantierId:c.chantier_id||null,
         bonIds:Array.isArray(c.bon_ids)?c.bon_ids:(c.bon_ids?JSON.parse(c.bon_ids):[]),
       };
     });
@@ -1932,7 +1959,7 @@ async function sbSaveBon(bon){
     num:bon.num, fournisseur:bon.fournisseur, date:bon.date, note:bon.note||'',
     statut:bon.statut||'Bon', remise_type:bon.remiseType||'%',
     remise_val:bon.remiseVal||0, total:bon.total||0, total_net:bon.totalNet||bon.total||0,
-    cheque_id:bon.chequeId||null, lignes:bon.lignes||[],
+    cheque_id:bon.chequeId||null, chantier_id:bon.chantierId||null, lignes:bon.lignes||[],
   };
   if(bon.id && bons.find(b=>b.id===bon.id)&&bon.id>0){
     await sbFetch('bons?id=eq.'+bon.id,'PATCH',data);
@@ -1962,6 +1989,7 @@ async function sbSaveCheque(cheque){
     status:cheque.status||'معلق', bon_ids:cheque.bonIds||[],
     type: cheque.type||'cheque',
     paid_at: cheque.paid_at||null,
+    chantier_id: cheque.chantierId||null,
   };
   if(cheque.id && cheques.find(c=>c.id===cheque.id)&&cheque.id>0){
     await sbFetch('cheques?id=eq.'+cheque.id,'PATCH',data);
@@ -3358,12 +3386,17 @@ async function bonBulkChangeFournisseur(){
     renderBons();
   }catch(e){ hideLoader(); toast('فشل: '+(e&&e.message||''),'error'); }
 }
+function setBonChantierFilter(v){
+  chantierFilter = (v==='' || v==null) ? null : Number(v);
+  renderBons();
+}
 function renderBons(){
   const search=(document.getElementById('bon-search')||{value:''}).value.toLowerCase();
   let filtered=filterByDate(bons,'bons');
   filtered=filtered.filter(b=>
     (!bonFilter||(bonFilter==='باقي'&&!b.chequeId)||(bonFilter==='مربوط'&&b.chequeId))
     &&(!bonFourFilter||b.fournisseur===bonFourFilter)
+    &&(chantierFilter==null || Number(b.chantierId||0)===Number(chantierFilter))
     &&(!search
        || b.num.toLowerCase().includes(search)
        || (b.fournisseur||'').toLowerCase().includes(search)
@@ -3432,6 +3465,16 @@ function renderBons(){
         <button class="pill ${bonFilter==='مربوط'?'active':''}" onclick="bonFilter='مربوط';renderBons()">مربوط (${filtered.filter(b=>b.chequeId).length})</button>
         ${bonFourFilter?`<button class="pill" style="background:rgba(232,64,64,0.08);border-color:rgba(232,64,64,0.3);color:var(--red)" onclick="setBonFourFilter('')">✕ ${escB(bonFourFilter)}</button>`:''}
       </div>
+      ${(chantiers||[]).length?`<div class="filter-pills" style="flex-basis:100%;margin-top:6px">
+        <button class="pill ${chantierFilter==null?'active':''}" onclick="setBonChantierFilter('')">🏗️ كل الورش</button>
+        ${(chantiers||[]).map(function(c){
+          var active = Number(chantierFilter)===Number(c.id);
+          var col = c.couleur||'#4f8ef7';
+          return '<button class="pill" onclick="setBonChantierFilter('+c.id+')" style="'+(active?'background:'+col+'22;border-color:'+col+';color:'+col+';font-weight:700':'')+'">'
+            + '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+col+';margin-left:6px;vertical-align:middle"></span>'
+            + escB(c.nom||'') +'</button>';
+        }).join('')}
+      </div>`:''}
     </div>
     <div id="bon-bulk-bar" style="display:${bonSelected.size?'flex':'none'};align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(90deg,rgba(147,51,234,.12),rgba(6,182,212,.08));border:1px solid var(--accent);border-radius:var(--radius-sm);margin-bottom:12px;flex-wrap:wrap">
       <span style="font-weight:700;color:var(--accent);font-size:13px">☑️ <span id="bon-bulk-cnt">${bonSelected.size}</span> بون محدد</span>
@@ -3457,7 +3500,13 @@ function renderBons(){
             return `
             <tr style="background:${sel?'rgba(147,51,234,0.06)':(idx%2===0?'transparent':'rgba(255,255,255,0.02)')}">
               <td><input type="checkbox" ${sel?'checked':''} onchange="bonToggleSel(${b.id},this.checked);renderBons()" style="cursor:pointer"></td>
-              <td style="font-weight:700;cursor:pointer;color:var(--accent)" onclick="openBonModal(${b.id})">${b.num}</td>
+              <td style="font-weight:700;cursor:pointer;color:var(--accent)" onclick="openBonModal(${b.id})">${b.num}${(function(){
+                if(!b.chantierId) return '';
+                var ch=(chantiers||[]).find(function(x){return Number(x.id)===Number(b.chantierId);});
+                if(!ch) return '';
+                var col=ch.couleur||'#4f8ef7';
+                return '<span title="'+escB(ch.nom||'')+'" style="display:inline-block;margin-right:6px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;background:'+col+'22;color:'+col+';border:1px solid '+col+'44;vertical-align:middle">🏗️ '+escB(ch.nom||'')+'</span>';
+              })()}</td>
               <td style="color:var(--text2)">${b.fournisseur}</td>
               <td style="color:var(--text2);white-space:nowrap">${fmtDate(b.date)}</td>
               <td style="color:var(--text2);font-size:12px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.lignes.map(l=>bonGetLineName(l)).join(', ')}</td>
@@ -3914,6 +3963,12 @@ function openEditBon(id){
       <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">التاريخ</label><input class="field-inp" id="eb-date" type="date" value="${b.date}"></div>
       <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">الفورنيسور</label><input class="field-inp" id="eb-fournisseur" value="${b.fournisseur}"></div>
       <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">ملاحظة</label><input class="field-inp" id="eb-note" value="${b.note||''}"></div>
+      <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">🏗️ الورش</label>
+        <select class="field-inp" id="eb-chantier">
+          <option value="">— بلا ورش —</option>
+          ${(chantiers||[]).map(function(c){return '<option value="'+c.id+'" '+(b.chantierId===c.id?'selected':'')+'>'+escB(c.nom||'')+'</option>';}).join('')}
+        </select>
+      </div>
     </div>
     <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">السلع:</div>
     <table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:10px">
@@ -3970,6 +4025,8 @@ function saveEditBon(id){
   b.date=document.getElementById('eb-date').value||b.date;
   b.fournisseur=document.getElementById('eb-fournisseur').value.trim()||b.fournisseur;
   b.note=document.getElementById('eb-note').value.trim();
+  var _chRaw=(document.getElementById('eb-chantier')||{value:''}).value;
+  b.chantierId = _chRaw ? Number(_chRaw) : null;
   b.total=b.lignes.reduce((s,l)=>s+Number(l.qte||0)*Number(l.prix||0),0);
 
   // ── Stock delta: compare original vs current lignes by articleId ──
@@ -4060,6 +4117,13 @@ function openBonModal(id){
         }
         return '<span class="badge badge-linked">مربوط — '+(cheque?cheque.num:'')+'</span>';
       })()}</div></div>
+      ${(function(){
+        if(!b.chantierId) return '';
+        var ch=(chantiers||[]).find(function(x){return Number(x.id)===Number(b.chantierId);});
+        if(!ch) return '';
+        var col=ch.couleur||'#4f8ef7';
+        return '<div class="info-item"><div class="info-item-lbl">الورش</div><div class="info-item-val"><span style="display:inline-block;padding:3px 10px;border-radius:10px;font-size:12px;font-weight:700;background:'+col+'22;color:'+col+';border:1px solid '+col+'44">🏗️ '+escB(ch.nom||'')+'</span></div></div>';
+      })()}
     </div>
     ${isBroken?`<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.4);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
       <span style="font-size:20px">⚠️</span>
@@ -7216,6 +7280,143 @@ function applyUserPermissions(){
 }
 
 // ===== ADMIN PAGE =====
+// ── Chantiers / Projets CRUD ──
+function renderChantiersAdmin(){
+  var list = (chantiers||[]).slice().sort(function(a,b){return String(a.nom||'').localeCompare(String(b.nom||''),'ar');});
+  var counts={};
+  (bons||[]).forEach(function(b){ if(b.chantierId){ counts[b.chantierId]=(counts[b.chantierId]||0)+1; } });
+  var rows = list.length
+    ? list.map(function(c){
+        var col = c.couleur||'#4f8ef7';
+        var stat = c.statut||'actif';
+        var statBadge = stat==='actif'
+          ? '<span class="badge badge-linked" style="background:rgba(16,185,129,0.12);color:#10b981;border-color:rgba(16,185,129,0.3)">● نشيط</span>'
+          : '<span class="badge badge-free">○ مؤرشف</span>';
+        return '<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;margin-bottom:8px">'
+          +'<div style="width:22px;height:22px;border-radius:50%;background:'+col+';flex-shrink:0;box-shadow:0 0 0 2px '+col+'33"></div>'
+          +'<div style="flex:1;min-width:0">'
+            +'<div style="font-weight:700;font-size:13px;color:var(--text)">'+escB(c.nom||'')+'</div>'
+            +'<div style="font-size:11px;color:var(--text2);margin-top:2px">'+statBadge+' <span style="margin-right:8px">🧾 '+(counts[c.id]||0)+' بون</span></div>'
+          +'</div>'
+          +'<button class="btn-ghost" onclick="openChantierEdit('+c.id+')" style="color:var(--accent);font-size:12px" title="تعديل">✏️</button>'
+          +'<button class="btn-ghost" onclick="toggleChantierStatut('+c.id+')" style="font-size:12px" title="'+(stat==='actif'?'أرشفة':'تفعيل')+'">'+(stat==='actif'?'⏸':'▶')+'</button>'
+          +'<button class="btn-ghost" onclick="deleteChantier('+c.id+')" style="color:var(--red);font-size:12px" title="حذف">🗑️</button>'
+        +'</div>';
+      }).join('')
+    : '<div style="color:var(--text3);padding:16px;text-align:center;font-size:12px">مكاينش حتى ورش. زيد واحد باش تبدا تصنف البونات.</div>';
+  return '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:10px;flex-wrap:wrap">'
+      +'<div>'
+        +'<div style="font-size:15px;font-weight:800;color:var(--text);margin-bottom:2px">🏗️ الورشات / المشاريع</div>'
+        +'<div style="font-size:11px;color:var(--text2)">صنّف البونات حسب الورش بلون مميز</div>'
+      +'</div>'
+      +'<button onclick="openChantierEdit(0)" style="padding:7px 14px;background:#4f8ef7;color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer">➕ ورش جديد</button>'
+    +'</div>'
+    +'<div id="chantiers-list">'+rows+'</div>';
+}
+function refreshChantiersAdmin(){
+  var sec=document.getElementById('chantiers-admin-section');
+  if(sec) sec.innerHTML = renderChantiersAdmin();
+}
+function openChantierEdit(id){
+  var c = id ? (chantiers||[]).find(function(x){return Number(x.id)===Number(id);}) : null;
+  var isNew = !c;
+  var curCol = c ? (c.couleur||'#4f8ef7') : '#4f8ef7';
+  var palette = ['#4f8ef7','#10b981','#f59e0b','#ef4444','#a855f7','#06b6d4','#ec4899','#84cc16','#f97316','#6366f1'];
+  var swatches = palette.map(function(col){
+    var active = col.toLowerCase()===curCol.toLowerCase();
+    return '<button onclick="document.getElementById(\'ch-color\').value=\''+col+'\';document.getElementById(\'ch-color-preview\').style.background=\''+col+'\';document.querySelectorAll(\'.ch-sw\').forEach(function(e){e.style.outline=\'\';});this.style.outline=\'3px solid #fff\'" class="ch-sw" style="width:28px;height:28px;border-radius:50%;background:'+col+';border:none;cursor:pointer;'+(active?'outline:3px solid #fff':'')+'"></button>';
+  }).join('');
+  var html = '<div class="modal-title"><span>'+(isNew?'➕ ورش جديد':'✏️ تعديل ورش')+'</span><button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<div style="display:grid;gap:14px">'
+      +'<div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">الاسم *</label>'
+        +'<input class="field-inp" id="ch-nom" placeholder="مثال: فيلا الرباط — مشروع A" value="'+escB(c?c.nom:'')+'"></div>'
+      +'<div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:8px">اللون</label>'
+        +'<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+swatches+'</div>'
+        +'<div style="display:flex;gap:10px;align-items:center">'
+          +'<div id="ch-color-preview" style="width:36px;height:36px;border-radius:50%;background:'+curCol+';border:2px solid var(--border)"></div>'
+          +'<input type="color" id="ch-color" value="'+curCol+'" oninput="document.getElementById(\'ch-color-preview\').style.background=this.value" style="width:50px;height:36px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:transparent">'
+          +'<span style="font-size:12px;color:var(--text3)">اختر من اللوحة أو خاص</span>'
+        +'</div>'
+      +'</div>'
+      +'<div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">الحالة</label>'
+        +'<select class="field-inp" id="ch-statut">'
+          +'<option value="actif" '+(c && c.statut==='actif'?'selected':(isNew?'selected':''))+'>● نشيط</option>'
+          +'<option value="archive" '+(c && c.statut==='archive'?'selected':'')+'>○ مؤرشف</option>'
+        +'</select>'
+      +'</div>'
+      +'<div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">ملاحظات</label>'
+        +'<input class="field-inp" id="ch-notes" placeholder="اختياري..." value="'+escB(c?c.notes:'')+'"></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:16px">'
+      +'<button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveChantier('+(id||0)+')">💾 حفظ</button>'
+      +'<button class="btn" style="padding:12px 18px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✖ إلغاء</button>'
+    +'</div>'
+    +'<div id="ch-msg" style="text-align:center;font-size:12px;margin-top:8px"></div>';
+  document.getElementById('modal-main-c').innerHTML=html;
+  document.getElementById('modal-main').classList.add('open');
+}
+async function saveChantier(id){
+  var nom=(document.getElementById('ch-nom')||{value:''}).value.trim();
+  var couleur=(document.getElementById('ch-color')||{value:'#4f8ef7'}).value;
+  var statut=(document.getElementById('ch-statut')||{value:'actif'}).value;
+  var notes=(document.getElementById('ch-notes')||{value:''}).value.trim();
+  var msg=document.getElementById('ch-msg');
+  if(!nom){ if(msg){msg.style.color='var(--red)';msg.textContent='خاص اسم الورش';} return; }
+  var data={nom:nom, couleur:couleur, statut:statut, notes:notes};
+  try{
+    if(id && Number(id)>0){
+      await sbFetch('chantiers?id=eq.'+id,'PATCH',data);
+      var c=(chantiers||[]).find(function(x){return Number(x.id)===Number(id);});
+      if(c){ c.nom=nom; c.couleur=couleur; c.statut=statut; c.notes=notes; }
+    } else {
+      var res=await sbFetch('chantiers','POST',data);
+      if(res && Array.isArray(res) && res[0]){
+        chantiers.push({id:res[0].id, nom:nom, couleur:couleur, statut:statut, notes:notes});
+      } else if(res && res.__sbError){
+        if(msg){msg.style.color='var(--red)';msg.textContent='⛔ '+(res.msg||'خطأ')+' — جري SQL ديال chantiers f Supabase';}
+        return;
+      }
+    }
+    document.getElementById('modal-main').classList.remove('open');
+    toast('✅ تم الحفظ','success');
+    refreshChantiersAdmin();
+    if(typeof renderBons==='function' && currentPage==='bons') renderBons();
+  }catch(e){
+    if(msg){msg.style.color='var(--red)';msg.textContent='خطأ: '+(e&&e.message||e);}
+  }
+}
+async function deleteChantier(id){
+  var c=(chantiers||[]).find(function(x){return Number(x.id)===Number(id);});
+  if(!c) return;
+  var linked=(bons||[]).filter(function(b){return Number(b.chantierId)===Number(id);}).length;
+  var confirmMsg='حذف الورش "'+c.nom+'"؟'+(linked?' كاين '+linked+' بون مربوط، غينحل الربط.':'');
+  if(!confirm(confirmMsg)) return;
+  try{
+    var res=await sbFetch('chantiers?id=eq.'+id,'DELETE');
+    if(res && res.__sbError){ toast('⛔ '+(res.msg||'فشل'),'error'); return; }
+    (bons||[]).forEach(function(b){ if(Number(b.chantierId)===Number(id)) b.chantierId=null; });
+    (cheques||[]).forEach(function(ch){ if(Number(ch.chantierId)===Number(id)) ch.chantierId=null; });
+    var idx=(chantiers||[]).findIndex(function(x){return Number(x.id)===Number(id);});
+    if(idx>=0) chantiers.splice(idx,1);
+    if(chantierFilter!=null && Number(chantierFilter)===Number(id)) chantierFilter=null;
+    toast('✅ تم الحذف','success');
+    refreshChantiersAdmin();
+    if(typeof renderBons==='function' && currentPage==='bons') renderBons();
+  }catch(e){ toast('خطأ: '+(e&&e.message||e),'error'); }
+}
+async function toggleChantierStatut(id){
+  var c=(chantiers||[]).find(function(x){return Number(x.id)===Number(id);});
+  if(!c) return;
+  var nv = (c.statut==='actif') ? 'archive' : 'actif';
+  try{
+    var res=await sbFetch('chantiers?id=eq.'+id,'PATCH',{statut:nv});
+    if(res && res.__sbError){ toast('⛔ '+(res.msg||'فشل'),'error'); return; }
+    c.statut=nv;
+    refreshChantiersAdmin();
+    if(typeof renderBons==='function' && currentPage==='bons') renderBons();
+  }catch(e){ toast('خطأ: '+(e&&e.message||e),'error'); }
+}
+
 function renderAdmin(){
   if(!currentUser||currentUser.role!=='admin'){
     document.getElementById('page-admin').innerHTML='<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">غير مصرح</div></div>';
@@ -7362,6 +7563,19 @@ function renderAdmin(){
   ];
 
   html+=''
+    // ── CHANTIERS / PROJETS ──
+    +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(79,142,247,0.3))"></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:6px 16px;background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.3);border-radius:20px">'
+        +'<span style="font-size:15px">🏗️</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#4f8ef7;letter-spacing:0.5px">CHANTIERS / الورشات</span>'
+      +'</div>'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(79,142,247,0.3),transparent)"></div>'
+    +'</div>'
+    +'<div id="chantiers-admin-section" style="background:linear-gradient(135deg,rgba(79,142,247,0.06),rgba(99,102,241,0.03));border:1px solid rgba(79,142,247,0.22);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px">'
+      +renderChantiersAdmin()
+    +'</div>'
+
     // ── BACKUP & RESTORE ──
     +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
       +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.3))"></div>'
@@ -8134,6 +8348,14 @@ function initNewBon(){
   ['b-fournisseur','b-note','art-search'].forEach(function(id){
     const el = document.getElementById(id); if(el) el.value = '';
   });
+  // Populate chantier dropdown
+  var chSel=document.getElementById('b-chantier');
+  if(chSel){
+    chSel.innerHTML = '<option value="">— بلا ورش —</option>'
+      + (chantiers||[]).filter(function(c){return (c.statut||'actif')==='actif';})
+        .map(function(c){ return '<option value="'+c.id+'">'+escB(c.nom||'')+'</option>'; }).join('');
+    chSel.value='';
+  }
   const ddEl = document.getElementById('art-dd');
   if(ddEl) ddEl.style.display='none';
   const rv = document.getElementById('b-remise-val');
@@ -8854,6 +9076,8 @@ async function _saveBonImpl(){
   const fournisseur = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
   const date        = (document.getElementById('b-date')||{value:''}).value;
   const note        = (document.getElementById('b-note')||{value:''}).value.trim();
+  const chantierRaw = (document.getElementById('b-chantier')||{value:''}).value;
+  const chantierId  = chantierRaw ? Number(chantierRaw) : null;
   const remVal      = parseFloat((document.getElementById('b-remise-val')||{value:'0'}).value) || 0;
   const msg         = document.getElementById('msg-bon');
 
@@ -8897,6 +9121,7 @@ async function _saveBonImpl(){
   // Build bon snapshot — use nextBId without incrementing yet
   const bon = {
     id: nextBId, num, fournisseur, date, note, chequeId: null,
+    chantierId: chantierId,
     statut: 'Bon', remiseType: bonRemiseType, remiseVal: remVal,
     lignes: bonLignes.map(function(l){ return Object.assign({}, l); }),
     total:    Math.round(sousTotal * 100) / 100,
@@ -12623,6 +12848,7 @@ function bonSaveDraft(){
       fournisseur:g('b-fournisseur'),
       date:g('b-date'),
       note:g('b-note'),
+      chantierId:g('b-chantier'),
       remiseVal:g('b-remise-val'),
       remiseType:(typeof bonRemiseType!=='undefined')?bonRemiseType:'%',
       lignes:bonLignes||[],
@@ -12646,6 +12872,7 @@ function bonLoadDraft(){
     set('b-fournisseur',d.fournisseur||'');
     if(d.date)        set('b-date',d.date);
     set('b-note',d.note||'');
+    if(d.chantierId!=null) set('b-chantier', String(d.chantierId||''));
     set('b-remise-val',d.remiseVal||'0');
     return true;
   }catch(e){return false;}

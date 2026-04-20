@@ -536,6 +536,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 @media(max-width:768px){
   :root{--topbar-h:56px;}
 
+  html,body{height:auto;min-height:100%;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;}
   body{flex-direction:column;}
 
   .sidebar{
@@ -550,10 +551,10 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   .sidebar-overlay{display:block;}
   .hamburger{display:flex;}
 
-  .main{height:100vh;width:100%;}
-  .topbar{padding:0 16px;}
+  .main{height:auto;min-height:calc(100vh - 0px);width:100%;overflow:visible;}
+  .topbar{position:sticky;top:0;z-index:20;padding:0 16px;}
+  .content{overflow:visible!important;padding:16px!important;}
   .topbar-title{font-size:16px;}
-  .content{padding:16px!important;}
 
   .dash-grid{grid-template-columns:1fr 1fr!important;gap:12px!important;margin-bottom:16px!important;}
   .dash-cols{grid-template-columns:1fr!important;gap:14px!important;}

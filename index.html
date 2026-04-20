@@ -12254,32 +12254,53 @@ async function _factSaveNewImpl(){
       tva=ttc-ht;
     }
 
-    // Next sequential number — scan ALL factures to avoid collisions even across years
+    // Next sequential number — query SERVER for max(num) this year (avoids stale local state / concurrent tabs)
     const _factYear=new Date().getFullYear();
-    const _yearFacts=factures.filter(function(f){ return f.date && String(f.date).startsWith(String(_factYear)); });
-    let nextNum=(_yearFacts.length?Math.max.apply(null,_yearFacts.map(function(f){return Number(f.num)||0;})):0)+1;
-    // Safety: bump past any existing num in the full list until free
-    var _allNums={}; factures.forEach(function(f){_allNums[Number(f.num)||0]=true;});
-    while(_allNums[nextNum]) nextNum++;
+    async function _computeNextNum(){
+      // Query server for max num this year
+      var srv=await sbFetch('factures','GET',null,'select=num&date=gte.'+_factYear+'-01-01&date=lte.'+_factYear+'-12-31&order=num.desc&limit=1');
+      var srvMax=(Array.isArray(srv) && srv[0] && Number(srv[0].num))||0;
+      // Also consider local (may have unsynced items)
+      var _yearFacts=factures.filter(function(f){ return f.date && String(f.date).startsWith(String(_factYear)); });
+      var locMax=_yearFacts.length?Math.max.apply(null,_yearFacts.map(function(f){return Number(f.num)||0;})):0;
+      return Math.max(srvMax, locMax)+1;
+    }
 
-    const payload={
-      num:nextNum,
-      client_id:clt?clt.id:null,
-      client_nom:clientNom,client_ville:ville,client_ice:ice,
-      date:factNewDate,echeance:factNewEcheance||null,
-      lang:factLang,mode:factMode,
-      lignes:validLignes,
-      total_ht:Math.round(ht*100)/100,
-      total_tva:Math.round(tva*100)/100,
-      total_ttc:Math.round(ttc*100)/100,
-      statut:'معلقة',notes:factNewNotes,
-    };
+    // ── Step 4: COMMIT — save facture with retry on num conflict (max 5 attempts) ──
+    var saved=null, nextNum=0, lastErr=null;
+    for(var attempt=0; attempt<5 && !saved; attempt++){
+      nextNum=await _computeNextNum();
+      // Bump past anything we've tried this loop
+      var _allNums={}; factures.forEach(function(f){_allNums[Number(f.num)||0]=true;});
+      while(_allNums[nextNum]) nextNum++;
 
-    // ── Step 4: COMMIT — save facture. This is the atomic point. ──
-    const res=await sbFetch('factures','POST',payload);
-    if(res && res.__sbError){ throw new Error(sbParseError(res.msg)); }
-    const saved=Array.isArray(res)?res[0]:(res && res.id?res:null);
-    if(!saved){ throw new Error('استجابة غير متوقعة من قاعدة البيانات'); }
+      const payload={
+        num:nextNum,
+        client_id:clt?clt.id:null,
+        client_nom:clientNom,client_ville:ville,client_ice:ice,
+        date:factNewDate,echeance:factNewEcheance||null,
+        lang:factLang,mode:factMode,
+        lignes:validLignes,
+        total_ht:Math.round(ht*100)/100,
+        total_tva:Math.round(tva*100)/100,
+        total_ttc:Math.round(ttc*100)/100,
+        statut:'معلقة',notes:factNewNotes,
+      };
+      const res=await sbFetch('factures','POST',payload);
+      if(res && res.__sbError){
+        lastErr=res;
+        // 23505 = Postgres unique_violation — retry with fresh num
+        var isDup = (res.status===409) || /duplicate|unique|23505|already exists/i.test(res.msg||'');
+        if(isDup){
+          console.warn('facture num '+nextNum+' collided — retrying (attempt '+(attempt+1)+')');
+          continue;
+        }
+        throw new Error(sbParseError(res.msg));
+      }
+      saved=Array.isArray(res)?res[0]:(res && res.id?res:null);
+      if(!saved){ throw new Error('استجابة غير متوقعة من قاعدة البيانات'); }
+    }
+    if(!saved){ throw new Error('تعذر توليد رقم فاتورة فريد — '+(lastErr?sbParseError(lastErr.msg):'جرب مرة أخرى')); }
 
     // ═══════════════════════════════════════════════════════════════════
     // Facture is now safely persisted. Commit local state.

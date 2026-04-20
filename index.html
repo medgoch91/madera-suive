@@ -4378,6 +4378,7 @@ function openFModal(nom){
 
   let html='<div class="modal-title"><span>🏢 '+nom+'</span>'
     +'<div style="display:flex;gap:8px;align-items:center">'
+    +'<button class="btn-ghost" onclick="openFReleve(\''+n+'\')" title="Relevé complet">📄 رلوفي</button>'
     +'<button class="btn-ghost" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\');openEditFournisseur(\''+n+'\')">✏️ تعديل</button>'
     +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button>'
     +'</div></div>';
@@ -4485,6 +4486,122 @@ function openFModal(nom){
   const todayEl=document.getElementById('rg-date');
   if(todayEl)todayEl.valueAsDate=new Date();
   document.getElementById('modal-main').classList.add('open');
+}
+
+// ── Relevé fournisseur (full statement) ────────────────────────
+function openFReleve(nom){
+  const fi=fournisseurs.find(f=>f.nom===nom)||{nom,tel:'',ville:'',email:'',ice:''};
+  const soc=(typeof factSociete==='object' && factSociete)?factSociete:{};
+  const fb=bons.filter(b=>b.fournisseur===nom).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const fc=cheques.filter(c=>c.fournisseur===nom).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  var totalBons=fb.reduce((s,b)=>s+Number(b.totalNet||b.total||0),0);
+  var totalCheques=fc.reduce((s,c)=>s+Number(c.montant||0),0);
+  var paidCheques=fc.filter(c=>c.status==='مدفوع'||c.status==='Payé').reduce((s,c)=>s+Number(c.montant||0),0);
+  var pendingCheques=totalCheques-paidCheques;
+  var balance=totalBons-paidCheques; // what supplier is still owed net
+
+  var today=new Date().toLocaleDateString('fr-MA');
+
+  var bonsRows=fb.map(function(b){
+    var statusLbl=b.chequeId?'✓ مربوط':'⏳ باقي';
+    var statusColor=b.chequeId?'#16a34a':'#d97706';
+    var ck=b.chequeId?fc.find(function(c){return c.id===b.chequeId;}):null;
+    return '<tr>'
+      +'<td>'+escB(b.num||'')+'</td>'
+      +'<td>'+(b.date?new Date(b.date).toLocaleDateString('fr-MA'):'—')+'</td>'
+      +'<td>'+((b.lignes||[]).length)+' articles</td>'
+      +'<td style="text-align:right">'+fmt(b.totalNet||b.total||0)+' DH</td>'
+      +'<td style="color:'+statusColor+';font-weight:600">'+statusLbl+(ck?' ('+escB(ck.num)+')':'')+'</td>'
+    +'</tr>';
+  }).join('');
+
+  var cheqRows=fc.map(function(c){
+    var col=c.status==='مدفوع'||c.status==='Payé'?'#16a34a':(c.status==='مرتجع'?'#dc2626':'#d97706');
+    return '<tr>'
+      +'<td>'+escB(c.num||'')+'</td>'
+      +'<td>'+(c.date?new Date(c.date).toLocaleDateString('fr-MA'):'—')+'</td>'
+      +'<td>'+(c.echeance?new Date(c.echeance).toLocaleDateString('fr-MA'):'—')+'</td>'
+      +'<td style="text-align:right">'+fmt(c.montant||0)+' DH</td>'
+      +'<td style="color:'+col+';font-weight:600">'+escB(c.status||'—')+'</td>'
+    +'</tr>';
+  }).join('');
+
+  var html='<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title>Relevé — '+escB(nom)+'</title>'
+    +'<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">'
+    +'<style>'
+    +'@page{size:A4;margin:14mm;}'
+    +'*{box-sizing:border-box;}body{margin:0;font-family:"Inter","Cairo",sans-serif;color:#0f172a;font-size:12px;line-height:1.5;background:#fff;}'
+    +'.sheet{max-width:185mm;margin:0 auto;}'
+    +'.hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;padding-bottom:14px;border-bottom:2px solid #0f172a;margin-bottom:18px;}'
+    +'.logo{width:58px;height:58px;object-fit:contain;border-radius:8px;}'
+    +'.hdr-left{display:flex;gap:12px;align-items:center;}'
+    +'.soc-nom{font-size:17px;font-weight:800;letter-spacing:-.2px;}'
+    +'.soc-meta{font-size:10.5px;color:#475569;line-height:1.5;}'
+    +'.hdr-right{text-align:right;}'
+    +'.doc-title{font-size:24px;font-weight:800;color:#9333ea;margin-bottom:4px;}'
+    +'.doc-sub{font-size:11px;color:#64748b;}'
+    +'.parties{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;}'
+    +'.party{border:1px solid #e2e8f0;border-radius:8px;padding:12px;}'
+    +'.party.f{background:#faf5ff;border-color:#e9d5ff;}'
+    +'.party-lbl{font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.5px;font-weight:700;margin-bottom:4px;}'
+    +'.party-nom{font-size:14px;font-weight:800;margin-bottom:3px;}'
+    +'.party-det{font-size:11px;color:#475569;}'
+    +'.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px;}'
+    +'.kpi{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;text-align:center;}'
+    +'.kpi-lbl{font-size:9.5px;color:#64748b;text-transform:uppercase;font-weight:600;margin-bottom:4px;}'
+    +'.kpi-val{font-size:14px;font-weight:800;}'
+    +'.kpi.bal{background:#fef2f2;border-color:#fecaca;}'
+    +'.kpi.bal .kpi-val{color:#dc2626;}'
+    +'.kpi.paid .kpi-val{color:#16a34a;}'
+    +'.kpi.pend .kpi-val{color:#d97706;}'
+    +'h3.sec{font-size:13px;font-weight:700;color:#0f172a;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;}'
+    +'table.r{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px;}'
+    +'table.r thead th{background:#0f172a;color:#fff;padding:7px 8px;font-size:10.5px;text-align:left;font-weight:700;}'
+    +'table.r tbody td{padding:6px 8px;border-bottom:1px solid #e2e8f0;}'
+    +'table.r tbody tr:nth-child(even) td{background:#fbfbfd;}'
+    +'.empty{padding:14px;text-align:center;color:#94a3b8;font-size:11px;font-style:italic;}'
+    +'.ftr{margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;font-size:9px;color:#94a3b8;display:flex;justify-content:space-between;}'
+    +'.noprint{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:99;}'
+    +'.noprint button{padding:10px 18px;border:0;border-radius:8px;font-family:"Inter";font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.15);}'
+    +'.noprint .go{background:#9333ea;color:#fff;}'
+    +'.noprint .cl{background:#e2e8f0;color:#0f172a;}'
+    +'@media print{.noprint{display:none !important;}body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}'
+    +'</style></head><body><div class="sheet">'
+    +'<div class="hdr">'
+      +'<div class="hdr-left">'
+        +(soc.logo?'<img class="logo" src="'+soc.logo+'">':'')
+        +'<div><div class="soc-nom">'+escB(soc.nom||'Société')+'</div>'
+        +'<div class="soc-meta">'+(soc.adresse?escB(soc.adresse)+'<br>':'')+(soc.tel?'Tél: '+escB(soc.tel):'')+'</div></div>'
+      +'</div>'
+      +'<div class="hdr-right"><div class="doc-title">RELEVÉ FOURNISSEUR</div>'
+      +'<div class="doc-sub">Édité le '+today+'</div></div>'
+    +'</div>'
+    +'<div class="parties">'
+      +'<div class="party"><div class="party-lbl">Émetteur</div><div class="party-nom">'+escB(soc.nom||'—')+'</div>'
+      +'<div class="party-det">'+(soc.ice?'ICE: '+escB(soc.ice)+'<br>':'')+(soc.ville?escB(soc.ville):'')+'</div></div>'
+      +'<div class="party f"><div class="party-lbl">Fournisseur</div><div class="party-nom">'+escB(nom)+'</div>'
+      +'<div class="party-det">'+(fi.tel?'Tél: '+escB(fi.tel)+'<br>':'')+(fi.ville?escB(fi.ville)+'<br>':'')+(fi.email?escB(fi.email):'')+'</div></div>'
+    +'</div>'
+    +'<div class="kpi-grid">'
+      +'<div class="kpi"><div class="kpi-lbl">Bons</div><div class="kpi-val">'+fb.length+'</div></div>'
+      +'<div class="kpi"><div class="kpi-lbl">Total bons</div><div class="kpi-val">'+fmt(totalBons)+' DH</div></div>'
+      +'<div class="kpi paid"><div class="kpi-lbl">Chèques payés</div><div class="kpi-val">'+fmt(paidCheques)+' DH</div></div>'
+      +'<div class="kpi '+(balance>0?'bal':'pend')+'"><div class="kpi-lbl">Solde dû</div><div class="kpi-val">'+fmt(balance)+' DH</div></div>'
+    +'</div>'
+    +'<h3 class="sec">📋 Bons ('+fb.length+')</h3>'
+    +(fb.length?'<table class="r"><thead><tr><th>Num</th><th>Date</th><th>Articles</th><th style="text-align:right">Total</th><th>Statut</th></tr></thead><tbody>'+bonsRows+'</tbody></table>':'<div class="empty">Aucun bon</div>')
+    +'<h3 class="sec">🗒️ Chèques ('+fc.length+')</h3>'
+    +(fc.length?'<table class="r"><thead><tr><th>Num</th><th>Date</th><th>Échéance</th><th style="text-align:right">Montant</th><th>Statut</th></tr></thead><tbody>'+cheqRows+'</tbody></table>':'<div class="empty">Aucun chèque</div>')
+    +'<div class="ftr"><span>'+escB(soc.nom||'')+'</span><span>Page 1/1 · Relevé au '+today+'</span></div>'
+    +'</div>'
+    +'<div class="noprint"><button class="go" onclick="window.print()">🖨️ Imprimer / PDF</button><button class="cl" onclick="window.close()">Fermer</button></div>'
+    +'<script>window.addEventListener("load",function(){setTimeout(function(){window.print();},400);});<\/script>'
+    +'</body></html>';
+
+  var w=window.open('','_blank','width=900,height=820');
+  if(!w){ toast('السماح بالنوافذ المنبثقة مطلوب','warning'); return; }
+  w.document.write(html); w.document.close();
 }
 
 function addPrixFourModal(nom){

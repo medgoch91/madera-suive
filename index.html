@@ -4572,15 +4572,28 @@ function exportChequePDF(){
 }
 
 // ═══ Share cheque image to Telegram ═══
+function resetTelegramChatId(){
+  localStorage.removeItem('tg_chat_id');
+  try{toast('🔄 tم msh chat_id — 3awad jarrab','info');}catch(e){}
+}
+function promptChatId(){
+  var help='Telegram Chat ID dyalك:\n\n'
+    +'1️⃣ Ftah Telegram → sewwer: @APPSUIVEBOT\n'
+    +'2️⃣ Dir /start f l-bot\n'
+    +'3️⃣ Ftah @userinfobot → /start → kayعtiك Your ID\n'
+    +'4️⃣ A7ssab had number hna:';
+  var id=prompt(help);
+  return id && id.trim() ? id.trim() : null;
+}
 async function shareChequeToTelegram(){
   var msgEl=document.getElementById('pc-msg');
   var setMsg=function(t,c){ if(msgEl){ msgEl.style.color=c||'var(--text2)'; msgEl.textContent=t||''; } };
   if(typeof html2canvas==='undefined'){ setMsg('❌ html2canvas ma t7mlch — 3awad l-page','var(--red)'); return; }
   var chatId=localStorage.getItem('tg_chat_id');
   if(!chatId){
-    chatId=prompt('Telegram Chat ID (sift /start l-bot + @userinfobot):');
-    if(!chatId||!chatId.trim()) return;
-    localStorage.setItem('tg_chat_id',chatId.trim());
+    chatId=promptChatId();
+    if(!chatId) return;
+    localStorage.setItem('tg_chat_id',chatId);
   }
   var wrap=document.getElementById('pc-cheque-wrap');
   if(!wrap){ setMsg('❌ ma lqit pc-cheque-wrap','var(--red)'); return; }
@@ -4604,8 +4617,22 @@ async function shareChequeToTelegram(){
     fd.append('photo',blob,'cheque.png');
     var r=await fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendPhoto',{method:'POST',body:fd});
     var j=await r.json();
-    if(j && j.ok){ setMsg('✅ tsift!','#10b981'); toast('✅ تم إرسال الشيك عبر Telegram','success'); }
-    else{ setMsg('❌ '+(j.description||'فشل الإرسال'),'var(--red)'); }
+    if(j && j.ok){ setMsg('✅ tsift!','#10b981'); toast('✅ تم إرسال الشيك عبر Telegram','success'); return; }
+    // Handle "chat not found" — chat_id ghalet wlla l-bot ma tbda3 ml chat
+    var desc=(j && j.description)||'فشل الإرسال';
+    if(/chat not found/i.test(desc) || /user is deactivated/i.test(desc) || /bot was blocked/i.test(desc)){
+      localStorage.removeItem('tg_chat_id');
+      setMsg('❌ chat_id ghalet wlla l-bot ma tbda3ch','var(--red)');
+      if(confirm('❌ '+desc+'\n\nKhas awel tdir /start l l-bot f Telegram.\n\nBghiti dkhel chat_id jdid?')){
+        var newId=promptChatId();
+        if(newId){
+          localStorage.setItem('tg_chat_id',newId);
+          return shareChequeToTelegram(); // retry
+        }
+      }
+    } else {
+      setMsg('❌ '+desc,'var(--red)');
+    }
   }catch(e){
     setMsg('❌ '+(e.message||e),'var(--red)');
   }

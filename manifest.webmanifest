@@ -1,0 +1,16 @@
+{
+  "name": "سويفي — إدارة الشيكات والبونات",
+  "short_name": "سويفي",
+  "description": "تطبيق إدارة البونات، الشيكات، الأجراء والمخزون",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#070612",
+  "theme_color": "#070612",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

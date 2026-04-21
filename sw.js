@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v10-ch-dash';
+const CACHE = 'suivi-v11-tasw-print';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

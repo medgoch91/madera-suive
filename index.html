@@ -12219,6 +12219,7 @@ function renderSalDashboard(){
           ?'<div style="display:flex;align-items:center;gap:6px">'
             +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(taswiya.montant)+' DH</span>'
             +'<span style="font-size:10px;background:rgba(39,174,96,0.1);color:var(--green);padding:2px 8px;border-radius:20px;font-weight:700">✓ مخلص</span>'
+            +(taswiya.id?'<button onclick="printTaswiyaRow('+taswiya.id+')" title="طبع الشيك" style="padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')
             +'<button onclick="salAnnulerTasw('+r.s.id+')" style="padding:2px 6px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:10px;cursor:pointer">↩</button>'
           +'</div>'
           :'<div style="display:flex;align-items:center;gap:6px">'
@@ -12269,6 +12270,7 @@ function renderSalDashboard(){
             ?'<div style="display:flex;align-items:center;gap:6px">'
               +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(tasw.montant)+' DH</span>'
               +'<span style="font-size:10px;background:rgba(39,174,96,0.1);color:var(--green);padding:2px 8px;border-radius:20px;font-weight:700">✓ مخلص</span>'
+              +(tasw.id?'<button onclick="printPcTaswiyaRow('+tasw.id+')" title="طبع الشيك" style="padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')
               +'<button onclick="pcAnnulerTasw('+r.o.id+')" style="padding:2px 6px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:10px;cursor:pointer">↩</button>'
             +'</div>'
             :'<div style="display:flex;align-items:center;gap:6px">'
@@ -12286,6 +12288,44 @@ function renderSalDashboard(){
   }
   html+='</tbody></table></div></div>';
   return html;
+}
+
+// ── Print cheque prefilled from a taswiya (salary settlement) ──
+function printTaswiyaRow(taswId){
+  const t = salTaswiyas.find(function(x){return x.id===taswId;});
+  if(!t){ toast('التسوية غير موجودة','error'); return; }
+  const s = salariesData.find(function(x){return x.id===t.salarie_id;});
+  const ordre = t.nom_salarie || (s ? (s.nom+(s.prenom?' '+s.prenom:'')) : '');
+  printMode = 'cheque';
+  pendingPrintData = {
+    ordre:    ordre,
+    montant:  t.montant || '',
+    date:     t.date_paiement || new Date().toISOString().split('T')[0],
+    echeance: '',
+    ville:    'Agadir',
+    num:      '',
+    type:     'cheque'
+  };
+  const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
+  showPage('print-cheque', navBtn);
+}
+
+function printPcTaswiyaRow(taswId){
+  const t = pcTaswiyas.find(function(x){return x.id===taswId;});
+  if(!t){ toast('التسوية غير موجودة','error'); return; }
+  const o = ouvriersPc.find(function(x){return x.id===t.ouvrier_id;});
+  printMode = 'cheque';
+  pendingPrintData = {
+    ordre:    o ? o.nom : '',
+    montant:  t.montant || '',
+    date:     t.date_paiement || new Date().toISOString().split('T')[0],
+    echeance: '',
+    ville:    'Agadir',
+    num:      '',
+    type:     'cheque'
+  };
+  const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
+  showPage('print-cheque', navBtn);
 }
 
 async function salKhallas(salId){
@@ -12490,13 +12530,14 @@ function renderSalHistorique(){
     html+='</tbody></table></div></div>';
   } else {
     if(!taswF.length) return html + emptyBlock('✅','ما كاين حتى تسوية');
-    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الفترة</th><th>المبلغ</th></tr></thead><tbody>';
+    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
     taswF.forEach(function(t,i){
       html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
         +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(t.date_paiement||t.created_at)+'</td>'
         +'<td style="font-weight:700">'+escB(t.nom_salarie||getSalNom(t.salarie_id))+'</td>'
         +'<td style="font-size:12px;color:var(--text2)">'+fmtDate(t.date_from)+' → '+fmtDate(t.date_to)+'</td>'
         +'<td><span style="font-weight:800;color:var(--green);font-size:15px">'+fmtN(t.montant)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
+        +'<td>'+(t.id?'<button onclick="printTaswiyaRow('+t.id+')" title="طبع الشيك" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
       +'</tr>';
     });
     html+='</tbody></table></div></div>';

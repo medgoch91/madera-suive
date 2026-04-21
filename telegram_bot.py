@@ -330,6 +330,29 @@ async def cmd_today(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(workers_msg, parse_mode="Markdown")
 
 
+async def cmd_testpush(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    if not await _check_rate(update): return
+    if not _PUSH_OK:
+        await update.message.reply_text("⚠️ Web Push معطل — خاص VAPID_PRIVATE_KEY + pywebpush.")
+        return
+    try:
+        subs = await sb_get("push_subscriptions", {"select": "id"})
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ خطأ ف جلب المشتركين: {e}")
+        return
+    n = len(subs or [])
+    if n == 0:
+        await update.message.reply_text("🔕 ما كاين حتى مشترك ف web push. زيد التطبيق مـ Admin → WEB PUSH → فعّل الإشعارات.")
+        return
+    await send_web_push(
+        "🧪 تجربة push",
+        f"الإشعارات خدّامة! ({datetime.datetime.now(TZ).strftime('%H:%M')})",
+        url="./#dashboard",
+        tag="testpush",
+    )
+    await update.message.reply_text(f"✅ تصيفطو الإشعار لـ {n} مشترك.")
+
+
 # ── Notification builders ────────────────────────────────────────
 async def build_cheques_due_message(today: str) -> str:
     """Cheques dueing today + overdue unpaid."""
@@ -1388,6 +1411,7 @@ def main():
     app.add_handler(CommandHandler("subscribe",   cmd_subscribe))
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     app.add_handler(CommandHandler("today",       cmd_today))
+    app.add_handler(CommandHandler("testpush",    cmd_testpush))
 
     # Cheque same-day ping callbacks (global — outside conversations)
     app.add_handler(CallbackQueryHandler(cb_chq_paid,   pattern=r"^CHQPAID:\d+$"))

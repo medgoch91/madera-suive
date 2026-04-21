@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v16-cachet';
+const CACHE = 'suivi-v17-sec';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

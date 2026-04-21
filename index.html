@@ -1488,7 +1488,37 @@ window.addEventListener('online', function(){ drainSbQueue(); });
 window.addEventListener('offline', function(){ _updateOfflineBadge(); });
 window.addEventListener('DOMContentLoaded', function(){ _updateOfflineBadge(); if(navigator.onLine!==false) drainSbQueue(); try{applyI18n();}catch(e){} });
 
+// ── Client-side rate limiting (defense-in-depth; real protection is RLS/server-side) ──
+var _sbRateWrites = [];   // timestamps of recent writes
+var _sbRateReads  = [];   // timestamps of recent reads
+var _sbRateWarned = 0;
+function _sbRateCheck(method){
+  var now = Date.now();
+  // Purge > 60s
+  _sbRateWrites = _sbRateWrites.filter(function(t){return now-t<60000;});
+  _sbRateReads  = _sbRateReads.filter(function(t){return now-t<60000;});
+  // Caps: 60 writes/min, 300 reads/min
+  if(method!=='GET'){
+    if(_sbRateWrites.length>=60){
+      if(now-_sbRateWarned>5000){ _sbRateWarned=now; if(typeof toast==='function') toast('⏱️ تفاضي ف الكتابات — استنى شوية','error'); }
+      return false;
+    }
+    _sbRateWrites.push(now);
+  } else {
+    if(_sbRateReads.length>=300){
+      if(now-_sbRateWarned>5000){ _sbRateWarned=now; if(typeof toast==='function') toast('⏱️ تفاضي ف القراءات','error'); }
+      return false;
+    }
+    _sbRateReads.push(now);
+  }
+  return true;
+}
+
 async function sbFetch(table, method='GET', body=null, params='', replay=false){
+  // Client-side throttle — blocks runaway scripts / buggy loops
+  if(!replay && !_sbRateCheck(method)){
+    return {__sbError:true, msg:'rate_limit_client', status:429};
+  }
   const url = SB_URL+'/rest/v1/'+table+(params?'?'+params:'');
   const prefer=(method==='POST'||method==='PATCH')?'return=representation':'';
   const h = {
@@ -8833,7 +8863,15 @@ function bonRenderLines(){
   nbUpdateStep();
   try{bonSaveDraft();}catch(e){}
 }
-function escB(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function escB(s){
+  // XSS-safe: escape all 5 HTML-injection chars (&, <, >, ", ')
+  return String(s==null?'':s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
 
 function bonNomSearch(i, val){
   const sug = document.getElementById('bls'+i);

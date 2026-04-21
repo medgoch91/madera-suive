@@ -2327,6 +2327,11 @@ function showPage(page,btn){
     if(navHistory.length>50) navHistory.shift(); // cap stack size
   }
   _navBack=false;
+  // Leaving print-cheque → drop any stale prefill so next entry starts clean
+  if(currentPage==='print-cheque' && page!=='print-cheque'){
+    pendingPrintData = null;
+    if(typeof renderPrintCheque==='function') renderPrintCheque._toastedFor = null;
+  }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
@@ -5966,17 +5971,22 @@ function renderPrintCheque(){
   if(bgImg){const bg=document.getElementById('pc-bg');if(bg){bg.style.background=`url('${bgImg}') center/cover no-repeat`;bg.innerHTML='';}}
   renderPrintHistory();
   applyChqCfgToPreview();
-  // If we arrived here from the التسويات list, prefill the form from the stashed cheque/effet
+  // If we arrived here from the التسويات list (or are re-rendering after a toggle),
+  // prefill the form from the stashed cheque/effet. Keep pendingPrintData alive so
+  // that switching شيك/ورقة doesn't wipe the values — clear only on explicit reset or print.
   if(pendingPrintData){
-    const d = pendingPrintData; pendingPrintData = null;
-    const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v; };
+    const d = pendingPrintData;
+    const set = (id,v)=>{ const el=document.getElementById(id); if(el && (v!==undefined && v!==null && v!=='')) el.value = v; };
     set('pc-ordre',    d.ordre);
     set('pc-montant',  d.montant);
     set('pc-date',     d.date);
     set('pc-echeance', d.echeance);
     set('pc-ville',    d.ville);
-    const lbl = (d.type==='effet') ? ('ورقة '+(d.num||'')) : ('شيك '+(d.num||''));
-    toast('✏️ '+lbl+' جاهز — تحقق و كبس 🖨️ للطباعة','info');
+    if(!renderPrintCheque._toastedFor || renderPrintCheque._toastedFor !== d){
+      renderPrintCheque._toastedFor = d;
+      const lbl = (d.type==='effet') ? ('ورقة '+(d.num||'')) : ('شيك '+(d.num||''));
+      try{ toast('✏️ '+lbl+' جاهز — تحقق و كبس 🖨️ للطباعة','info'); }catch(_){}
+    }
   }
   updatePrintPreview();
 }
@@ -6230,6 +6240,8 @@ function resetPrintForm(){
   ['pc-ordre','pc-montant','pc-date','pc-echeance','pc-ville'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const d=document.getElementById('pc-date');if(d)d.valueAsDate=new Date();
   const v=document.getElementById('pc-ville');if(v)v.value='Agadir';
+  pendingPrintData = null;
+  renderPrintCheque._toastedFor = null;
   updatePrintPreview();
 }
 

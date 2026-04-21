@@ -440,6 +440,118 @@ async def job_electricity_summary(context: ContextTypes.DEFAULT_TYPE):
             print(f"[job_electricity_summary] fail {cid}: {e}")
 
 
+# ── Cheque/effet same-day ping (16h + 18h) ──────────────────────
+PAID_STATUSES = ("مصروف", "Payé", "خالص", "paid")
+
+
+async def sb_patch_cheque(cid: int, patch: dict) -> None:
+    hdrs = {**SB_HDR, "Prefer": "return=minimal"}
+    async with httpx.AsyncClient() as c:
+        r = await c.patch(
+            f"{SB_URL}/rest/v1/cheques",
+            headers=hdrs,
+            params={"id": f"eq.{cid}"},
+            json=patch,
+        )
+        r.raise_for_status()
+
+
+async def job_cheque_today_ping(context: ContextTypes.DEFAULT_TYPE):
+    """Per-item ping for cheques/effets due today still unpaid. Runs 16h + 18h."""
+    ids = load_chat_ids()
+    if not ids:
+        return
+    today = datetime.date.today().isoformat()
+    try:
+        items = await sb_get("cheques", {
+            "select": "id,num,type,fournisseur,montant,echeance,status",
+            "echeance": f"eq.{today}",
+        })
+    except Exception as e:
+        print(f"[job_cheque_today_ping] fetch error: {e}")
+        return
+    pending = [c for c in (items or []) if (c.get("status") or "") not in PAID_STATUSES]
+    if not pending:
+        return
+    for c in pending:
+        rid = c.get("id")
+        t = (c.get("type") or "cheque").lower()
+        label = "📝 كمبيالة (effet)" if t == "effet" else "💳 شيك"
+        num = int(c.get("num") or 0)
+        mont = float(c.get("montant") or 0)
+        four = c.get("fournisseur") or "?"
+        txt = (
+            f"{label} — *حل اليوم*\n"
+            f"رقم: {num:04d}\n"
+            f"المورد: {four}\n"
+            f"المبلغ: *{mont:,.2f} د.م.*\n"
+            f"📅 {today}\n\n"
+            f"واش تخلص اليوم؟"
+        )
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ تخلص",  callback_data=f"CHQPAID:{rid}"),
+                InlineKeyboardButton("❌ باقي",   callback_data=f"CHQUNPAID:{rid}"),
+            ],
+            [InlineKeyboardButton("📅 أجّل 7 أيام", callback_data=f"CHQDEFER:{rid}")],
+        ])
+        for chat_id in ids:
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id, text=txt,
+                    parse_mode="Markdown", reply_markup=kb,
+                )
+            except Exception as e:
+                print(f"[job_cheque_today_ping] send to {chat_id} failed: {e}")
+
+
+async def cb_chq_paid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    try:
+        cid = int(q.data.split(":", 1)[1])
+    except Exception:
+        return
+    today = datetime.date.today().isoformat()
+    try:
+        await sb_patch_cheque(cid, {"status": "مصروف", "paid_at": today})
+    except Exception as e:
+        await q.edit_message_text((q.message.text or "") + f"\n\n⚠️ خطأ: {_fmt_err(e)}")
+        return
+    await q.edit_message_text(
+        (q.message.text or "") + f"\n\n✅ *تم — تخلص ({today})*",
+        parse_mode="Markdown",
+    )
+
+
+async def cb_chq_unpaid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer("ok — نعاود نذكّر فالمرة الجاية.")
+    await q.edit_message_text(
+        (q.message.text or "") + "\n\n❌ *باقي — سنعيد التذكير*",
+        parse_mode="Markdown",
+    )
+
+
+async def cb_chq_defer(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    try:
+        cid = int(q.data.split(":", 1)[1])
+    except Exception:
+        return
+    new_date = (datetime.date.today() + datetime.timedelta(days=7)).isoformat()
+    try:
+        await sb_patch_cheque(cid, {"echeance": new_date})
+    except Exception as e:
+        await q.edit_message_text((q.message.text or "") + f"\n\n⚠️ خطأ: {_fmt_err(e)}")
+        return
+    await q.edit_message_text(
+        (q.message.text or "") + f"\n\n📅 *تأجل إلى {new_date}*",
+        parse_mode="Markdown",
+    )
+
+
 async def build_electricity_summary_message(today: str) -> str:
     """Daily électricité à distance summary + low stock alerts."""
     start = f"{today}T00:00:00"
@@ -1187,6 +1299,11 @@ def main():
     app.add_handler(CommandHandler("subscribe",   cmd_subscribe))
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     app.add_handler(CommandHandler("today",       cmd_today))
+
+    # Cheque same-day ping callbacks (global — outside conversations)
+    app.add_handler(CallbackQueryHandler(cb_chq_paid,   pattern=r"^CHQPAID:\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_chq_unpaid, pattern=r"^CHQUNPAID:\d+$"))
+    app.add_handler(CallbackQueryHandler(cb_chq_defer,  pattern=r"^CHQDEFER:\d+$"))
     app.add_handler(CommandHandler("balance",     cmd_balance))
     app.add_handler(CommandHandler("stock",       cmd_stock))
     app.add_handler(conv)
@@ -1199,6 +1316,17 @@ def main():
             job_cheques_due,
             time=datetime.time(hour=CHEQUE_CHECK_H, minute=0, tzinfo=TZ),
             name="cheques_due_morning",
+        )
+        # Same-day per-cheque ping with inline buttons (16h + 18h)
+        jq.run_daily(
+            job_cheque_today_ping,
+            time=datetime.time(hour=16, minute=0, tzinfo=TZ),
+            name="cheques_today_16",
+        )
+        jq.run_daily(
+            job_cheque_today_ping,
+            time=datetime.time(hour=18, minute=0, tzinfo=TZ),
+            name="cheques_today_18",
         )
         jq.run_daily(
             job_electricity_summary,
@@ -1216,7 +1344,7 @@ def main():
             time=datetime.time(hour=9, minute=0, tzinfo=TZ),
             name="monthly_report",
         )
-        print(f"🔔 Jobs: cheques {CHEQUE_CHECK_H:02d}:00 | elec {ELEC_SUMMARY_H:02d}:00 | workers {WORKERS_SUMMARY_H:02d}:00 | monthly 09:00 (TZ: Africa/Casablanca)")
+        print(f"🔔 Jobs: cheques {CHEQUE_CHECK_H:02d}:00 | today-ping 16:00+18:00 | elec {ELEC_SUMMARY_H:02d}:00 | workers {WORKERS_SUMMARY_H:02d}:00 | monthly 09:00 (TZ: Africa/Casablanca)")
     else:
         print("⚠️ JobQueue غير متاح — ثبت: pip install python-telegram-bot[job-queue]")
 

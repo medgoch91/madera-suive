@@ -1337,6 +1337,11 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
               <div><label class="field-lbl">الحالة</label>
                 <select class="field-inp" id="c-status"><option value="معلق">معلق</option><option value="مدفوع">مدفوع</option><option value="مرفوض">مرفوض</option></select>
               </div>
+              <div style="grid-column:1/-1"><label class="field-lbl">🏗️ الورش / المشروع</label>
+                <select class="field-inp" id="c-chantier">
+                  <option value="">— بلا ورش —</option>
+                </select>
+              </div>
             </div>
             <button class="btn btn-accent" style="width:100%;padding:13px;font-size:15px;margin-top:4px" onclick="saveCheque()" id="nc-save-btn">💾 حفظ</button>
             <div class="form-msg" id="msg-cheque"></div>
@@ -2312,6 +2317,16 @@ function showPage(page,btn){
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
     try{ setNewChequeType(_newChequeType||'cheque'); }catch(e){}
+    // Populate chantier dropdown
+    try{
+      var chSel=document.getElementById('c-chantier');
+      if(chSel){
+        chSel.innerHTML = '<option value="">— بلا ورش —</option>'
+          + (chantiers||[]).filter(function(c){return (c.statut||'actif')==='actif';})
+            .map(function(c){ return '<option value="'+c.id+'">'+escB(c.nom||'')+'</option>'; }).join('');
+        chSel.value='';
+      }
+    }catch(e){}
   }
   updateSidebar();
   try{ mbnSyncActive(page); }catch(e){}
@@ -2854,6 +2869,18 @@ function renderDashboard(){
   window._dashTopProdNames=topProducts.map(function(x){return x[0];});
   window._dashTopFourNames=topFour.map(function(x){return x[0];});
 
+  // ── Dépenses par chantier (based on date-filtered bons) ──
+  const chMap={};
+  bnF.forEach(function(b){
+    if(!b.chantierId) return;
+    chMap[String(b.chantierId)]=(chMap[String(b.chantierId)]||0)+Number(b.total||0);
+  });
+  const chUnassigned = bnF.filter(function(b){return !b.chantierId;}).reduce(function(s,b){return s+Number(b.total||0);},0);
+  const chantierRows = (chantiers||[]).map(function(c){
+    return {id:c.id, nom:c.nom||'', couleur:c.couleur||'#4f8ef7', total:Number(chMap[String(c.id)]||0)};
+  }).filter(function(x){return x.total>0;}).sort(function(a,b){return b.total-a.total;});
+  const chMaxVal = chantierRows.length ? chantierRows[0].total : 0;
+
   // ── Cashflow prevision (ignores date filter) ──
   const today = new Date(); today.setHours(0,0,0,0);
   const addDays = n => { const d=new Date(today); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
@@ -3091,6 +3118,40 @@ function renderDashboard(){
       </div>
 
     </div>
+
+    <!-- ═══ DÉPENSES PAR CHANTIER ═══ -->
+    ${(chantierRows.length||chUnassigned>0)?`
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:18px">
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div style="font-size:14px;font-weight:800;color:var(--text)">🏗️ دفعات حسب الورش</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${periodLabel==='الكل'?'جميع الفترات':periodLabel}</div>
+        </div>
+        <span style="font-size:13px;font-weight:800;color:#4f8ef7">${fmtK(chantierRows.reduce(function(s,x){return s+x.total;},0)+chUnassigned)} <span style="font-size:10px;color:var(--text3)">DH</span></span>
+      </div>
+      <div style="padding:8px 0">
+        ${chantierRows.map(function(x){
+          const pct = chMaxVal>0 ? (x.total/chMaxVal*100) : 0;
+          const col = x.couleur||'#4f8ef7';
+          return '<div onclick="setBonChantierFilter('+x.id+');location.hash=\'bons\'" title="اضغط لفلترة البونات" style="padding:10px 20px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">'
+            +'<div style="width:14px;height:14px;border-radius:50%;background:'+col+';flex-shrink:0;box-shadow:0 0 0 2px '+col+'33"></div>'
+            +'<div style="flex:1;min-width:0">'
+              +'<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(x.nom)+'</div>'
+              +'<div style="height:4px;background:var(--bg3);border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;width:'+pct.toFixed(0)+'%;background:'+col+';border-radius:2px"></div></div>'
+            +'</div>'
+            +'<div style="font-size:13px;font-weight:700;color:'+col+';letter-spacing:-0.3px;white-space:nowrap">'+fmtK(x.total)+' <span style="font-size:9px;color:var(--text3)">DH</span></div>'
+            +'<div style="color:var(--text3);font-size:14px;margin-right:-4px">›</div>'
+          +'</div>';
+        }).join('')}
+        ${chUnassigned>0?`<div style="padding:10px 20px;display:flex;align-items:center;gap:12px;opacity:0.75">
+          <div style="width:14px;height:14px;border-radius:50%;background:var(--text3);flex-shrink:0"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;color:var(--text2);font-style:italic">بلا ورش</div>
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text2);white-space:nowrap">${fmtK(chUnassigned)} <span style="font-size:9px;color:var(--text3)">DH</span></div>
+        </div>`:''}
+      </div>
+    </div>`:''}
 
     <!-- ═══ ALERTS + ACTIVITY FEED ═══ -->
     <div style="display:grid;grid-template-columns:1fr 1.2fr;gap:16px;margin-bottom:18px" class="dash-two-cols">
@@ -7043,6 +7104,8 @@ function saveCheque(){
   const date=document.getElementById('c-date').value;
   const ech=typeDef.hasEcheance ? document.getElementById('c-echeance').value : '';
   const status=document.getElementById('c-status').value;
+  const chantierRaw=(document.getElementById('c-chantier')||{value:''}).value;
+  const chantierId = chantierRaw ? Number(chantierRaw) : null;
   const msg=document.getElementById('msg-cheque');
   // Validate required fields per type (espece doesn't require num / échéance)
   var missingBase = !f || !montant || !date;
@@ -7056,7 +7119,7 @@ function saveCheque(){
     pool.forEach(function(c){ var m=String(c.num||'').match(/(\d+)\s*$/); if(m){ var n=Number(m[1]); if(n>maxN) maxN=n; } });
     finalNum = typeDef.prefix + String(maxN+1).padStart(3,'0');
   }
-  const nc={num:finalNum,fournisseur:f,montant,date,echeance:ech||null,status,type,bonIds:[...selectedBonIds]};
+  const nc={num:finalNum,fournisseur:f,montant,date,echeance:ech||null,status,type,bonIds:[...selectedBonIds],chantierId:chantierId};
   if(status==='مدفوع') nc.paid_at = new Date().toISOString().slice(0,10);
   showLoader('💾 جاري الحفظ...');
   (async function(){
@@ -7066,7 +7129,8 @@ function saveCheque(){
         num:nc.num, fournisseur:nc.fournisseur, montant:nc.montant,
         date:nc.date, echeance:nc.echeance||null, status:nc.status,
         type:nc.type, paid_at:nc.paid_at||null,
-        bon_ids:nc.bonIds
+        bon_ids:nc.bonIds,
+        chantier_id: nc.chantierId||null
       });
       if(!res||!res[0]){throw new Error('فشل الحفظ في Supabase');}
       nc.id=res[0].id;

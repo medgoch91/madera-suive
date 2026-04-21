@@ -12770,6 +12770,7 @@ function renderSalPcs(){
          +'<button onclick="pcEditId=null;renderSalaries()" style="padding:5px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">✕</button>'
         :'<button onclick="pcEditId='+o.id+';renderSalaries()" style="padding:5px 10px;border-radius:20px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">✏️</button>'
          +'<button onclick="pcToggleActif('+o.id+')" style="padding:5px 10px;border-radius:20px;border:1px solid '+(o.actif!==false?'var(--green)':'var(--border)')+';background:transparent;color:'+(o.actif!==false?'var(--green)':'var(--text3)')+';font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">'+(o.actif!==false?'نشيط':'متوقف')+'</button>'
+         +'<button onclick="pcDeleteAjir('+o.id+',\''+escB(o.nom)+'\')" style="padding:5px 10px;border-radius:20px;border:1px solid rgba(232,64,64,0.35);background:rgba(232,64,64,0.07);color:var(--red);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">🗑️</button>'
       )
       +'</div>'
     +'</div>';
@@ -12877,6 +12878,34 @@ async function pcToggleActif(id){
   await sbFetch('ouvriers_pc?id=eq.'+id,'PATCH',{actif:newActif});
   o.actif=newActif;
   localStorage.setItem('ouvriers_pc_v1',JSON.stringify(ouvriersPc));
+  renderSalaries();
+}
+
+async function pcDeleteAjir(id,nom){
+  if(!confirm('واش تبغي تمسح "'+nom+'" بصح؟\nغادي يتمسحو PCs المرتبطين، الحضور، و التسويات.'))return;
+  showLoader('🗑️ جاري الحذف...');
+  try{
+    await Promise.all([
+      sbFetch('ouvrier_pc_assign?ouvrier_id=eq.'+id,'DELETE'),
+      sbFetch('ouvrier_pc_presences?ouvrier_id=eq.'+id,'DELETE'),
+      sbFetch('pc_taswiyas?ouvrier_id=eq.'+id,'DELETE'),
+    ]);
+    await sbFetch('ouvriers_pc?id=eq.'+id,'DELETE');
+  }catch(e){
+    hideLoader();
+    toast('⚠️ '+(e.message||e),'error');
+    return;
+  }
+  hideLoader();
+  ouvriersPc=ouvriersPc.filter(function(x){return x.id!==id;});
+  ouvrierPcAssigns=ouvrierPcAssigns.filter(function(a){return a.ouvrier_id!==id;});
+  pcPresences=pcPresences.filter(function(p){return p.ouvrier_id!==id;});
+  pcTaswiyas=pcTaswiyas.filter(function(t){return t.ouvrier_id!==id;});
+  localStorage.setItem('ouvriers_pc_v1',JSON.stringify(ouvriersPc));
+  localStorage.setItem('ouvrier_pc_assign_v1',JSON.stringify(ouvrierPcAssigns));
+  localStorage.setItem('ouvrier_pc_pres_v1',JSON.stringify(pcPresences));
+  localStorage.setItem('pc_taswiyas_v1',JSON.stringify(pcTaswiyas));
+  toast('تمسح "'+nom+'"','success');
   renderSalaries();
 }
 

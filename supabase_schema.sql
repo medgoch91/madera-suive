@@ -513,5 +513,25 @@ alter table chantiers enable row level security;
 drop policy if exists "anon_all_chantiers" on chantiers;
 create policy "anon_all_chantiers" on chantiers for all to anon using (true) with check (true);
 
+-- ╔══════════════════════════════════════════════╗
+-- ║  31. WEB PUSH SUBSCRIPTIONS                  ║
+-- ╚══════════════════════════════════════════════╝
+-- Endpoints for browser push. Bot reads this table and sends via pywebpush.
+create table if not exists push_subscriptions (
+  id          bigint generated always as identity primary key,
+  endpoint    text   not null unique,
+  p256dh      text   not null,
+  auth        text   not null,
+  user_agent  text   default '',
+  created_at  timestamptz default now(),
+  last_ok_at  timestamptz,
+  fail_count  int    default 0
+);
+create index if not exists idx_push_subs_endpoint on push_subscriptions(endpoint);
+
+alter table push_subscriptions enable row level security;
+drop policy if exists "anon_all_push_subs" on push_subscriptions;
+create policy "anon_all_push_subs" on push_subscriptions for all to anon using (true) with check (true);
+
 -- reload schema cache after DDL
 notify pgrst, 'reload schema';

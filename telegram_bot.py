@@ -26,6 +26,18 @@ BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
 SB_URL    = os.getenv("SB_URL",  "https://tpjrzgubttpqtxieioxe.supabase.co")
 SB_KEY    = os.getenv("SB_KEY",  "sb_publishable_3gAq_lEpojE5_hT4yg4WtQ_oFqaFFfX")
 
+# Web Push (VAPID) — optional, enabled when both keys are set in .env
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY",  "")
+VAPID_SUBJECT     = os.getenv("VAPID_SUBJECT",     "mailto:support@suivi.app")
+try:
+    from pywebpush import webpush as _wp, WebPushException as _WPE  # type: ignore
+    _PUSH_OK = bool(VAPID_PRIVATE_KEY)
+except Exception:
+    _wp = None
+    _WPE = Exception
+    _PUSH_OK = False
+
 if not BOT_TOKEN:
     raise SystemExit(
         "❌ BOT_TOKEN ma mawjoudch.\n"
@@ -123,6 +135,65 @@ async def sb_upsert(table: str, data: dict) -> None:
     async with httpx.AsyncClient() as c:
         r = await c.post(f"{SB_URL}/rest/v1/{table}", headers=hdrs, json=data)
         r.raise_for_status()
+
+
+# ── Web Push dispatch ───────────────────────────────────────────
+import asyncio as _asyncio  # local alias — avoid touching top-level imports
+
+def _webpush_one(sub_info: dict, payload: str) -> tuple[bool, int]:
+    """Blocking pywebpush call — run via to_thread. Returns (ok, status_code)."""
+    try:
+        _wp(
+            subscription_info=sub_info,
+            data=payload,
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims={"sub": VAPID_SUBJECT},
+            ttl=3600,
+        )
+        return True, 201
+    except _WPE as e:
+        code = 0
+        if getattr(e, "response", None) is not None:
+            code = getattr(e.response, "status_code", 0) or 0
+        return False, code
+    except Exception:
+        return False, 0
+
+
+async def send_web_push(title: str, body: str, url: str = "./", tag: str = "suivi") -> None:
+    """Fan out a web push to every subscription in Supabase. No-op if disabled."""
+    if not _PUSH_OK:
+        return
+    try:
+        subs = await sb_get("push_subscriptions", {"select": "id,endpoint,p256dh,auth"})
+    except Exception as e:
+        print(f"[web_push] fetch subs: {e}")
+        return
+    if not subs:
+        return
+    payload = json.dumps({"title": title, "body": body, "url": url, "tag": tag})
+    dead: list[int] = []
+    for s in subs:
+        info = {
+            "endpoint": s["endpoint"],
+            "keys": {"p256dh": s["p256dh"], "auth": s["auth"]},
+        }
+        ok, code = await _asyncio.to_thread(_webpush_one, info, payload)
+        if not ok and code in (404, 410):
+            dead.append(int(s["id"]))
+        elif not ok:
+            print(f"[web_push] send failed (code={code}) sub={s.get('id')}")
+    # Best-effort cleanup of dead endpoints
+    for sid in dead:
+        try:
+            hdrs = {**SB_HDR, "Prefer": "return=minimal"}
+            async with httpx.AsyncClient() as c:
+                await c.delete(
+                    f"{SB_URL}/rest/v1/push_subscriptions",
+                    headers=hdrs, params={"id": f"eq.{sid}"},
+                )
+        except Exception:
+            pass
 
 
 # ── Keyboards ────────────────────────────────────────────────────
@@ -402,42 +473,50 @@ async def build_workers_summary_message(today: str) -> str:
 # ── Daily scheduled jobs ─────────────────────────────────────────
 async def job_cheques_due(context: ContextTypes.DEFAULT_TYPE):
     ids = load_chat_ids()
-    if not ids:
-        return
     today = datetime.date.today().isoformat()
     msg = await build_cheques_due_message(today)
-    for cid in ids:
+    for cid in ids or []:
         try:
             await context.bot.send_message(chat_id=cid, text=msg, parse_mode="Markdown")
         except Exception as e:
             print(f"[job_cheques_due] fail {cid}: {e}")
+    # Web push: short summary
+    try:
+        first_line = (msg.split("\n", 1)[0] or "").replace("*", "")
+        await send_web_push("💳 الشيكات اليوم", first_line, url="./#cheques", tag="chq-daily")
+    except Exception as e:
+        print(f"[job_cheques_due][push] {e}")
 
 
 async def job_workers_summary(context: ContextTypes.DEFAULT_TYPE):
     ids = load_chat_ids()
-    if not ids:
-        return
     today = datetime.date.today().isoformat()
     msg = await build_workers_summary_message(today)
-    for cid in ids:
+    for cid in ids or []:
         try:
             await context.bot.send_message(chat_id=cid, text=msg, parse_mode="Markdown")
         except Exception as e:
             print(f"[job_workers_summary] fail {cid}: {e}")
+    try:
+        await send_web_push("🌙 خلاصة الخدامة", f"تفاصيل اليوم — {today}", url="./#salaries", tag="workers-eod")
+    except Exception as e:
+        print(f"[job_workers_summary][push] {e}")
 
 
 async def job_electricity_summary(context: ContextTypes.DEFAULT_TYPE):
     ids = load_chat_ids()
-    if not ids:
-        return
     today = datetime.date.today().isoformat()
     msg = await build_electricity_summary_message(today)
-    for cid in ids:
+    for cid in ids or []:
         try:
             # No parse_mode — keeps underscores/asterisks literal (bon_number, etc.)
             await context.bot.send_message(chat_id=cid, text=msg)
         except Exception as e:
             print(f"[job_electricity_summary] fail {cid}: {e}")
+    try:
+        await send_web_push("⚡ ملخص الكهرباء", f"bons/retours/stock — {today}", url="./#elec-dist", tag="elec-eod")
+    except Exception as e:
+        print(f"[job_electricity_summary][push] {e}")
 
 
 # ── Cheque/effet same-day ping (16h + 18h) ──────────────────────
@@ -503,6 +582,13 @@ async def job_cheque_today_ping(context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as e:
                 print(f"[job_cheque_today_ping] send to {chat_id} failed: {e}")
+        # Web push — identical info, no action buttons (browser has no callback)
+        push_body = f"{four} — {mont:,.2f} د.م. (رقم {num:04d})"
+        push_title = "📝 كمبيالة حلّت اليوم" if t == "effet" else "💳 شيك حلّ اليوم"
+        try:
+            await send_web_push(push_title, push_body, url=f"./#cheques", tag=f"chq-today-{rid}")
+        except Exception as e:
+            print(f"[job_cheque_today_ping][push] {e}")
 
 
 async def cb_chq_paid(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -924,14 +1010,17 @@ async def job_monthly_report(context: ContextTypes.DEFAULT_TYPE):
     if today.day != 1:
         return  # Only fire on day-1
     ids = load_chat_ids()
-    if not ids:
-        return
     msg = await build_monthly_report_message(today)
-    for cid in ids:
+    for cid in ids or []:
         try:
             await context.bot.send_message(chat_id=cid, text=msg, parse_mode="Markdown")
         except Exception as e:
             print(f"[job_monthly_report] fail {cid}: {e}")
+    try:
+        prev_month = (today.replace(day=1) - datetime.timedelta(days=1)).strftime("%Y-%m")
+        await send_web_push("📊 التقرير الشهري", f"ملخص {prev_month}", url="./#dashboard", tag="monthly")
+    except Exception as e:
+        print(f"[job_monthly_report][push] {e}")
 
 
 # ── /newbon — اختيار الفورنيسور ──────────────────────────────────
@@ -1347,6 +1436,7 @@ def main():
         print(f"🔔 Jobs: cheques {CHEQUE_CHECK_H:02d}:00 | today-ping 16:00+18:00 | elec {ELEC_SUMMARY_H:02d}:00 | workers {WORKERS_SUMMARY_H:02d}:00 | monthly 09:00 (TZ: Africa/Casablanca)")
     else:
         print("⚠️ JobQueue غير متاح — ثبت: pip install python-telegram-bot[job-queue]")
+    print(f"🌐 Web Push: {'enabled' if _PUSH_OK else 'disabled — add VAPID_PRIVATE_KEY + install pywebpush'}")
 
     print("🤖 سويفي Bot running...")
     app.run_polling(drop_pending_updates=True)

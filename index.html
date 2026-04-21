@@ -7640,6 +7640,20 @@ function renderAdmin(){
       +renderChantiersAdmin()
     +'</div>'
 
+    // ── WEB PUSH ──
+    +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(124,58,237,0.3))"></div>'
+      +'<div style="display:flex;align-items:center;gap:10px;padding:6px 16px;background:rgba(124,58,237,0.08);border:1px solid rgba(124,58,237,0.3);border-radius:20px">'
+        +'<span style="font-size:15px">🔔</span>'
+        +'<span style="font-size:12px;font-weight:700;color:#7c3aed;letter-spacing:0.5px">WEB PUSH NOTIFICATIONS</span>'
+      +'</div>'
+      +'<div style="flex:1;height:1px;background:linear-gradient(90deg,rgba(124,58,237,0.3),transparent)"></div>'
+    +'</div>'
+    +'<div style="background:linear-gradient(135deg,rgba(124,58,237,0.06),rgba(79,142,247,0.03));border:1px solid rgba(124,58,237,0.22);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px">'
+      +'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6">إشعارات المتصفح — كيوصلوك نفس اللي كيسيفطو ف Telegram (شيكات، كهرباء، الخدامة، ping 16h/18h). بديل لـ Telegram أو فوقه.</div>'
+      +'<div id="push-admin-section"></div>'
+    +'</div>'
+
     // ── BACKUP & RESTORE ──
     +'<div style="margin:36px 0 18px 0;display:flex;align-items:center;gap:14px">'
       +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(16,185,129,0.3))"></div>'
@@ -7791,6 +7805,7 @@ function renderAdmin(){
   document.getElementById('page-admin').innerHTML=html;
   try{ loadAuditLog(); }catch(e){ /* audit_log table may not exist yet */ }
   try{ loadTrash(); }catch(e){ /* deleted_at column may not exist yet */ }
+  try{ pushRenderBtn(); }catch(e){ /* push api may be absent */ }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -14752,6 +14767,108 @@ if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
     navigator.serviceWorker.register('sw.js').catch(function(e){console.warn('SW register failed',e);});
   });
+}
+
+// ═══ WEB PUSH ═══════════════════════════════════════════════════
+const VAPID_PUB = 'BFyNX5fMqFYfdQv1Q1A1Fo1X4AdFKgJVNAwM2VYLKSQo8dXMsMgqU2XuMqIK6K-YVfWceIA6iMthQGqWCWsGrRU';
+
+function _urlB64ToU8(b64){
+  const pad = '='.repeat((4 - b64.length % 4) % 4);
+  const s = (b64 + pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw = atob(s);
+  const out = new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) out[i]=raw.charCodeAt(i);
+  return out;
+}
+
+function pushSupported(){
+  return ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+}
+
+async function pushStatus(){
+  if(!pushSupported()) return 'unsupported';
+  const perm = Notification.permission;
+  if(perm === 'denied') return 'denied';
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    return sub ? 'subscribed' : (perm==='granted' ? 'granted-no-sub' : 'default');
+  }catch(_){ return 'error'; }
+}
+
+async function pushSubscribe(){
+  if(!pushSupported()){ toast('المتصفح ما كيدعمش push','error'); return; }
+  const perm = await Notification.requestPermission();
+  if(perm !== 'granted'){ toast('صلاحية الإشعارات مرفوضة','error'); pushRenderBtn(); return; }
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub){
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: _urlB64ToU8(VAPID_PUB),
+      });
+    }
+    const j = sub.toJSON();
+    const payload = {
+      endpoint: j.endpoint,
+      p256dh: j.keys.p256dh,
+      auth: j.keys.auth,
+      user_agent: (navigator.userAgent || '').slice(0, 255),
+    };
+    try{
+      await sbFetch('push_subscriptions','POST',payload);
+    }catch(e){
+      // duplicate endpoint → ignore (already registered)
+      if(String(e).indexOf('duplicate')<0) console.warn('push sub save:', e);
+    }
+    toast('✅ تفعلو الإشعارات — تجربة فـ 16h00','success');
+  }catch(e){
+    console.warn('pushSubscribe:', e);
+    toast('⚠️ '+(e.message||e),'error');
+  }
+  pushRenderBtn();
+}
+
+async function pushUnsubscribe(){
+  if(!pushSupported()) return;
+  try{
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if(sub){
+      const endpoint = sub.endpoint;
+      await sub.unsubscribe();
+      try{ await sbFetch('push_subscriptions?endpoint=eq.'+encodeURIComponent(endpoint),'DELETE'); }catch(_){}
+    }
+    toast('🔕 تسدو الإشعارات','info');
+  }catch(e){ console.warn('pushUnsubscribe:', e); }
+  pushRenderBtn();
+}
+
+async function pushRenderBtn(){
+  const host = document.getElementById('push-admin-section');
+  if(!host) return;
+  const st = await pushStatus();
+  const iosHint = (/iPad|iPhone|iPod/.test(navigator.userAgent) && !window.navigator.standalone)
+    ? '<div style="font-size:11px;color:var(--amber);margin-top:8px">⚠️ iOS: خاصك تزيد التطبيق لشاشة البداية (Share → Add to Home Screen) قبل ما تفعّل push.</div>'
+    : '';
+  let body;
+  if(st === 'unsupported'){
+    body = '<div style="color:var(--text3);font-size:13px">المتصفح ما كيدعمش web push.</div>';
+  } else if(st === 'denied'){
+    body = '<div style="color:var(--red);font-size:13px">مرفوض من المتصفح — زيد أعد تفعيل الصلاحية من إعدادات الموقع.</div>';
+  } else if(st === 'subscribed'){
+    body = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+      +'<span style="font-size:13px;color:var(--green);font-weight:700">✅ مفعّل</span>'
+      +'<button onclick="pushUnsubscribe()" style="padding:8px 14px;background:transparent;border:1px solid var(--red);color:var(--red);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer">🔕 أوقف</button>'
+      +'</div>';
+  } else {
+    body = '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+      +'<span style="font-size:13px;color:var(--text2)">غير مفعّل</span>'
+      +'<button onclick="pushSubscribe()" style="padding:8px 14px;background:linear-gradient(135deg,#4f8ef7,#7c3aed);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer">🔔 فعّل الإشعارات</button>'
+      +'</div>';
+  }
+  host.innerHTML = body + iosHint;
 }
 </script>
 </body>

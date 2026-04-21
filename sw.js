@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v11-tasw-print';
+const CACHE = 'suivi-v12-push';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {
@@ -42,5 +42,35 @@ self.addEventListener('fetch', (e) => {
       }
       return res;
     }).catch(() => cached))
+  );
+});
+
+// ── Web Push ───────────────────────────────────────────────────────
+self.addEventListener('push', (e) => {
+  let data = {};
+  try { data = e.data ? e.data.json() : {}; }
+  catch (_) { data = { body: (e.data ? e.data.text() : '') }; }
+  const title = data.title || 'سويفي';
+  const opts = {
+    body:  data.body  || '',
+    icon:  './logo.svg',
+    badge: './logo.svg',
+    tag:   data.tag   || 'suivi-push',
+    data:  { url: data.url || './' },
+    vibrate: [120, 50, 120],
+  };
+  e.waitUntil(self.registration.showNotification(title, opts));
+});
+
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const target = (e.notification.data && e.notification.data.url) || './';
+  e.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) { c.navigate(target).catch(()=>{}); return c.focus(); }
+      }
+      return self.clients.openWindow(target);
+    })
   );
 });

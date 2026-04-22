@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v24-factnum-override';
+const CACHE = 'suivi-v25-recipe-nodup-catfilter';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

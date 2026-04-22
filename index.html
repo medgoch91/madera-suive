@@ -10892,39 +10892,112 @@ async function edDeleteProduct(id){
 }
 
 // Recipe editor modal
+// Category filter persisted per session so reopening the modal on the same product reuses the choice.
+var _edRcpCatFilter='';
 function edOpenRecipeModal(productId){
   var p=edProducts.find(function(x){return Number(x.id)===Number(productId);});if(!p)return;
   var recipe=edGetRecipeFor(productId);
-  var sortedArts=(articles||[]).slice().sort(function(a,b){return String(a.nom).localeCompare(String(b.nom),'ar');});
-  var rowsHtml=(recipe.length?recipe:[{raw_material_id:'',quantity_needed:1}]).map(function(c){
-    return '<div class="_edrcp-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
-      +'<select class="_edrcp-art field-inp" style="flex:1;font-size:13px"><option value="">— اختر سلعة —</option>'
-        +sortedArts.map(function(a){return '<option value="'+a.id+'"'+(String(a.id)===String(c.raw_material_id)?' selected':'')+'>'+escB(a.nom)+(a.ref?' · '+escB(a.ref):'')+'</option>';}).join('')
-      +'</select>'
-      +'<input type="number" class="_edrcp-qte field-inp" min="0" step="1" value="'+(c.quantity_needed||'')+'" placeholder="الكمية" style="width:100px;font-size:13px">'
-      +'<button class="btn-ghost" onclick="this.parentNode.remove()" style="color:var(--red);padding:6px 10px">🗑️</button>'
-    +'</div>';
-  }).join('');
+  var cats=Array.from(new Set((articles||[]).map(function(a){return (a.cat||'').trim();}).filter(Boolean))).sort(function(a,b){return a.localeCompare(b,'ar');});
   var html=''
     +'<div class="modal-title"><span>🧪 وصفة: '+escB(p.nom)+'</span><button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
-    +'<div style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.6">لكل قطعة واحدة من <b>'+escB(p.nom)+'</b>، حدّد السلع المستهلكة:</div>'
-    +'<div id="_edrcp-rows">'+rowsHtml+'</div>'
-    +'<button class="btn-ghost" onclick="(function(){var c=document.getElementById(\'_edrcp-rows\');var t=document.querySelector(\'#_edrcp-rows ._edrcp-row\').cloneNode(true);t.querySelector(\'._edrcp-art\').value=\'\';t.querySelector(\'._edrcp-qte\').value=\'\';c.appendChild(t);})()" style="margin-top:8px;font-size:12px">➕ سلعة أخرى</button>'
+    +'<div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6">لكل قطعة واحدة من <b>'+escB(p.nom)+'</b>، حدّد السلع المستهلكة:</div>'
+    +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:8px">'
+      +'<span style="font-size:11px;color:var(--text3);font-weight:700">🏷️ صنف:</span>'
+      +'<select id="_edrcp-cat" class="field-inp" style="flex:1;font-size:12px;padding:5px 8px" onchange="_edRcpCatFilter=this.value;_edRcpRenderRows()">'
+        +'<option value=""'+(!_edRcpCatFilter?' selected':'')+'>كل السلع</option>'
+        +cats.map(function(c){return '<option value="'+escB(c)+'"'+(_edRcpCatFilter===c?' selected':'')+'>'+escB(c)+'</option>';}).join('')
+      +'</select>'
+    +'</div>'
+    +'<div id="_edrcp-rows"></div>'
+    +'<button class="btn-ghost" onclick="_edRcpAddRow()" style="margin-top:8px;font-size:12px">➕ سلعة أخرى</button>'
     +'<div style="display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">'
       +'<button class="btn btn-accent" style="flex:1" onclick="edSaveRecipeFromModal('+productId+')">💾 حفظ</button>'
     +'</div>';
   document.getElementById('modal-main-c').innerHTML=html;
+  // Seed the row state from the existing recipe, then render
+  window._edRcpRows = (recipe.length?recipe.map(function(c){return {raw_material_id:String(c.raw_material_id||''),quantity_needed:c.quantity_needed||1};}):[{raw_material_id:'',quantity_needed:1}]);
+  _edRcpRenderRows();
   document.getElementById('modal-main').classList.add('open');
 }
 
-async function edSaveRecipeFromModal(productId){
+// Pull current values back out of the DOM so we don't lose typed numbers when re-rendering.
+// Invariant: DOM is rendered from state. If state has a different row count than the DOM, state
+// was just mutated externally (add/remove row, open modal) and must NOT be clobbered.
+function _edRcpSyncFromDOM(){
   var rows=document.querySelectorAll('#_edrcp-rows ._edrcp-row');
-  var comps=[];
+  if(!window._edRcpRows || rows.length !== window._edRcpRows.length) return;
+  var out=[];
   rows.forEach(function(r){
-    var art=r.querySelector('._edrcp-art').value;
-    var qte=r.querySelector('._edrcp-qte').value;
-    if(art&&Number(qte)>0) comps.push({product_id:Number(productId),raw_material_id:Number(art),quantity_needed:Number(qte)});
+    out.push({
+      raw_material_id: r.querySelector('._edrcp-art').value||'',
+      quantity_needed: r.querySelector('._edrcp-qte').value||''
+    });
   });
+  window._edRcpRows = out;
+}
+
+// Rebuild the rows HTML. Each row's dropdown excludes articles already picked in *other* rows
+// (but keeps the article currently selected in this row so the user can see it).
+function _edRcpRenderRows(){
+  _edRcpSyncFromDOM();
+  var rows = window._edRcpRows || [{raw_material_id:'',quantity_needed:1}];
+  var pickedIds = {};
+  rows.forEach(function(r){ if(r.raw_material_id) pickedIds[String(r.raw_material_id)]=true; });
+  var baseList=(articles||[]).slice();
+  if(_edRcpCatFilter) baseList=baseList.filter(function(a){return (a.cat||'').trim()===_edRcpCatFilter;});
+  baseList.sort(function(a,b){return String(a.nom).localeCompare(String(b.nom),'ar');});
+  var html=rows.map(function(c,i){
+    // For THIS row: show filtered articles, minus those picked in other rows, but keep its own selected one
+    var myId=String(c.raw_material_id||'');
+    var listForRow=baseList.filter(function(a){ return String(a.id)===myId || !pickedIds[String(a.id)]; });
+    // If the currently-selected article isn't in the filtered baseList (e.g. filter hides it), inject it so selection is visible
+    if(myId && !baseList.some(function(a){return String(a.id)===myId;})){
+      var found=(articles||[]).find(function(a){return String(a.id)===myId;});
+      if(found) listForRow.unshift(found);
+    }
+    return '<div class="_edrcp-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      +'<select class="_edrcp-art field-inp" style="flex:1;font-size:13px" onchange="_edRcpRenderRows()"><option value="">— اختر سلعة —</option>'
+        +listForRow.map(function(a){return '<option value="'+a.id+'"'+(String(a.id)===myId?' selected':'')+'>'+escB(a.nom)+(a.ref?' · '+escB(a.ref):'')+'</option>';}).join('')
+      +'</select>'
+      +'<input type="number" class="_edrcp-qte field-inp" min="0" step="1" value="'+(c.quantity_needed||'')+'" placeholder="الكمية" style="width:100px;font-size:13px" oninput="_edRcpSyncFromDOM()">'
+      +'<button class="btn-ghost" onclick="_edRcpRemoveRow('+i+')" style="color:var(--red);padding:6px 10px">🗑️</button>'
+    +'</div>';
+  }).join('');
+  document.getElementById('_edrcp-rows').innerHTML=html;
+}
+
+function _edRcpAddRow(){
+  _edRcpSyncFromDOM();
+  (window._edRcpRows = window._edRcpRows || []).push({raw_material_id:'',quantity_needed:''});
+  _edRcpRenderRows();
+}
+function _edRcpRemoveRow(i){
+  _edRcpSyncFromDOM();
+  if(!window._edRcpRows) return;
+  window._edRcpRows.splice(i,1);
+  if(!window._edRcpRows.length) window._edRcpRows=[{raw_material_id:'',quantity_needed:''}];
+  _edRcpRenderRows();
+}
+
+async function edSaveRecipeFromModal(productId){
+  _edRcpSyncFromDOM();
+  var rows=window._edRcpRows||[];
+  var comps=[];
+  var seenIds={};
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var art=r.raw_material_id;
+    var qte=r.quantity_needed;
+    if(!art||!(Number(qte)>0)) continue;
+    if(seenIds[String(art)]){
+      // Defensive: the UI hides already-picked articles, so this can only happen if state was
+      // corrupted. Refuse to save rather than silently deduping.
+      try{toast('❌ نفس السلعة متكررة — احذف السطر المكرّر','error');}catch(e){ alert('سلعة مكررة'); }
+      return;
+    }
+    seenIds[String(art)]=true;
+    comps.push({product_id:Number(productId),raw_material_id:Number(art),quantity_needed:Number(qte)});
+  }
   await sbFetch('product_recipe?product_id=eq.'+productId,'DELETE');
   if(comps.length){
     var res=await sbFetch('product_recipe','POST',comps);

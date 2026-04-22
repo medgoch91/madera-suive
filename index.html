@@ -14694,6 +14694,10 @@ function cmdkBuildIndex(query){
     {id:'salaries', title:'👥 الأجراء', sub:'الخدامة + العمال PC', kw:'salariés ouvriers أجراء خدامة عمال'},
     {id:'new-bon', title:'➕ بون جديد', sub:'formulaire بون', kw:'new bon جديد'},
     {id:'print-cheque', title:'✏️ شيك جديد', sub:'طباعة شيك', kw:'cheque print شيك جديد طباعة'},
+    {id:'factures', title:'📄 الفواتير', sub:'قائمة الفواتير', kw:'factures invoices فواتير facture'},
+    {id:'chantiers', title:'🏗️ الأوراش', sub:'قائمة الأوراش', kw:'chantiers sites أوراش ورش projets'},
+    {id:'elec-dist', title:'⚡ électricité à distance', sub:'tasleemat + dispatches', kw:'elec electricity técnicos تقني material'},
+    {id:'echeancier', title:'📅 الجدول الزمني', sub:'échéancier cheques', kw:'echeancier calendar جدول'},
   ];
   pages.forEach(function(p){
     var hay = (p.title+' '+p.sub+' '+p.kw).toLowerCase();
@@ -14761,6 +14765,43 @@ function cmdkBuildIndex(query){
             if(inp){ inp.value=bonNum; renderBons(); }
           },100);
         }});
+      }
+    });
+  } catch(e){}
+  try {
+    (factures||[]).forEach(function(f){
+      var lbl = 'FAC-'+String(f.num||'').padStart(4,'0')+' — '+(f.client_nom||'?');
+      if(lbl.toLowerCase().indexOf(q)>=0 || String(f.total_ttc||'').indexOf(q)>=0){
+        results.push({group:'فاتورة', icon:'📄', title:lbl, sub:(f.date||'')+' · ⁦'+fmtN(f.total_ttc||0)+' DH⁩', action:function(){ cmdkGoPage('factures'); }});
+      }
+    });
+  } catch(e){}
+  try {
+    (factClients||[]).forEach(function(c){
+      var hay = ((c.nom||'')+' '+(c.ice||'')+' '+(c.ville||'')).toLowerCase();
+      if(hay.indexOf(q)>=0){
+        var subParts = [];
+        if(c.ice) subParts.push('ICE '+c.ice);
+        if(c.ville) subParts.push(c.ville);
+        if(c.tel) subParts.push(c.tel);
+        results.push({group:'زبون', icon:'👔', title:c.nom||'—', sub:subParts.join(' · '), action:function(){ cmdkGoPage('factures'); }});
+      }
+    });
+  } catch(e){}
+  try {
+    (chantiers||[]).forEach(function(ch){
+      if((ch.nom||'').toLowerCase().indexOf(q)>=0){
+        var st = ch.statut||'actif';
+        var stLbl = st==='terminé'?'منتهي':(st==='en_pause'?'موقف':'نشيط');
+        results.push({group:'ورش', icon:'🏗️', title:ch.nom, sub:stLbl+(ch.notes?' · '+ch.notes:''), action:function(){ cmdkGoPage('chantiers'); }});
+      }
+    });
+  } catch(e){}
+  try {
+    (typeof edTechnicians!=='undefined'?edTechnicians:[]).forEach(function(t){
+      var hay = ((t.nom||'')+' '+(t.phone||'')).toLowerCase();
+      if(hay.indexOf(q)>=0){
+        results.push({group:'تقني', icon:'⚡', title:t.nom||'—', sub:t.phone||'', action:function(){ cmdkGoPage('elec-dist'); }});
       }
     });
   } catch(e){}

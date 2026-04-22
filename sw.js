@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v20-autoupd';
+const CACHE = 'suivi-v21-printhistory-fix';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -5516,6 +5516,7 @@ function saveReglement(nom){
 let chequeImg = localStorage.getItem('cheque_bg_img')||'chqq-bg.jpg';
 let effetImg  = localStorage.getItem('effet_bg_img')||'';
 let printMode = 'cheque'; // 'cheque' | 'effet'
+let printHistory = (function(){ try{ return JSON.parse(localStorage.getItem('print_history')||'[]'); }catch(e){ return []; } })();
 function setPrintMode(m){
   printMode = (m==='effet')?'effet':'cheque';
   try{ renderPrintCheque(); }catch(e){}

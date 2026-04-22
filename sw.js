@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v26-dash-polish';
+const CACHE = 'suivi-v27-auto-deploy';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

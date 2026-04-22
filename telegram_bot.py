@@ -137,6 +137,30 @@ async def sb_upsert(table: str, data: dict) -> None:
         r.raise_for_status()
 
 
+# ── Safe number parser — some legacy rows have non-integer num (e.g. 'CHQ--Infinity') ──
+def _safe_num(v) -> int:
+    """Parse a num field to int. Returns 0 on any parse failure (legacy bad data)."""
+    try:
+        if v is None:
+            return 0
+        if isinstance(v, int):
+            return v
+        if isinstance(v, float):
+            return 0 if (v != v or v == float('inf') or v == float('-inf')) else int(v)
+        s = str(v).strip()
+        if not s:
+            return 0
+        # Strip common prefixes like "CHK-", "CHQ-" before parsing
+        if '-' in s and not s.lstrip('-').isdigit():
+            s = s.split('-')[-1].strip()
+        f = float(s)
+        if f != f or f == float('inf') or f == float('-inf'):  # NaN / inf guard
+            return 0
+        return int(f)
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
 # ── Web Push dispatch ───────────────────────────────────────────
 import asyncio as _asyncio  # local alias — avoid touching top-level imports
 
@@ -383,14 +407,14 @@ async def build_cheques_due_message(today: str) -> str:
         lines.append(f"🔔 *اليوم كيحل ({len(due_today)}):*")
         for c in due_today:
             m = float(c.get("montant") or 0)
-            lines.append(f"• CHK-{int(c.get('num') or 0):04d} — {c.get('fournisseur','?')} — *{m:.2f} د.م.*")
+            lines.append(f"• CHK-{_safe_num(c.get('num')):04d} — {c.get('fournisseur','?')} — *{m:.2f} د.م.*")
         lines.append(f"   _المجموع: {total:.2f} د.م._\n")
     if overdue:
         total_o = sum(float(c.get("montant") or 0) for c in overdue)
         lines.append(f"⚠️ *متأخر ({len(overdue)}):*")
         for c in overdue[:10]:
             m = float(c.get("montant") or 0)
-            lines.append(f"• CHK-{int(c.get('num') or 0):04d} — {c.get('fournisseur','?')} — {m:.2f} د.م. ({c.get('echeance','?')})")
+            lines.append(f"• CHK-{_safe_num(c.get('num')):04d} — {c.get('fournisseur','?')} — {m:.2f} د.م. ({c.get('echeance','?')})")
         if len(overdue) > 10:
             lines.append(f"   _... و {len(overdue)-10} شيكات أخرى_")
         lines.append(f"   _المجموع المتأخر: {total_o:.2f} د.م._")
@@ -579,7 +603,7 @@ async def job_cheque_today_ping(context: ContextTypes.DEFAULT_TYPE):
         rid = c.get("id")
         t = (c.get("type") or "cheque").lower()
         label = "📝 كمبيالة (effet)" if t == "effet" else "💳 شيك"
-        num = int(c.get("num") or 0)
+        num = _safe_num(c.get("num"))
         mont = float(c.get("montant") or 0)
         four = c.get("fournisseur") or "?"
         txt = (

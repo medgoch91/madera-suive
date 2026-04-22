@@ -2183,7 +2183,18 @@ function suggestNextChequeNum(silent){
 }
 
 // Print a cheque directly from الشيكات list — no form editing needed, all data comes from the cheque record
-let pendingPrintData = null;
+// Backed by sessionStorage so that a stale SW / page reload / SPA rerender can't wipe it mid-navigation.
+let pendingPrintData = (function(){
+  try{ const raw = sessionStorage.getItem('pendingPrintData'); return raw ? JSON.parse(raw) : null; }
+  catch(_){ return null; }
+})();
+function _setPendingPrintData(d){
+  pendingPrintData = d;
+  try{
+    if(d) sessionStorage.setItem('pendingPrintData', JSON.stringify(d));
+    else  sessionStorage.removeItem('pendingPrintData');
+  }catch(_){}
+}
 function printCheque(id){
   const c = cheques.find(x=>x.id===id);
   if(!c){ toast('السجل غير موجود','error'); return; }
@@ -2194,7 +2205,7 @@ function printCheque(id){
   // Switch the print-cheque page mode to match the selected record
   printMode = (c.type==='effet') ? 'effet' : 'cheque';
   // Stash the data — renderPrintCheque picks it up synchronously after innerHTML is set
-  pendingPrintData = {
+  _setPendingPrintData({
     ordre:    c.fournisseur || '',
     montant:  c.montant || '',
     date:     c.date || '',
@@ -2202,7 +2213,7 @@ function printCheque(id){
     ville:    c.ville || 'Agadir',
     num:      c.num || '',
     type:     c.type || 'cheque'
-  };
+  });
   const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
   showPage('print-cheque', navBtn);
 }
@@ -2329,7 +2340,7 @@ function showPage(page,btn){
   _navBack=false;
   // Leaving print-cheque → drop any stale prefill so next entry starts clean
   if(currentPage==='print-cheque' && page!=='print-cheque'){
-    pendingPrintData = null;
+    _setPendingPrintData(null);
     if(typeof renderPrintCheque==='function') renderPrintCheque._toastedFor = null;
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -6240,7 +6251,7 @@ function resetPrintForm(){
   ['pc-ordre','pc-montant','pc-date','pc-echeance','pc-ville'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const d=document.getElementById('pc-date');if(d)d.valueAsDate=new Date();
   const v=document.getElementById('pc-ville');if(v)v.value='Agadir';
-  pendingPrintData = null;
+  _setPendingPrintData(null);
   renderPrintCheque._toastedFor = null;
   updatePrintPreview();
 }
@@ -12362,7 +12373,7 @@ function printTaswiyaRow(taswId){
   const s = salariesData.find(function(x){return x.id===t.salarie_id;});
   const ordre = t.nom_salarie || (s ? (s.nom+(s.prenom?' '+s.prenom:'')) : '');
   printMode = 'cheque';
-  pendingPrintData = {
+  _setPendingPrintData({
     ordre:    ordre,
     montant:  t.montant || '',
     date:     t.date_paiement || new Date().toISOString().split('T')[0],
@@ -12370,7 +12381,7 @@ function printTaswiyaRow(taswId){
     ville:    'Agadir',
     num:      '',
     type:     'cheque'
-  };
+  });
   const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
   showPage('print-cheque', navBtn);
 }
@@ -12380,7 +12391,7 @@ function printPcTaswiyaRow(taswId){
   if(!t){ toast('التسوية غير موجودة','error'); return; }
   const o = ouvriersPc.find(function(x){return x.id===t.ouvrier_id;});
   printMode = 'cheque';
-  pendingPrintData = {
+  _setPendingPrintData({
     ordre:    o ? o.nom : '',
     montant:  t.montant || '',
     date:     t.date_paiement || new Date().toISOString().split('T')[0],
@@ -12388,7 +12399,7 @@ function printPcTaswiyaRow(taswId){
     ville:    'Agadir',
     num:      '',
     type:     'cheque'
-  };
+  });
   const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
   showPage('print-cheque', navBtn);
 }

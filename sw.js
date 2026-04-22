@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v21-printhistory-fix';
+const CACHE = 'suivi-v22-no-cheque-signature';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

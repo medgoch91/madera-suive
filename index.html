@@ -5789,18 +5789,7 @@ function applyChqCfgToPreview(){
     el.style.letterSpacing = (c.spacing||0)+'px';
     el.style.fontFamily = c.font==='mono' ? "'Courier New',monospace" : "'Times New Roman',serif";
   });
-  // Signature overlay (image) — only shown when factSociete.signature is set
-  const sigEl = document.getElementById('pf-signature');
-  if(sigEl){
-    const sc = chequeCfg.signature || {top:52,left:133,width:38,height:20};
-    const sig = (typeof factSociete==='object' && factSociete && factSociete.signature) ? factSociete.signature : '';
-    sigEl.style.top    = sc.top+'mm';
-    sigEl.style.left   = sc.left+'mm';
-    sigEl.style.width  = sc.width+'mm';
-    sigEl.style.height = (sc.height||20)+'mm';
-    if(sig){ sigEl.src = sig; sigEl.style.display='block'; }
-    else   { sigEl.removeAttribute('src'); sigEl.style.display='none'; }
-  }
+  // Signature intentionally NOT rendered on cheque preview (matches print output).
 }
 function renderChqCfgPanel(){
   const fields = ['montant','lettres1','lettres2','ordre','ville','date'];
@@ -5964,7 +5953,6 @@ function renderPrintCheque(){
             <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
             <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
             <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
-            <img id="pf-signature" style="position:absolute;top:52mm;left:133mm;width:38mm;height:20mm;object-fit:contain;display:none;pointer-events:none">
           </div>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — نفس المقاسات د الطباعة (176mm × 80mm)</div>
@@ -6159,11 +6147,8 @@ function buildChequePrintHTML(d){
     return `top:${c.top}mm;left:${c.left}mm;width:${c.width}mm;font-size:${c.size}pt;text-align:${c.align};font-weight:${c.weight||600};letter-spacing:${c.spacing||0}px;`;
   };
   const cl = k => chequeCfg[k].font==='mono' ? 'mono' : 'serif';
-  const soc = (typeof factSociete==='object' && factSociete) ? factSociete : {};
-  const sigCfg = chequeCfg.signature || {top:52,left:133,width:38,height:20};
-  const sigHtml = soc.signature
-    ? `<img src="${soc.signature}" style="position:absolute;top:${sigCfg.top}mm;left:${sigCfg.left}mm;width:${sigCfg.width}mm;height:${sigCfg.height||20}mm;object-fit:contain;">`
-    : '';
+  // Signature intentionally NOT printed on cheque — security (a lost/scanned cheque
+  // bearing a digital signature is trivially forgeable). Kept in factSociete for facture use.
   return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title><style>
     @page{size:176mm 80mm;margin:0;}
     @media print{
@@ -6184,7 +6169,6 @@ function buildChequePrintHTML(d){
     <div class="f ${cl('ordre')}" style="${fs('ordre')}">${esc(ordre.toUpperCase())}</div>
     <div class="f ${cl('ville')}" style="${fs('ville')}">${esc(ville.toUpperCase())}</div>
     <div class="f ${cl('date')}" style="${fs('date')}">${esc(fmtDate(date))}</div>
-    ${sigHtml}
   </div><script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);};<\/script></body></html>`;
 }
 

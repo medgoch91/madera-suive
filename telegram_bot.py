@@ -24,7 +24,11 @@ except ImportError:
 
 BOT_TOKEN = os.getenv("BOT_TOKEN") or ""
 SB_URL    = os.getenv("SB_URL",  "https://tpjrzgubttpqtxieioxe.supabase.co")
-SB_KEY    = os.getenv("SB_KEY",  "sb_publishable_3gAq_lEpojE5_hT4yg4WtQ_oFqaFFfX")
+# Prefer service_role key — bypasses RLS so the bot (backend) can read/write all tables
+# regardless of the authenticated-only policies enforced on the public app.
+# Falls back to the publishable key only if SB_SERVICE_KEY isn't set (which works for
+# push-subscriptions fan-out but NOT for reading bons/cheques/fournisseurs etc. after RLS).
+SB_KEY    = os.getenv("SB_SERVICE_KEY") or os.getenv("SB_KEY") or "sb_publishable_3gAq_lEpojE5_hT4yg4WtQ_oFqaFFfX"
 
 # Web Push (VAPID) — optional, enabled when both keys are set in .env
 VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")

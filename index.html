@@ -7374,7 +7374,7 @@ async function doLogin(){
     document.getElementById('app-main').style.display='flex';
     applyUserPermissions();
     errEl.textContent='';
-    loadAllData().then(function(){ checkPendingAlerts(); });
+    loadAllData().then(function(){ checkPendingAlerts(); try{ initRealtime(); }catch(_){} });
   }catch(e){
     errEl.textContent='تعذّر الاتصال — جرب عاود';
     console.error('login error', e);
@@ -15084,6 +15084,73 @@ window.addEventListener('keydown', function(e){
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════
+// Supabase Realtime — subscribe to INSERT/UPDATE/DELETE on the six tables
+// that change during normal operation (from bot, another device, or scheduled
+// jobs). Keeps the in-memory arrays + current view fresh without polling.
+// ═══════════════════════════════════════════════════════════════════
+var _rtChannels = [];
+function _rtApply(table, event, row){
+  // Map table → in-memory array. Update it in place, then rerender the active page.
+  var arr = null, id = row && (row.id !== undefined ? row.id : row.old?.id);
+  switch(table){
+    case 'bons':          arr = (typeof bons !== 'undefined') ? bons : null; break;
+    case 'cheques':       arr = (typeof cheques !== 'undefined') ? cheques : null; break;
+    case 'factures':      arr = (typeof factures !== 'undefined') ? factures : null; break;
+    case 'articles':      arr = (typeof articles !== 'undefined') ? articles : null; break;
+    case 'chantiers':     arr = (typeof chantiers !== 'undefined') ? chantiers : null; break;
+    case 'fournisseurs':  arr = (typeof fournisseurs !== 'undefined') ? fournisseurs : null; break;
+  }
+  if(!arr) return;
+  if(event === 'INSERT'){
+    // Skip duplicates (local optimistic insert may have already added it)
+    if(!arr.some(function(x){ return String(x.id) === String(row.id); })) arr.unshift(row);
+  } else if(event === 'UPDATE'){
+    var i = arr.findIndex(function(x){ return String(x.id) === String(row.id); });
+    if(i >= 0) arr[i] = row; else arr.unshift(row);
+  } else if(event === 'DELETE'){
+    var old = row.old || row;
+    var j = arr.findIndex(function(x){ return String(x.id) === String(old.id); });
+    if(j >= 0) arr.splice(j, 1);
+  }
+  // Rerender active page (and the dashboard, since KPIs span all tables)
+  try{
+    var renders = { bons:'renderBons', cheques:'renderCheques', factures:'renderFactures',
+                    articles:'renderArticles', chantiers:'renderChantiers', fournisseurs:'renderFournisseurs' };
+    var pageMap = { bons:'bons', cheques:'cheques', factures:'factures',
+                    articles:'articles', chantiers:'chantiers', fournisseurs:'fournisseurs' };
+    if(currentPage === pageMap[table] && typeof window[renders[table]] === 'function'){
+      window[renders[table]]();
+    }
+    if(currentPage === 'dashboard' && typeof renderDashboard === 'function'){
+      renderDashboard();
+    }
+  }catch(e){ console.warn('realtime rerender:', e); }
+  // Toast for inserts, unobtrusive
+  if(event === 'INSERT' && typeof toast === 'function'){
+    var labels = { bons:'✨ بون جديد', cheques:'✨ شيك جديد', factures:'✨ فاتورة جديدة',
+                   articles:'📦 سلعة جديدة', chantiers:'🏗️ ورش جديد', fournisseurs:'🏢 فورنيسور جديد' };
+    try{ toast(labels[table] || '✨ بيانات جديدة', 'info'); }catch(_){}
+  }
+}
+function initRealtime(){
+  if(_rtChannels.length) return; // already subscribed
+  var tables = ['bons','cheques','factures','articles','chantiers','fournisseurs'];
+  tables.forEach(function(t){
+    var ch = sbAuth.channel('rt-public-' + t)
+      .on('postgres_changes', { event: '*', schema: 'public', table: t }, function(payload){
+        _rtApply(t, payload.eventType, payload.new && Object.keys(payload.new).length ? payload.new : payload);
+      })
+      .subscribe();
+    _rtChannels.push(ch);
+  });
+  console.log('[realtime] subscribed to', tables.length, 'tables');
+}
+function teardownRealtime(){
+  _rtChannels.forEach(function(ch){ try{ sbAuth.removeChannel(ch); }catch(_){} });
+  _rtChannels = [];
+}
+
 // Check existing Supabase Auth session — auto-login if user already signed in.
 // Also clean up any stale legacy session blob from the old localStorage-based auth.
 try{ localStorage.removeItem('suivi_session'); }catch(_){}
@@ -15096,7 +15163,7 @@ sbAuth.auth.getSession().then(function(res){
   document.getElementById('app-sidebar').style.display='flex';
   document.getElementById('app-main').style.display='flex';
   applyUserPermissions();
-  loadAllData().then(function(){ try{ checkPendingAlerts(); }catch(_){} });
+  loadAllData().then(function(){ try{ checkPendingAlerts(); }catch(_){} try{ initRealtime(); }catch(_){} });
 }).catch(function(e){ console.warn('getSession error', e); });
 
 // Keep the cached access token in sync with token-refresh + external sign-out events.
@@ -15106,6 +15173,7 @@ sbAuth.auth.onAuthStateChange(function(event, session){
   }
   if(event === 'SIGNED_OUT'){
     window._sbAccessToken = null;
+    try{ teardownRealtime(); }catch(_){}
     if(currentUser){
       currentUser = null;
       try{

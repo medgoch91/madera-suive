@@ -13004,6 +13004,7 @@ let factNewIce='';
 let factNewDate=new Date().toISOString().split('T')[0];
 let factNewEcheance='';
 let factNewNotes='';
+let factNewNumOverride=null; // null = auto; integer = explicit user-chosen num (for migration/starting point)
 
 // ── Draft persistence (survives page refresh) ──
 const FACT_DRAFT_KEY='fact_new_draft_v1';
@@ -13014,6 +13015,7 @@ function factSaveDraft(){
       date:factNewDate,echeance:factNewEcheance,notes:factNewNotes,
       lignes:factNewLignes,mode:typeof factMode!=='undefined'?factMode:'ht',
       lang:typeof factLang!=='undefined'?factLang:'fr',
+      numOverride:factNewNumOverride,
       t:Date.now()
     }));
   }catch(e){}
@@ -13030,10 +13032,21 @@ function factLoadDraft(){
     if(Array.isArray(d.lignes)&&d.lignes.length)factNewLignes=d.lignes;
     if(d.mode&&typeof factMode!=='undefined')factMode=d.mode;
     if(d.lang&&typeof factLang!=='undefined')factLang=d.lang;
+    factNewNumOverride=(Number.isFinite(d.numOverride)&&d.numOverride>0)?Number(d.numOverride):null;
     return true;
   }catch(e){return false;}
 }
 function factClearDraft(){try{localStorage.removeItem(FACT_DRAFT_KEY);}catch(e){}}
+
+// Local-only max(num)+1 for this year — just a hint for the placeholder (not authoritative; save path still queries server)
+function _factLocalSuggestedNum(){
+  try{
+    var y=String((factNewDate||'').substring(0,4) || new Date().getFullYear());
+    var mx=(factures||[]).filter(function(f){return String(f.date||'').substring(0,4)===y;})
+      .reduce(function(m,f){var n=Number(f.num)||0;return n>m?n:m;},0);
+    return mx+1;
+  }catch(e){return '';}
+}
 
 // ── Bon draft persistence (survives page refresh) ──
 const BON_DRAFT_KEY='bon_new_draft_v1';
@@ -13551,6 +13564,7 @@ function buildFactTable(rows){
 
       // Actions
       +'<div style="flex-shrink:0;display:flex;gap:6px;align-items:center">'
+        +'<button onclick="factEditNum('+f.id+')" title="تعديل رقم الفاتورة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(147,51,234,0.3);background:transparent;color:var(--accent);cursor:pointer;font-size:13px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(147,51,234,0.08)\'" onmouseout="this.style.background=\'transparent\'">✏️</button>'
         +'<button onclick="factPrint('+f.id+')" title="طباعة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;transition:all 0.15s" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">🖨</button>'
         +'<button onclick="factToggleStatut('+f.id+')" title="'+(isPaid?'تحويل لمعلقة':'تحويل لمدفوعة')+'" style="min-width:36px;height:36px;border-radius:9px;border:1px solid '+(isPaid?'rgba(245,158,11,0.3)':'rgba(34,197,94,0.3)')+';background:transparent;color:'+(isPaid?'var(--amber)':'var(--green)')+';cursor:pointer;font-size:15px;font-weight:700;transition:all 0.15s">'+(isPaid?'↩':'✓')+'</button>'
         +'<button onclick="factDelete('+f.id+')" title="حذف" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(239,68,68,0.2);background:transparent;color:var(--red);cursor:pointer;font-size:14px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(239,68,68,0.08)\'" onmouseout="this.style.background=\'transparent\'">🗑</button>'
@@ -13662,7 +13676,8 @@ function renderFactNew(){
           +'<div><label class="field-lbl" style="font-size:10px">المدينة</label><input class="field-inp" id="fact-client-ville" placeholder="أكادير..." value="'+escB(factNewVille)+'" oninput="factNewVille=this.value;factSaveDraft()" style="font-size:12px;padding:6px 9px"></div>'
           +'<div><label class="field-lbl" style="font-size:10px">ICE</label><input class="field-inp" id="fact-client-ice" placeholder="—" value="'+escB(factNewIce)+'" oninput="factNewIce=this.value;factSaveDraft()" style="font-size:12px;padding:6px 9px"></div>'
           +'<div><label class="field-lbl" style="font-size:10px">📅 التاريخ</label><input type="date" class="field-inp" value="'+factNewDate+'" onchange="factNewDate=this.value;factSaveDraft()" style="font-size:12px;padding:6px 9px"></div>'
-          +'<div style="grid-column:span 2"><label class="field-lbl" style="font-size:10px">⏱ الاستحقاق</label><input type="date" class="field-inp" value="'+factNewEcheance+'" onchange="factNewEcheance=this.value;factSaveDraft()" style="font-size:12px;padding:6px 9px"></div>'
+          +'<div><label class="field-lbl" style="font-size:10px">🔢 الرقم</label><input class="field-inp" id="fact-new-num" type="number" min="1" step="1" placeholder="'+(_factLocalSuggestedNum())+' (auto)" value="'+(factNewNumOverride||'')+'" oninput="factNewNumOverride=parseInt(this.value,10)||null;factSaveDraft()" title="سيبو خاوي = تلقائي · ولا اكتب رقم معين (مفيد f migration men 2026)" style="font-size:12px;padding:6px 9px"></div>'
+          +'<div><label class="field-lbl" style="font-size:10px">⏱ الاستحقاق</label><input type="date" class="field-inp" value="'+factNewEcheance+'" onchange="factNewEcheance=this.value;factSaveDraft()" style="font-size:12px;padding:6px 9px"></div>'
         +'</div>'
       +'</div>'
 
@@ -13846,11 +13861,17 @@ async function _factSaveNewImpl(){
 
     // ── Step 4: COMMIT — save facture with retry on num conflict (max 5 attempts) ──
     var saved=null, nextNum=0, lastErr=null;
+    var _useOverride = Number.isFinite(factNewNumOverride) && factNewNumOverride>0;
     for(var attempt=0; attempt<5 && !saved; attempt++){
-      nextNum=await _computeNextNum();
-      // Bump past anything we've tried this loop
-      var _allNums={}; factures.forEach(function(f){_allNums[Number(f.num)||0]=true;});
-      while(_allNums[nextNum]) nextNum++;
+      if(_useOverride){
+        // User explicitly chose a num — don't auto-bump. On collision we fail fast with a clear error.
+        nextNum=Number(factNewNumOverride);
+      } else {
+        nextNum=await _computeNextNum();
+        // Bump past anything we've tried this loop
+        var _allNums={}; factures.forEach(function(f){_allNums[Number(f.num)||0]=true;});
+        while(_allNums[nextNum]) nextNum++;
+      }
 
       const payload={
         num:nextNum,
@@ -13867,11 +13888,14 @@ async function _factSaveNewImpl(){
       const res=await sbFetch('factures','POST',payload);
       if(res && res.__sbError){
         lastErr=res;
-        // 23505 = Postgres unique_violation — retry with fresh num
+        // 23505 = Postgres unique_violation — retry with fresh num (auto path only; override fails fast)
         var isDup = (res.status===409) || /duplicate|unique|23505|already exists/i.test(res.msg||'');
-        if(isDup){
+        if(isDup && !_useOverride){
           console.warn('facture num '+nextNum+' collided — retrying (attempt '+(attempt+1)+')');
           continue;
+        }
+        if(isDup && _useOverride){
+          throw new Error('الرقم '+nextNum+' مستعمل — بدل الرقم ولا سيبو خاوي باش يتعبا تلقائي.');
         }
         throw new Error(sbParseError(res.msg));
       }
@@ -13892,7 +13916,7 @@ async function _factSaveNewImpl(){
     // ── Step 5: Success — reset local form state ──
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم حفظ الفاتورة!';}
     factNewLignes=[factBlankLigne(),factBlankLigne(),factBlankLigne(),factBlankLigne()];
-    factNewClient='';factNewVille='';factNewIce='';factNewNotes='';
+    factNewClient='';factNewVille='';factNewIce='';factNewNotes='';factNewNumOverride=null;
 
     // ── Step 6: Clear draft ONLY after complete success ──
     factClearDraft();
@@ -13920,6 +13944,46 @@ async function factToggleStatut(id){
   await sbFetch('factures?id=eq.'+id,'PATCH',{statut:newStatut});
   f.statut=newStatut;
   renderFactures();
+}
+
+// Edit the invoice number on an existing facture — used for migrations (e.g. "starting from N"),
+// corrections, and reassignments. Validates collision within the same year.
+async function factEditNum(id){
+  const f=factures.find(function(x){return x.id===id;});
+  if(!f){ try{toast('الفاتورة غير موجودة','error');}catch(_){} return; }
+  const year=(f.date||'').substring(0,4) || String(new Date().getFullYear());
+  const current=Number(f.num)||0;
+  const raw=prompt('رقم الفاتورة الجديد ل '+year+':\n(يستخدم مثلاً للبدء من رقم معين عند migration)', String(current));
+  if(raw===null) return;
+  const n=parseInt(String(raw).trim(),10);
+  if(!Number.isFinite(n) || n<1){ try{toast('رقم غير صالح','error');}catch(_){} return; }
+  if(n===current) return;
+  // Collision check in the SAME year (other years can reuse numbers)
+  const collision=factures.find(function(x){
+    return x.id!==id && Number(x.num)===n && ((x.date||'').substring(0,4)===year);
+  });
+  if(collision){
+    if(!confirm('⚠️ الرقم '+n+' ديال '+year+' مستعمل ف فاتورة '+(collision.client_nom||'?')+'.\nمتأكد تبدل برغم ذلك؟')) return;
+  }
+  try{
+    try{showLoader('💾 جاري التعديل...');}catch(_){}
+    const res=await sbFetch('factures?id=eq.'+id,'PATCH',{num:n});
+    try{hideLoader();}catch(_){}
+    if(res && res.__sbError){
+      var msg=(res.status===409 || /duplicate|unique|23505/i.test(res.msg||''))
+        ? 'الرقم '+n+' مستعمل ف السيرفر'
+        : sbParseError(res.msg);
+      try{toast('فشل التعديل: '+msg,'error');}catch(_){ alert(msg); }
+      return;
+    }
+    f.num=n;
+    try{saveCacheLS();}catch(_){}
+    try{renderFactures();}catch(_){}
+    try{toast('✅ تبدل الرقم ل '+n,'success');}catch(_){}
+  }catch(e){
+    try{hideLoader();}catch(_){}
+    try{toast('خطأ: '+(e&&e.message||e),'error');}catch(_){ alert(String(e)); }
+  }
 }
 
 async function factDelete(id){

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v23-cmdk-extended';
+const CACHE = 'suivi-v24-factnum-override';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

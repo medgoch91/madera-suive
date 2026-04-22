@@ -14854,10 +14854,31 @@ if(_sess){
   }catch(e){localStorage.removeItem('suivi_session');}
 }
 
-// PWA service worker
+// PWA service worker — auto-update when a new version ships
 if('serviceWorker' in navigator){
   window.addEventListener('load',function(){
-    navigator.serviceWorker.register('sw.js').catch(function(e){console.warn('SW register failed',e);});
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      // Check for a fresh sw.js every time the page loads
+      try{ reg.update(); }catch(_){}
+      // When a new SW is found, wait for it to install then activate it immediately
+      reg.addEventListener('updatefound',function(){
+        var sw = reg.installing;
+        if(!sw) return;
+        sw.addEventListener('statechange',function(){
+          if(sw.state==='installed' && navigator.serviceWorker.controller){
+            // New version is ready — tell it to take over right away
+            try{ sw.postMessage({type:'SKIP_WAITING'}); }catch(_){}
+          }
+        });
+      });
+    }).catch(function(e){console.warn('SW register failed',e);});
+    // When the active SW changes, reload once so the new HTML+assets take effect
+    var _reloadedForSW = false;
+    navigator.serviceWorker.addEventListener('controllerchange',function(){
+      if(_reloadedForSW) return;
+      _reloadedForSW = true;
+      try{ location.reload(); }catch(_){}
+    });
   });
 }
 

@@ -1,10 +1,15 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v19-pfill2';
+const CACHE = 'suivi-v20-autoupd';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(()=>{}));
   self.skipWaiting();
+});
+
+// Allow the page to ask the waiting SW to activate immediately
+self.addEventListener('message', (e) => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (e) => {

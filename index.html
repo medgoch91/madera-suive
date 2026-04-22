@@ -7322,10 +7322,11 @@ function getRoleDefaults(role){
   return ROLE_DEFAULTS[role] || ROLE_DEFAULTS.comptable;
 }
 
-// Users stored in localStorage — only admin seeded; create others via admin page
+// Users stored in localStorage — admin + aza seeded; create others via admin page
 function getUsers(){
   return JSON.parse(localStorage.getItem('suivi_users')||'null') || [
     {id:1, username:'admin', password:'admin123', role:'admin', nom:'المدير', active:true, permissions:null},
+    {id:2, username:'aza',   password:'aza123',   role:'admin', nom:'AZA',     active:true, permissions:null},
   ];
 }
 

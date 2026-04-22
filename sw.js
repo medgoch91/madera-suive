@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v25-recipe-nodup-catfilter';
+const CACHE = 'suivi-v26-dash-polish';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -1535,10 +1535,14 @@ async function sbFetch(table, method='GET', body=null, params='', replay=false){
   }
   const url = SB_URL+'/rest/v1/'+table+(params?'?'+params:'');
   const prefer=(method==='POST'||method==='PATCH')?'return=representation':'';
+  // Use the logged-in user's JWT (cached in window._sbAccessToken via onAuthStateChange)
+  // so RLS policies scoped to `authenticated` apply. Falls back to the publishable
+  // anon key for the brief window before login completes / after sign-out.
+  const bearer = (typeof window !== 'undefined' && window._sbAccessToken) || SB_KEY;
   const h = {
     'Content-Type':'application/json',
     'apikey': SB_KEY,
-    'Authorization': 'Bearer '+SB_KEY,
+    'Authorization': 'Bearer '+bearer,
   };
   if(prefer) h['Prefer']=prefer;
   // Offline queue: only for idempotent-ish writes (PATCH/DELETE)
@@ -7364,6 +7368,7 @@ async function doLogin(){
       return;
     }
     currentUser = _userFromSupabase(data.user);
+    window._sbAccessToken = data.session && data.session.access_token || null;
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app-sidebar').style.display='flex';
     document.getElementById('app-main').style.display='flex';
@@ -7380,6 +7385,7 @@ async function doLogout(){
   if(!confirm('واش تبغي تخرج؟'))return;
   try{ await sbAuth.auth.signOut(); }catch(e){ console.warn('signOut error', e); }
   currentUser=null;
+  window._sbAccessToken = null;
   document.getElementById('app-sidebar').style.display='none';
   document.getElementById('app-main').style.display='none';
   document.getElementById('login-screen').style.display='flex';
@@ -15085,6 +15091,7 @@ sbAuth.auth.getSession().then(function(res){
   var session = res && res.data && res.data.session;
   if(!session) return; // not logged in — login screen stays visible
   currentUser = _userFromSupabase(session.user);
+  window._sbAccessToken = session.access_token || null;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-sidebar').style.display='flex';
   document.getElementById('app-main').style.display='flex';
@@ -15092,15 +15099,21 @@ sbAuth.auth.getSession().then(function(res){
   loadAllData().then(function(){ try{ checkPendingAlerts(); }catch(_){} });
 }).catch(function(e){ console.warn('getSession error', e); });
 
-// React to external sign-out (e.g. token expired, signed out from another device)
+// Keep the cached access token in sync with token-refresh + external sign-out events.
 sbAuth.auth.onAuthStateChange(function(event, session){
-  if(event === 'SIGNED_OUT' && currentUser){
-    currentUser = null;
-    try{
-      document.getElementById('app-sidebar').style.display='none';
-      document.getElementById('app-main').style.display='none';
-      document.getElementById('login-screen').style.display='flex';
-    }catch(_){}
+  if(session && session.access_token){
+    window._sbAccessToken = session.access_token;
+  }
+  if(event === 'SIGNED_OUT'){
+    window._sbAccessToken = null;
+    if(currentUser){
+      currentUser = null;
+      try{
+        document.getElementById('app-sidebar').style.display='none';
+        document.getElementById('app-main').style.display='none';
+        document.getElementById('login-screen').style.display='flex';
+      }catch(_){}
+    }
   }
 });
 

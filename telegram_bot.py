@@ -986,8 +986,9 @@ async def enter_chq_echeance(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             "fournisseur": four,
             "montant": round(montant, 2),
             "echeance": echeance,
-            "date_emission": today,
+            "date": today,          # actual column is `date`, not `date_emission`
             "status": "معلق",
+            "type": "cheque",       # default type; user can switch via the web app
         })
         cid = result[0]["id"] if result else "?"
         await update.message.reply_text(

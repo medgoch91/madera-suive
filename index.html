@@ -1030,8 +1030,8 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <div class="login-logo-sub">إدارة التسويات والبونات</div>
     </div>
     <div class="login-field">
-      <label>اسم المستخدم</label>
-      <input type="text" id="login-username" placeholder="admin" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+      <label>الإيميل</label>
+      <input type="email" id="login-username" placeholder="email@example.com" autocomplete="email" onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
     </div>
     <div class="login-field">
       <label>كلمة السر</label>
@@ -1404,11 +1404,18 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   <div class="modal" id="modal-main-c"></div>
 </div>
 
+<!-- Supabase JS SDK (UMD) — exposes window.supabase.createClient -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ===== DATA =====
 // ===== SUPABASE CONFIG =====
 const SB_URL = 'https://tpjrzgubttpqtxieioxe.supabase.co';
 const SB_KEY = 'sb_publishable_3gAq_lEpojE5_hT4yg4WtQ_oFqaFFfX';
+// Supabase Auth client — handles login/logout/session refresh.
+// Persists session in localStorage automatically.
+const sbAuth = window.supabase.createClient(SB_URL, SB_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
+});
 const TG_TOKEN = '8522104650:AAE39NioJGCBG2qsAZHq3rVD_XNqtbgeMH4';
 
 function setupTelegramChatId(){
@@ -7322,44 +7329,63 @@ function getRoleDefaults(role){
   return ROLE_DEFAULTS[role] || ROLE_DEFAULTS.comptable;
 }
 
-// Users stored in localStorage — admin + aza seeded; create others via admin page
-function getUsers(){
-  return JSON.parse(localStorage.getItem('suivi_users')||'null') || [
-    {id:1, username:'admin', password:'admin123', role:'admin', nom:'المدير', active:true, permissions:null},
-    {id:2, username:'aza',   password:'aza123',   role:'admin', nom:'AZA',     active:true, permissions:null},
-  ];
+// Users now live in Supabase Auth (no hardcoded list, no per-user role splits).
+// Single-tenant: every authenticated user is treated as admin.
+function getUsers(){ return JSON.parse(localStorage.getItem('suivi_users')||'[]'); }
+function saveUsers(users){ localStorage.setItem('suivi_users', JSON.stringify(users||[])); }
+
+// Build the in-app currentUser shape from a Supabase auth user.
+function _userFromSupabase(supaUser){
+  if(!supaUser) return null;
+  const meta = supaUser.user_metadata || {};
+  return {
+    id: supaUser.id,                    // UUID
+    username: supaUser.email,           // displayed in topbar
+    email: supaUser.email,
+    role: 'admin',                      // single-tenant — everyone is admin
+    nom: meta.nom || meta.name || (supaUser.email||'').split('@')[0] || 'مدير',
+    active: true,
+    permissions: null,                  // null = full access (admin bypass)
+  };
 }
 
-
-function saveUsers(users){ localStorage.setItem('suivi_users', JSON.stringify(users)); }
-
-function doLogin(){
-  const username = document.getElementById('login-username').value.trim();
+async function doLogin(){
+  const email    = document.getElementById('login-username').value.trim();
   const password = document.getElementById('login-password').value;
   const errEl    = document.getElementById('login-error');
-  const users    = getUsers();
-  const user     = users.find(u=>u.username===username && u.password===password && u.active);
-  if(!user){ errEl.textContent='اسم المستخدم أو كلمة السر غلط'; return; }
-  currentUser = user;
-  localStorage.setItem('suivi_session', JSON.stringify({id:user.id,username:user.username,role:user.role,nom:user.nom}));
-  document.getElementById('login-screen').style.display='none';
-  document.getElementById('app-sidebar').style.display='flex';
-  document.getElementById('app-main').style.display='flex';
-  applyUserPermissions();
-  errEl.textContent='';
-  loadAllData().then(function(){ checkPendingAlerts(); });
+  if(!email || !password){ errEl.textContent='عبّي الإيميل و كلمة السر'; return; }
+  errEl.textContent='⏳ جاري التحقق...';
+  try{
+    const { data, error } = await sbAuth.auth.signInWithPassword({ email, password });
+    if(error){
+      errEl.textContent = /invalid/i.test(error.message)
+        ? 'الإيميل أو كلمة السر غلط'
+        : ('خطأ: ' + error.message);
+      return;
+    }
+    currentUser = _userFromSupabase(data.user);
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('app-sidebar').style.display='flex';
+    document.getElementById('app-main').style.display='flex';
+    applyUserPermissions();
+    errEl.textContent='';
+    loadAllData().then(function(){ checkPendingAlerts(); });
+  }catch(e){
+    errEl.textContent='تعذّر الاتصال — جرب عاود';
+    console.error('login error', e);
+  }
 }
 
-function doLogout(){
+async function doLogout(){
   if(!confirm('واش تبغي تخرج؟'))return;
+  try{ await sbAuth.auth.signOut(); }catch(e){ console.warn('signOut error', e); }
   currentUser=null;
-  localStorage.removeItem('suivi_session');
   document.getElementById('app-sidebar').style.display='none';
   document.getElementById('app-main').style.display='none';
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('login-password').value='';
-  document.getElementById('sidebar-user').style.display='none';
-  document.getElementById('topbar-user').style.display='none';
+  const sbUser=document.getElementById('sidebar-user'); if(sbUser) sbUser.style.display='none';
+  const tbUser=document.getElementById('topbar-user'); if(tbUser) tbUser.style.display='none';
   // Reset to dashboard
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-dashboard').classList.add('active');
@@ -15052,18 +15078,31 @@ window.addEventListener('keydown', function(e){
   }
 });
 
-// Check existing session
-const _sess=localStorage.getItem('suivi_session');
-if(_sess){
-  try{
-    currentUser=JSON.parse(_sess);
-    document.getElementById('login-screen').style.display='none';
-    document.getElementById('app-sidebar').style.display='flex';
-    document.getElementById('app-main').style.display='flex';
-    applyUserPermissions();
-    loadAllData();
-  }catch(e){localStorage.removeItem('suivi_session');}
-}
+// Check existing Supabase Auth session — auto-login if user already signed in.
+// Also clean up any stale legacy session blob from the old localStorage-based auth.
+try{ localStorage.removeItem('suivi_session'); }catch(_){}
+sbAuth.auth.getSession().then(function(res){
+  var session = res && res.data && res.data.session;
+  if(!session) return; // not logged in — login screen stays visible
+  currentUser = _userFromSupabase(session.user);
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('app-sidebar').style.display='flex';
+  document.getElementById('app-main').style.display='flex';
+  applyUserPermissions();
+  loadAllData().then(function(){ try{ checkPendingAlerts(); }catch(_){} });
+}).catch(function(e){ console.warn('getSession error', e); });
+
+// React to external sign-out (e.g. token expired, signed out from another device)
+sbAuth.auth.onAuthStateChange(function(event, session){
+  if(event === 'SIGNED_OUT' && currentUser){
+    currentUser = null;
+    try{
+      document.getElementById('app-sidebar').style.display='none';
+      document.getElementById('app-main').style.display='none';
+      document.getElementById('login-screen').style.display='flex';
+    }catch(_){}
+  }
+});
 
 // PWA service worker — auto-update when a new version ships
 if('serviceWorker' in navigator){

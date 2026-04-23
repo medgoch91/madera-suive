@@ -15636,7 +15636,7 @@ sbAuth.auth.getSession().then(function(res){
   if(!session) return; // not logged in — login screen stays visible
   currentUser = _userFromSupabase(session.user);
   window._sbAccessToken = session.access_token || null;
-  try{ _sbAuditEvent('session_restore', { ua: navigator.userAgent.slice(0,120) }); }catch(_){}
+  // No session_restore audit — fires on every refresh and pollutes the timeline
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-sidebar').style.display='flex';
   document.getElementById('app-main').style.display='flex';

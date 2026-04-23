@@ -8486,6 +8486,19 @@ async function renderUsersActivity(){
         if(parsed.nom) bits.push(parsed.nom);
         if(parsed.ice) bits.push('ICE '+parsed.ice);
         break;
+      case 'push_subscriptions':
+        // Identify which browser/push service from the endpoint URL
+        var ep = parsed.endpoint || '';
+        var svc = /fcm\.googleapis\.com/.test(ep) ? 'Chrome / Android'
+                : /mozilla\.com/.test(ep) ? 'Firefox'
+                : /push\.apple\.com/.test(ep) ? 'iPhone / Safari'
+                : 'متصفح';
+        bits.push('اشتراك في الإشعارات (' + svc + ')');
+        break;
+      case 'audit_log':
+        // We audit the auditor recursively in a few edge cases — label them plainly
+        bits.push('سجل نشاط');
+        break;
     }
     // Fallback: if nothing specific matched, fall through to generic key:value
     if(!bits.length){

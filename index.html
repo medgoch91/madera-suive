@@ -8315,36 +8315,53 @@ async function renderUsersActivity(){
            : /Linux/.test(ua) ? 'Linux' : '';
     return (os ? os + ' · ' : '') + br;
   }
+  // Pull a handful of key fields out of a possibly-truncated JSON blob.
+  // audit_log.details is capped at 500 chars so big bon payloads land mid-string.
+  function _scrapeFieldsFromTruncatedJSON(str){
+    var out = {};
+    var keys = ['num','nom','fournisseur','client_nom','status','statut','montant','total','total_ttc','qte','stock','designation','date','echeance','type','action','source','ua'];
+    keys.forEach(function(k){
+      // Match "key":"value" (string) or "key":123 / true / null
+      var reStr = new RegExp('"' + k + '"\\s*:\\s*"([^"\\\\]*)"');
+      var reNum = new RegExp('"' + k + '"\\s*:\\s*([\\-\\d\\.]+)');
+      var m = str.match(reStr) || str.match(reNum);
+      if(m && out[k] === undefined) out[k] = m[1];
+    });
+    return out;
+  }
   function _fmtAuditDetails(r){
-    // Strip surrounding whitespace; accept both string JSON and already-parsed objects
     var d = r.details;
     if(!d) return r.row_id ? ('id ' + r.row_id) : '—';
-    try { if(typeof d === 'string') d = JSON.parse(d); } catch(e) { return escB(String(r.details).slice(0,80)); }
-    if(!d || typeof d !== 'object') return escB(String(d).slice(0,80));
+    var parsed = null;
+    try { parsed = (typeof d === 'string') ? JSON.parse(d) : d; }
+    catch(e) {
+      // Truncated JSON — extract fields via regex
+      parsed = _scrapeFieldsFromTruncatedJSON(String(d));
+    }
+    if(!parsed || typeof parsed !== 'object') return escB(String(d).slice(0,80));
     // Session events
     if(r.action === 'login' || r.action === 'session_restore'){
       var parts = [];
-      if(d.ua) parts.push(_fmtUA(d.ua));
-      if(d.source && d.source !== 'password') parts.push(d.source);
+      if(parsed.ua) parts.push(_fmtUA(parsed.ua));
+      if(parsed.source && parsed.source !== 'password') parts.push(parsed.source);
       return escB(parts.join(' · ')) || '—';
     }
     if(r.action === 'logout') return '';
     // CRUD on a table — show row id + 2-3 key field names
     var prefix = r.row_id ? ('id ' + r.row_id) : '';
-    var fields = Object.keys(d).filter(function(k){
-      return k !== 'ua' && k !== 'created_at' && k !== 'updated_at';
+    var fields = Object.keys(parsed).filter(function(k){
+      return k !== 'ua' && k !== 'created_at' && k !== 'updated_at' && k !== 'lignes' && k !== 'details';
     });
-    // Prefer human-facing fields if present
     var preferred = ['num','nom','fournisseur','client_nom','status','statut','montant','total','total_ttc','qte','stock','designation','date','echeance'];
     var ordered = preferred.filter(function(k){return fields.indexOf(k)>=0;}).concat(fields.filter(function(k){return preferred.indexOf(k)<0;}));
     var summary = ordered.slice(0,3).map(function(k){
-      var v = d[k];
-      if(v === null || v === undefined) return k+':—';
+      var v = parsed[k];
+      if(v === null || v === undefined || v === '') return null;
       if(typeof v === 'object') return k+':{…}';
       var s = String(v);
-      if(s.length > 24) s = s.slice(0,22) + '…';
+      if(s.length > 28) s = s.slice(0,26) + '…';
       return k + ':' + s;
-    }).join(' · ');
+    }).filter(Boolean).join(' · ');
     return [prefix, summary].filter(Boolean).map(escB).join(' · ');
   }
 

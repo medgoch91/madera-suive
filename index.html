@@ -1071,11 +1071,8 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-icon">📅</span> <span data-i18n="nav.echeancier">الجدول الزمني</span>
       <span class="nav-badge" id="badge-echeancier" style="display:none">0</span>
     </button>
-    <button class="nav-btn" onclick="showPage('fournisseurs',this)">
-      <span class="nav-icon">🏢</span> <span data-i18n="nav.fournisseurs">الفورنيسورات</span>
-    </button>
     <button class="nav-btn" onclick="showPage('articles',this)">
-      <span class="nav-icon">📦</span> <span data-i18n="nav.articles">السلع</span>
+      <span class="nav-icon">📦</span> <span data-i18n="nav.catalog">الكتالوج</span>
     </button>
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
@@ -5187,6 +5184,41 @@ let fourFilter='';
 let fourDateFrom='';
 let fourDateTo='';
 let fourDatePreset='';
+// Big prominent tab bar merging السلع + الفورنيسورات under one catalog entry
+function _gotoCatalogTab(key){
+  var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\'articles\'"]');
+  showPage(key, navBtn);
+}
+function _renderCatalogTabsHTML(active){
+  var tabs = [
+    { key:'articles',     icon:'📦', title:'السلع',          sub:'قائمة السلع' },
+    { key:'fournisseurs', icon:'🏢', title:'الفورنيسورات',   sub:'قائمة الموردين' }
+  ];
+  var btns = tabs.map(function(t){
+    var on = t.key === active;
+    var bg = on
+      ? 'background:linear-gradient(135deg,rgba(147,51,234,0.18),rgba(6,182,212,0.12));border-color:var(--accent);box-shadow:0 6px 20px rgba(147,51,234,0.22)'
+      : 'background:var(--bg2);border-color:var(--border)';
+    var iconBg = on ? 'background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff' : 'background:var(--bg3);color:var(--text2)';
+    var titleCol = on ? 'color:var(--text);font-weight:800' : 'color:var(--text2);font-weight:700';
+    var subCol = on ? 'color:var(--accent)' : 'color:var(--text3)';
+    return ''
+      + '<button onclick="_gotoCatalogTab(\''+t.key+'\')" '
+      +   'class="_catalog-tab' + (on?' active':'') + '" '
+      +   'style="flex:1;min-width:180px;display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;border:2px solid transparent;cursor:pointer;transition:all 0.18s cubic-bezier(.4,0,.2,1);text-align:right;font-family:inherit;' + bg + '" '
+      +   'onmouseover="if(!this.classList.contains(\'active\')){this.style.transform=\'translateY(-2px)\';this.style.borderColor=\'rgba(147,51,234,0.35)\';}" '
+      +   'onmouseout="if(!this.classList.contains(\'active\')){this.style.transform=\'\';this.style.borderColor=\'var(--border)\';}">'
+      +   '<div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.18s;' + iconBg + '">' + t.icon + '</div>'
+      +   '<div style="flex:1;min-width:0">'
+      +     '<div style="font-size:15px;letter-spacing:-0.2px;line-height:1.2;' + titleCol + '">' + t.title + '</div>'
+      +     (t.sub ? '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>' : '')
+      +   '</div>'
+      + (on ? '<div style="width:6px;height:36px;border-radius:3px;background:linear-gradient(180deg,#9333ea,#06b6d4);flex-shrink:0"></div>' : '')
+      + '</button>';
+  }).join('');
+  return '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">' + btns + '</div>';
+}
+
 function renderFournisseurs(){
   const search=(document.getElementById('four-search')||{value:''}).value.toLowerCase();
   const allNoms=[...new Set([...fournisseurs.map(f=>f.nom),...bons.map(b=>b.fournisseur)])];
@@ -5203,8 +5235,9 @@ function renderFournisseurs(){
   }).filter(f=>(!fourFilter||f.stat===fourFilter||f.cat===fourFilter)&&(!search||(f.nom||'').toLowerCase().includes(search)||(f.tel||'').includes(search)||(f.ville||'').toLowerCase().includes(search)))
   .sort((a,b)=>b.total-a.total);
 
-  document.getElementById('page-fournisseurs').innerHTML=`
-    <div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
+  document.getElementById('page-fournisseurs').innerHTML=
+    _renderCatalogTabsHTML('fournisseurs')
+    +`<div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
       <!-- LEFT: table -->
       <div>
         <div class="toolbar">
@@ -7073,7 +7106,7 @@ function renderArticles(){
       + groupsHtml;
   }
 
-  document.getElementById('page-articles').innerHTML = tabsHtml + body;
+  document.getElementById('page-articles').innerHTML = _renderCatalogTabsHTML('articles') + tabsHtml + body;
 }
 
 // Renders the "العائلات" tab content

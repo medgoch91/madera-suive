@@ -1022,6 +1022,32 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
 <!-- ===== SIDEBAR ===== -->
 
+<!-- Sync-hide the login screen when a Supabase session is already cached in
+     localStorage, so reloading while logged in doesn't flash the login UI. -->
+<script>
+(function(){
+  try{
+    for (var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if (k && /^sb-.*-auth-token$/.test(k)) {
+        var raw = localStorage.getItem(k);
+        if (raw && raw.indexOf('access_token') > -1) {
+          // Hide login immediately; the async getSession() in the main script
+          // will still run and finalise currentUser / loadAllData.
+          document.documentElement.setAttribute('data-authed','1');
+          var css = document.createElement('style');
+          css.textContent = '#login-screen{display:none!important}'
+            + '[data-authed="1"] #app-sidebar{display:flex!important}'
+            + '[data-authed="1"] #app-main{display:flex!important}';
+          document.head.appendChild(css);
+          break;
+        }
+      }
+    }
+  }catch(_){}
+})();
+</script>
+
 <!-- ===== LOGIN SCREEN ===== -->
 <div id="login-screen" dir="rtl">
   <div class="login-box">

@@ -8250,13 +8250,23 @@ async function renderUsersActivity(){
   // Per-user cards
   if(users.length){
     html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:22px">';
+    // Pretty-label pre-Auth entries so 'anon' doesn't look like a live user
+    var _fmtUserLabel = function(email){
+      return (email === 'anon') ? 'قديم (قبل Auth)' : email;
+    };
     users.forEach(function(u){
-      var initials = (u.email||'?').split('@')[0].slice(0,2).toUpperCase();
-      html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px 18px">'
+      var isAnon = u.email === 'anon';
+      var displayLabel = _fmtUserLabel(u.email);
+      var initials = isAnon ? '⏳' : (u.email||'?').split('@')[0].slice(0,2).toUpperCase();
+      var avatarBg = isAnon
+        ? 'background:var(--bg3);color:var(--text3);border:1px dashed var(--border)'
+        : 'background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff';
+      var cardOpacity = isAnon ? 'opacity:0.72' : '';
+      html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px 18px;'+cardOpacity+'">'
         + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
-        +   '<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">'+escB(initials)+'</div>'
-        +   '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(u.email)+'</div>'
-        +   '<div style="font-size:11px;color:var(--text3)">آخر نشاط: '+fmtAgo(u.lastSeen)+'</div></div>'
+        +   '<div style="width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px;'+avatarBg+'">'+escB(initials)+'</div>'
+        +   '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(displayLabel)+'</div>'
+        +   '<div style="font-size:11px;color:var(--text3)">'+(isAnon?'سجلات قديمة قبل زيادة Auth':'آخر نشاط: '+fmtAgo(u.lastSeen))+'</div></div>'
         + '</div>'
         + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'
         +   '<div style="background:var(--bg3);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--text3)">عمليات</div><div style="font-size:18px;font-weight:800;color:var(--accent)">'+u.actions+'</div></div>'
@@ -8276,7 +8286,7 @@ async function renderUsersActivity(){
     +   '<span style="font-size:13px;font-weight:700;color:var(--text)">سجل العمليات</span>'
     +   '<select onchange="_uaUserFilter=this.value;renderUsersActivity()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;font-family:Cairo,sans-serif">'
     +     '<option value="">كل المستخدمين</option>'
-    +     uniqueUsers.map(function(u){return '<option value="'+escB(u)+'"'+(_uaUserFilter===u?' selected':'')+'>'+escB(u)+'</option>';}).join('')
+    +     uniqueUsers.map(function(u){var lbl=(u==='anon')?'قديم (قبل Auth)':u;return '<option value="'+escB(u)+'"'+(_uaUserFilter===u?' selected':'')+'>'+escB(lbl)+'</option>';}).join('')
     +   '</select>'
     +   '<select onchange="_uaActionFilter=this.value;renderUsersActivity()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;font-family:Cairo,sans-serif">'
     +     '<option value="">كل العمليات</option>'
@@ -8557,7 +8567,7 @@ async function renderUsersActivity(){
       +   (tbl ? '<span style="font-weight:700;color:var(--text);min-width:110px;font-size:12.5px;flex-shrink:0">'+escB(tbl)+'</span>' : '<span style="min-width:110px;flex-shrink:0"></span>')
       +   '<span style="flex:1;color:var(--text2);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,Menlo,monospace">'+details+'</span>'
       +   '<span style="color:var(--text3);font-size:10.5px;white-space:nowrap;flex-shrink:0">'+escB(when)+'</span>'
-      +   '<span style="color:var(--text2);font-size:11.5px;min-width:160px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;text-align:left" title="'+escB(who)+'">'+escB(who)+'</span>'
+      +   '<span style="color:'+(who==='anon'?'var(--text3)':'var(--text2)')+';font-size:11.5px;min-width:160px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0;text-align:left'+(who==='anon'?';font-style:italic':'')+'" title="'+escB(who)+'">'+escB(who==='anon'?'قديم':who)+'</span>'
       + '</div>';
   });
   html += '</div>';

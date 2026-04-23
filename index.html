@@ -1607,8 +1607,10 @@ function _sbAudit(table, method, params, body){
   // Skip noisy tables (background stock sync would otherwise flood audit_log)
   var skip=['prix','supplier_products','audit_log'];
   if(skip.indexOf(table)>=0) return;
-  var user = (window.currentUser && currentUser.email) || (window.currentUser && currentUser.username) || 'anon';
-  var userId = (window.currentUser && currentUser.id) || null;
+  // currentUser is a `let` — lexical, not on window. Access directly.
+  var cu = (typeof currentUser !== 'undefined') ? currentUser : null;
+  var user = (cu && (cu.email || cu.username)) || 'anon';
+  var userId = (cu && cu.id) || null;
   var rowId=null;
   var m=(params||'').match(/id=eq\.(\d+)/);
   if(m) rowId=parseInt(m[1],10);
@@ -1636,8 +1638,9 @@ function _sbAudit(table, method, params, body){
 // both CRUD and session events.
 function _sbAuditEvent(eventType, details){
   try{
-    var user = (window.currentUser && currentUser.email) || 'anon';
-    var userId = (window.currentUser && currentUser.id) || null;
+    var cu = (typeof currentUser !== 'undefined') ? currentUser : null;
+    var user = (cu && (cu.email || cu.username)) || 'anon';
+    var userId = (cu && cu.id) || null;
     fetch(SB_URL+'/rest/v1/audit_log', {
       method:'POST',
       headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},

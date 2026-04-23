@@ -8342,6 +8342,167 @@ async function renderUsersActivity(){
     });
     return out;
   }
+  // Resolve entity label from in-memory arrays so the timeline reads in business terms.
+  function _entityLabel(table, rowId, parsed){
+    try{
+      if(!rowId) return '';
+      var id = Number(rowId);
+      switch(table){
+        case 'articles':
+          var a = (typeof articles !== 'undefined') ? articles.find(function(x){return Number(x.id)===id;}) : null;
+          if(a) return (a.nom||'') + (a.ref ? ' ('+a.ref+')' : '');
+          return parsed && parsed.nom ? parsed.nom : '';
+        case 'bons':
+          var b = (typeof bons !== 'undefined') ? bons.find(function(x){return Number(x.id)===id;}) : null;
+          if(b) return 'BON-'+String(b.num||'').padStart(4,'0') + ' · ' + (b.fournisseur||'');
+          return parsed && parsed.num ? 'BON-'+String(parsed.num).padStart(4,'0') : '';
+        case 'cheques':
+          var c = (typeof cheques !== 'undefined') ? cheques.find(function(x){return Number(x.id)===id;}) : null;
+          if(c) return 'CHK-'+String(c.num||'').padStart(4,'0') + ' · ' + (c.fournisseur||'');
+          return '';
+        case 'factures':
+          var f = (typeof factures !== 'undefined') ? factures.find(function(x){return Number(x.id)===id;}) : null;
+          if(f) return 'FAC-'+String(f.num||'').padStart(4,'0') + ' · ' + (f.client_nom||'');
+          return '';
+        case 'fournisseurs':
+          var fr = (typeof fournisseurs !== 'undefined') ? fournisseurs.find(function(x){return Number(x.id)===id;}) : null;
+          return fr ? (fr.nom||'') : (parsed && parsed.nom ? parsed.nom : '');
+        case 'chantiers':
+          var ch = (typeof chantiers !== 'undefined') ? chantiers.find(function(x){return Number(x.id)===id;}) : null;
+          return ch ? (ch.nom||'') : (parsed && parsed.nom ? parsed.nom : '');
+        case 'salaries':
+          var s = (typeof salariesData !== 'undefined') ? salariesData.find(function(x){return Number(x.id)===id;}) : null;
+          return s ? (s.nom||'')+(s.prenom?' '+s.prenom:'') : '';
+        case 'ouvriers_pc':
+          var o = (typeof ouvriersPc !== 'undefined') ? ouvriersPc.find(function(x){return Number(x.id)===id;}) : null;
+          return o ? (o.nom||'') : '';
+      }
+    }catch(_){}
+    return '';
+  }
+
+  // Table-specific pretty summary builder. Returns a string like
+  // 'LED — مخزون 469' or 'BON-0027 · RACHID LED · 1,200 DH'.
+  function _prettySummary(table, action, parsed, rowId){
+    var name = _entityLabel(table, rowId, parsed);
+    var bits = [];
+    switch(table){
+      case 'articles':
+        if(name) bits.push(name);
+        if(parsed.stock !== undefined && parsed.stock !== null) bits.push('مخزون: ' + parsed.stock);
+        if(parsed.nom && !name) bits.push('اسم: ' + parsed.nom);
+        if(parsed.cat) bits.push('صنف: ' + parsed.cat);
+        if(parsed.unite) bits.push('وحدة: ' + parsed.unite);
+        break;
+      case 'bons':
+        if(name) bits.push(name);
+        if(parsed.total_net !== undefined) bits.push(fmtN(parsed.total_net) + ' DH');
+        else if(parsed.total !== undefined) bits.push(fmtN(parsed.total) + ' DH');
+        if(parsed.date) bits.push(parsed.date);
+        if(parsed.statut && !name) bits.push('حالة: '+parsed.statut);
+        break;
+      case 'cheques':
+        if(name) bits.push(name);
+        else if(parsed.num) bits.push('CHK-'+parsed.num);
+        if(parsed.montant !== undefined) bits.push(fmtN(parsed.montant) + ' DH');
+        if(parsed.echeance) bits.push('استحقاق ' + parsed.echeance);
+        if(parsed.status) bits.push('حالة: '+parsed.status);
+        if(parsed.type && parsed.type !== 'cheque') bits.push(parsed.type);
+        break;
+      case 'factures':
+        if(name) bits.push(name);
+        else if(parsed.num) bits.push('FAC-'+parsed.num);
+        if(parsed.total_ttc !== undefined) bits.push(fmtN(parsed.total_ttc) + ' DH');
+        if(parsed.statut) bits.push('حالة: '+parsed.statut);
+        break;
+      case 'fournisseurs':
+        if(name) bits.push(name);
+        if(parsed.tel) bits.push('📞 '+parsed.tel);
+        if(parsed.ville && !name) bits.push(parsed.ville);
+        break;
+      case 'chantiers':
+        if(name) bits.push(name);
+        if(parsed.statut) bits.push('حالة: '+parsed.statut);
+        break;
+      case 'salaries':
+        if(name) bits.push(name);
+        if(parsed.nom && !name) bits.push(parsed.nom+(parsed.prenom?' '+parsed.prenom:''));
+        if(parsed.poste) bits.push(parsed.poste);
+        if(parsed.salaire_base) bits.push(fmtN(parsed.salaire_base)+' DH/يوم');
+        break;
+      case 'salarie_presences':
+      case 'ouvrier_pc_presences':
+        if(parsed.date) bits.push(parsed.date);
+        if(parsed.statut) bits.push(parsed.statut);
+        if(parsed.qte !== undefined) bits.push('كمية ' + parsed.qte);
+        break;
+      case 'salarie_avances':
+        if(parsed.montant !== undefined) bits.push('سلفة ' + fmtN(parsed.montant) + ' DH');
+        if(parsed.date) bits.push(parsed.date);
+        break;
+      case 'salarie_taswiyas':
+      case 'pc_taswiyas':
+        if(parsed.nom_salarie) bits.push(parsed.nom_salarie);
+        if(parsed.montant !== undefined) bits.push(fmtN(parsed.montant) + ' DH');
+        if(parsed.date_paiement) bits.push(parsed.date_paiement);
+        break;
+      case 'technicians':
+        if(parsed.nom) bits.push(parsed.nom);
+        if(parsed.phone) bits.push('📞 ' + parsed.phone);
+        break;
+      case 'products':
+        if(parsed.nom) bits.push(parsed.nom);
+        if(parsed.ref) bits.push(parsed.ref);
+        if(parsed.labor_cost_per_piece_ttc) bits.push(fmtN(parsed.labor_cost_per_piece_ttc)+' DH/قطعة');
+        break;
+      case 'material_dispatches':
+      case 'material_returns':
+        if(parsed.technician_name) bits.push('تقني: '+parsed.technician_name);
+        if(parsed.article_id) {
+          var art = (typeof articles !== 'undefined') ? articles.find(function(x){return Number(x.id)===Number(parsed.article_id);}) : null;
+          if(art) bits.push(art.nom);
+        }
+        if(parsed.quantity !== undefined) bits.push('كمية ' + parsed.quantity);
+        if(parsed.bon_number) bits.push(parsed.bon_number);
+        if(parsed.reason) bits.push('سبب: '+parsed.reason);
+        break;
+      case 'subcontracting_orders':
+        if(parsed.technician_name) bits.push('تقني: '+parsed.technician_name);
+        if(parsed.product_id) {
+          var p = (typeof edProducts !== 'undefined') ? edProducts.find(function(x){return Number(x.id)===Number(parsed.product_id);}) : null;
+          if(p) bits.push(p.nom);
+        }
+        if(parsed.quantity_received !== undefined) bits.push('كمية ' + parsed.quantity_received);
+        break;
+      case 'technician_payments':
+        if(parsed.technician_name) bits.push('تقني: '+parsed.technician_name);
+        if(parsed.amount !== undefined) bits.push(fmtN(parsed.amount) + ' DH');
+        if(parsed.pay_date) bits.push(parsed.pay_date);
+        break;
+      case 'product_recipe':
+        if(parsed.quantity_needed !== undefined) bits.push('كمية ' + parsed.quantity_needed);
+        break;
+      case 'fact_clients':
+        if(parsed.nom) bits.push(parsed.nom);
+        if(parsed.ice) bits.push('ICE '+parsed.ice);
+        break;
+    }
+    // Fallback: if nothing specific matched, fall through to generic key:value
+    if(!bits.length){
+      var pref = ['num','nom','fournisseur','client_nom','technician_name','status','statut','montant','total','total_ttc','qte','quantity_received','stock','designation','date','echeance','type'];
+      var keys = Object.keys(parsed).filter(function(k){return k!=='ua'&&k!=='lignes'&&k!=='created_at'&&k!=='updated_at';});
+      var ordered = pref.filter(function(k){return keys.indexOf(k)>=0;}).concat(keys.filter(function(k){return pref.indexOf(k)<0;}));
+      bits = ordered.slice(0,3).map(function(k){
+        var v = parsed[k];
+        if(v === null || v === undefined || v === '' || typeof v === 'object') return null;
+        var lbl = fieldLabel[k] || k;
+        var s = String(v); if(s.length > 28) s = s.slice(0,26)+'…';
+        return lbl + ': ' + s;
+      }).filter(Boolean);
+    }
+    return bits.join(' · ');
+  }
+
   function _fmtAuditDetails(r){
     var d = r.details;
     if(!d) return r.row_id ? ('id ' + r.row_id) : '—';
@@ -8359,23 +8520,10 @@ async function renderUsersActivity(){
       return escB(parts.join(' · ')) || '—';
     }
     if(r.action === 'logout') return '';
-    // CRUD on a table — show row id + 2-3 key field names using Arabic labels
-    var prefix = r.row_id ? ('id ' + r.row_id) : '';
-    var fields = Object.keys(parsed).filter(function(k){
-      return k !== 'ua' && k !== 'created_at' && k !== 'updated_at' && k !== 'lignes' && k !== 'details';
-    });
-    var preferred = ['num','nom','fournisseur','client_nom','technician_name','status','statut','montant','total','total_ttc','qte','quantity_received','stock','designation','date','echeance','product_id','article_id','bon_number','reason','type'];
-    var ordered = preferred.filter(function(k){return fields.indexOf(k)>=0;}).concat(fields.filter(function(k){return preferred.indexOf(k)<0;}));
-    var summary = ordered.slice(0,3).map(function(k){
-      var v = parsed[k];
-      if(v === null || v === undefined || v === '') return null;
-      if(typeof v === 'object') return null; // skip nested objects / arrays silently
-      var s = String(v);
-      if(s.length > 28) s = s.slice(0,26) + '…';
-      var label = fieldLabel[k] || k;
-      return label + ':' + s;
-    }).filter(Boolean).join(' · ');
-    return [prefix, summary].filter(Boolean).map(escB).join(' · ');
+    // CRUD: normalise table key (strip '?id=eq.N') then hand off to builder
+    var rawTbl = (r.table_name || '').split('?')[0];
+    var summary = _prettySummary(rawTbl, r.action, parsed, r.row_id);
+    return escB(summary || '—');
   }
 
   html += '<div style="display:flex;flex-direction:column;gap:6px">';

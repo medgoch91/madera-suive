@@ -1120,6 +1120,9 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn admin-only" id="nav-admin-btn" style="display:none" onclick="showPage('admin',this)">
       <span class="nav-icon">⚙️</span> <span data-i18n="nav.admin">إدارة المستخدمين</span>
     </button>
+    <button class="nav-btn admin-only" id="nav-users-activity-btn" style="display:none" onclick="showPage('users-activity',this)">
+      <span class="nav-icon">📊</span> نشاط المستخدمين
+    </button>
 
   </nav>
   <div class="sidebar-footer">
@@ -1388,6 +1391,9 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- ADMIN PAGE -->
     <div class="page" id="page-admin"></div>
+
+    <!-- USERS ACTIVITY PAGE -->
+    <div class="page" id="page-users-activity"></div>
   </div>
   <!-- Mobile bottom nav (visible only <768px) -->
   <nav class="mobile-bnav" id="mobile-bnav" aria-label="تنقل سفلي">
@@ -1598,10 +1604,11 @@ function _sbToastThrottled(msg, level){
 }
 
 function _sbAudit(table, method, params, body){
-  // Skip noisy tables
-  var skip=['prix','supplier_products'];
+  // Skip noisy tables (background stock sync would otherwise flood audit_log)
+  var skip=['prix','supplier_products','audit_log'];
   if(skip.indexOf(table)>=0) return;
-  var user=(window.currentUser && currentUser.username) || 'anon';
+  var user = (window.currentUser && currentUser.email) || (window.currentUser && currentUser.username) || 'anon';
+  var userId = (window.currentUser && currentUser.id) || null;
   var rowId=null;
   var m=(params||'').match(/id=eq\.(\d+)/);
   if(m) rowId=parseInt(m[1],10);
@@ -1609,18 +1616,43 @@ function _sbAudit(table, method, params, body){
   else if(body && body.id) rowId=body.id;
   var payload={
     user_name: user,
+    user_email: user,
+    user_id: userId,
     action: method,
     table_name: table,
     row_id: rowId,
     details: (body ? JSON.stringify(body).slice(0,500) : ''),
     created_at: new Date().toISOString()
   };
-  // Fire-and-forget — don't await, don't crash app if it fails
   fetch(SB_URL+'/rest/v1/audit_log', {
     method:'POST',
     headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
     body: JSON.stringify(payload)
   }).catch(function(){});
+}
+
+// Log a semantic user event (login, logout, page view...) to audit_log.
+// Table_name is used as the event type so the same timeline can surface
+// both CRUD and session events.
+function _sbAuditEvent(eventType, details){
+  try{
+    var user = (window.currentUser && currentUser.email) || 'anon';
+    var userId = (window.currentUser && currentUser.id) || null;
+    fetch(SB_URL+'/rest/v1/audit_log', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+      body: JSON.stringify({
+        user_name: user,
+        user_email: user,
+        user_id: userId,
+        action: eventType,
+        table_name: '_event',
+        row_id: null,
+        details: details ? JSON.stringify(details).slice(0,500) : '',
+        created_at: new Date().toISOString()
+      })
+    }).catch(function(){});
+  }catch(_){}
 }
 
 function sbParseError(raw){
@@ -2381,7 +2413,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -7369,6 +7401,7 @@ async function doLogin(){
     }
     currentUser = _userFromSupabase(data.user);
     window._sbAccessToken = data.session && data.session.access_token || null;
+    try{ _sbAuditEvent('login', { source: 'password', ua: navigator.userAgent.slice(0,120) }); }catch(_){}
     document.getElementById('login-screen').style.display='none';
     document.getElementById('app-sidebar').style.display='flex';
     document.getElementById('app-main').style.display='flex';
@@ -7383,6 +7416,7 @@ async function doLogin(){
 
 async function doLogout(){
   if(!confirm('واش تبغي تخرج؟'))return;
+  try{ _sbAuditEvent('logout', {}); }catch(_){}
   try{ await sbAuth.auth.signOut(); }catch(e){ console.warn('signOut error', e); }
   currentUser=null;
   window._sbAccessToken = null;
@@ -7993,6 +8027,157 @@ async function purgeTrashItem(table, id){
 }
 
 // ════════════════════════════════════════════════════════════════
+// ════════════════════════════════════════════════════════════════
+// Users Activity page — who did what, when, how long
+// ════════════════════════════════════════════════════════════════
+var _uaRangeDays = 7;
+var _uaUserFilter = '';
+var _uaActionFilter = '';
+
+async function renderUsersActivity(){
+  var root = document.getElementById('page-users-activity');
+  if(!root) return;
+  if(!currentUser){ root.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">غير مصرح</div></div>'; return; }
+  root.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text2)">⏳ جاري تحميل النشاط...</div>';
+
+  var since = new Date(Date.now() - _uaRangeDays*86400000).toISOString();
+  var qs = 'select=*&order=created_at.desc&created_at=gte.'+encodeURIComponent(since)+'&limit=500';
+  if(_uaUserFilter) qs += '&user_email=eq.'+encodeURIComponent(_uaUserFilter);
+  if(_uaActionFilter) qs += '&action=eq.'+encodeURIComponent(_uaActionFilter);
+  var rows = await sbFetch('audit_log', 'GET', null, qs);
+  if(!Array.isArray(rows)) rows = [];
+
+  // Aggregate per user (from FULL range, not filtered — so the user-cards are consistent regardless of filter)
+  var allRows = rows;
+  if(_uaUserFilter || _uaActionFilter){
+    var fullQs = 'select=*&order=created_at.desc&created_at=gte.'+encodeURIComponent(since)+'&limit=500';
+    allRows = await sbFetch('audit_log','GET',null,fullQs);
+    if(!Array.isArray(allRows)) allRows = [];
+  }
+
+  // Group by user_email (or user_name fallback for legacy rows)
+  var byUser = {};
+  allRows.forEach(function(r){
+    var u = r.user_email || r.user_name || 'anon';
+    if(!byUser[u]){ byUser[u] = { email:u, actions:0, logins:[], logouts:[], lastSeen:null, byAction:{}, byTable:{} }; }
+    var g = byUser[u];
+    g.actions++;
+    if(r.action === 'login') g.logins.push(r.created_at);
+    if(r.action === 'logout') g.logouts.push(r.created_at);
+    if(!g.lastSeen || r.created_at > g.lastSeen) g.lastSeen = r.created_at;
+    g.byAction[r.action] = (g.byAction[r.action]||0)+1;
+    if(r.table_name && r.table_name !== '_event') g.byTable[r.table_name] = (g.byTable[r.table_name]||0)+1;
+  });
+
+  // Compute session durations (pair consecutive login → logout per user)
+  Object.keys(byUser).forEach(function(u){
+    var g = byUser[u];
+    var pairs = [];
+    var logins = (g.logins||[]).slice().sort();
+    var logouts = (g.logouts||[]).slice().sort();
+    logins.forEach(function(li){
+      // Next logout after li
+      var lo = logouts.find(function(x){ return x > li; });
+      if(lo) pairs.push((new Date(lo) - new Date(li))/1000);
+    });
+    g.sessionCount = logins.length;
+    g.totalSessionSec = pairs.reduce(function(a,b){return a+b;},0);
+    g.avgSessionSec = pairs.length ? g.totalSessionSec / pairs.length : 0;
+  });
+
+  var fmtAgo = function(iso){
+    if(!iso) return '—';
+    var s = (Date.now() - new Date(iso))/1000;
+    if(s < 60) return 'الآن';
+    if(s < 3600) return Math.floor(s/60)+' د';
+    if(s < 86400) return Math.floor(s/3600)+' س';
+    return Math.floor(s/86400)+' يوم';
+  };
+  var fmtDur = function(sec){
+    if(!sec || sec < 60) return '—';
+    var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+    return h ? h+'س '+m+'د' : m+'د';
+  };
+
+  // Build HTML
+  var users = Object.values(byUser).sort(function(a,b){ return b.actions - a.actions; });
+  var uniqueUsers = [...new Set(allRows.map(function(r){ return r.user_email||r.user_name||'anon'; }))].sort();
+  var uniqueActions = [...new Set(allRows.map(function(r){ return r.action; }))].sort();
+
+  var html = '';
+  // Header
+  html += '<div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap">'
+    +   '<div>'
+    +     '<div style="font-size:11px;text-transform:uppercase;letter-spacing:2.5px;color:var(--text3);font-weight:700;margin-bottom:4px">نشاط المستخدمين</div>'
+    +     '<div style="font-size:22px;font-weight:800;letter-spacing:-0.3px;color:var(--text)">آخر '+_uaRangeDays+' يوم · '+allRows.length+' عملية · '+users.length+' مستخدم</div>'
+    +   '</div>'
+    +   '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+    +     [1,7,30,90].map(function(d){ return '<button onclick="_uaRangeDays='+d+';renderUsersActivity()" style="padding:7px 14px;border-radius:999px;border:1px solid '+(_uaRangeDays===d?'var(--accent)':'var(--border)')+';background:'+(_uaRangeDays===d?'var(--accent)':'transparent')+';color:'+(_uaRangeDays===d?'#fff':'var(--text2)')+';font-family:Cairo,sans-serif;font-size:12px;font-weight:600;cursor:pointer">'+(d===1?'اليوم':(d+' يوم'))+'</button>';}).join('')
+    +   '</div>'
+    + '</div>';
+
+  // Per-user cards
+  if(users.length){
+    html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;margin-bottom:22px">';
+    users.forEach(function(u){
+      var initials = (u.email||'?').split('@')[0].slice(0,2).toUpperCase();
+      html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:16px 18px">'
+        + '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'
+        +   '<div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:14px">'+escB(initials)+'</div>'
+        +   '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(u.email)+'</div>'
+        +   '<div style="font-size:11px;color:var(--text3)">آخر نشاط: '+fmtAgo(u.lastSeen)+'</div></div>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px">'
+        +   '<div style="background:var(--bg3);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--text3)">عمليات</div><div style="font-size:18px;font-weight:800;color:var(--accent)">'+u.actions+'</div></div>'
+        +   '<div style="background:var(--bg3);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--text3)">جلسات</div><div style="font-size:18px;font-weight:800;color:var(--text)">'+u.sessionCount+'</div></div>'
+        +   '<div style="background:var(--bg3);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--text3)">متوسط</div><div style="font-size:14px;font-weight:800;color:var(--text2);margin-top:3px">'+fmtDur(u.avgSessionSec)+'</div></div>'
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--text3)">'
+        +   Object.keys(u.byTable).slice(0,4).map(function(t){return '<span style="display:inline-block;background:var(--bg3);border-radius:6px;padding:2px 7px;margin:2px 3px 2px 0">'+escB(t)+' ·<b style="color:var(--accent)"> '+u.byTable[t]+'</b></span>';}).join('')
+        + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+  }
+
+  // Timeline filters
+  html += '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center">'
+    +   '<span style="font-size:13px;font-weight:700;color:var(--text)">سجل العمليات</span>'
+    +   '<select onchange="_uaUserFilter=this.value;renderUsersActivity()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;font-family:Cairo,sans-serif">'
+    +     '<option value="">كل المستخدمين</option>'
+    +     uniqueUsers.map(function(u){return '<option value="'+escB(u)+'"'+(_uaUserFilter===u?' selected':'')+'>'+escB(u)+'</option>';}).join('')
+    +   '</select>'
+    +   '<select onchange="_uaActionFilter=this.value;renderUsersActivity()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-size:12px;font-family:Cairo,sans-serif">'
+    +     '<option value="">كل العمليات</option>'
+    +     uniqueActions.map(function(a){return '<option value="'+escB(a)+'"'+(_uaActionFilter===a?' selected':'')+'>'+escB(a)+'</option>';}).join('')
+    +   '</select>'
+    + '</div>';
+
+  // Timeline
+  var actionIcon = {login:'🔓',logout:'🔒',session_restore:'🔁',POST:'➕',PATCH:'✏️',PUT:'✏️',DELETE:'🗑'};
+  var actionColor = {login:'#10b981',logout:'#64748b',session_restore:'#06b6d4',POST:'#10b981',PATCH:'#f59e0b',DELETE:'#ef4444',PUT:'#f59e0b'};
+  html += '<div style="display:flex;flex-direction:column;gap:6px">';
+  if(!rows.length) html += '<div style="padding:30px;text-align:center;color:var(--text3)">— لا توجد عمليات في هاد الفترة —</div>';
+  rows.slice(0,200).forEach(function(r){
+    var col = actionColor[r.action] || '#6366f1';
+    var icon = actionIcon[r.action] || '•';
+    var when = r.created_at ? new Date(r.created_at).toLocaleString('fr-MA') : '?';
+    var who = r.user_email || r.user_name || 'anon';
+    var tbl = r.table_name === '_event' ? '' : (r.table_name || '');
+    html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">'
+      +   '<span style="font-size:15px">'+icon+'</span>'
+      +   '<span style="font-size:11px;font-weight:700;color:'+col+';min-width:72px">'+escB(r.action||'?')+'</span>'
+      +   '<span style="font-weight:700;color:var(--text);min-width:130px;font-size:12px">'+escB(tbl)+'</span>'
+      +   '<span style="flex:1;color:var(--text2);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(r.row_id?'id '+r.row_id+' · ':'')+escB((r.details||'').slice(0,80))+'</span>'
+      +   '<span style="color:var(--text3);font-size:10px;white-space:nowrap">'+escB(when)+'</span>'
+      +   '<span style="color:var(--text2);font-size:11px;min-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(who)+'</span>'
+      + '</div>';
+  });
+  html += '</div>';
+
+  root.innerHTML = html;
+}
+
 // Audit log viewer (admin-only)
 // ════════════════════════════════════════════════════════════════
 async function loadAuditLog(){
@@ -15159,6 +15344,7 @@ sbAuth.auth.getSession().then(function(res){
   if(!session) return; // not logged in — login screen stays visible
   currentUser = _userFromSupabase(session.user);
   window._sbAccessToken = session.access_token || null;
+  try{ _sbAuditEvent('session_restore', { ua: navigator.userAgent.slice(0,120) }); }catch(_){}
   document.getElementById('login-screen').style.display='none';
   document.getElementById('app-sidebar').style.display='flex';
   document.getElementById('app-main').style.display='flex';

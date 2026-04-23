@@ -3584,8 +3584,8 @@ function _gotoBonTab(key){
 }
 function _renderBonsTabsHTML(active){
   var tabs = [
-    { key:'bons',    icon:'📋', title:'البونات',   sub:'قائمة البونات' },
-    { key:'new-bon', icon:'➕', title:'بون جديد',  sub:'إضافة بون جديد' }
+    { key:'bons',    icon:'📋', title:'البونات',  sub:'قائمة البونات' },
+    { key:'new-bon', icon:'➕', title:'بون جديد', sub:'' }
   ];
   var btns = tabs.map(function(t){
     var on = t.key === active;
@@ -3606,7 +3606,7 @@ function _renderBonsTabsHTML(active){
       +   '<div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.18s;' + iconBg + '">' + t.icon + '</div>'
       +   '<div style="flex:1;min-width:0">'
       +     '<div style="font-size:15px;letter-spacing:-0.2px;line-height:1.2;' + titleCol + '">' + t.title + '</div>'
-      +     '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>'
+      +     (t.sub ? '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>' : '')
       +   '</div>'
       + (on ? '<div style="width:6px;height:36px;border-radius:3px;background:linear-gradient(180deg,#9333ea,#06b6d4);flex-shrink:0"></div>' : '')
       + '</button>';
@@ -4825,9 +4825,9 @@ function _gotoChequeTab(key){
 }
 function _renderChequesTabsHTML(active){
   var tabs = [
-    { key:'cheques',      icon:'📋', title:'التسويات',     sub:'قائمة الشيكات' },
-    { key:'new-cheque',   icon:'✏️', title:'تسوية جديدة',  sub:'إضافة شيك / ورقة / نقد' },
-    { key:'print-cheque', icon:'🖨️', title:'طباعة الشيك',  sub:'طباعة ملف PDF' }
+    { key:'cheques',      icon:'📋', title:'التسويات',    sub:'قائمة الشيكات' },
+    { key:'new-cheque',   icon:'✏️', title:'تسوية جديدة', sub:'شيك · ورقة · نقد' },
+    { key:'print-cheque', icon:'🖨️', title:'طباعة الشيك', sub:'طباعة ملف PDF' }
   ];
   var btns = tabs.map(function(t){
     var on = t.key === active;
@@ -4848,7 +4848,7 @@ function _renderChequesTabsHTML(active){
       +   '<div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.18s;' + iconBg + '">' + t.icon + '</div>'
       +   '<div style="flex:1;min-width:0">'
       +     '<div style="font-size:15px;letter-spacing:-0.2px;line-height:1.2;' + titleCol + '">' + t.title + '</div>'
-      +     '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>'
+      +     (t.sub ? '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>' : '')
       +   '</div>'
       + (on ? '<div style="width:6px;height:36px;border-radius:3px;background:linear-gradient(180deg,#9333ea,#06b6d4);flex-shrink:0"></div>' : '')
       + '</button>';

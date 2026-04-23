@@ -175,5 +175,5 @@ export async function cmdListBons(msg: TgMessage): Promise<void> {
 // ── /cancel — clears any conversation state (handled by the router) ─
 export async function cmdCancel(msg: TgMessage): Promise<void> {
   await sb.from('bot_conversations').delete().eq('chat_id', msg.chat.id);
-  await sendMessage(msg.chat.id, 'تم الإلغاء.');
+  await sendMessage(msg.chat.id, 'تم الإلغاء.', { replyMarkup: { remove_keyboard: true } });
 }

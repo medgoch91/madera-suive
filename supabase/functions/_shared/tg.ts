@@ -27,10 +27,27 @@ export type TgCallbackQuery = {
 };
 
 export type TgInlineKeyboard = { inline_keyboard: { text: string; callback_data: string; url?: string }[][] };
+export type TgReplyKeyboard = {
+  keyboard: { text: string }[][];
+  resize_keyboard?: boolean;
+  one_time_keyboard?: boolean;
+  selective?: boolean;
+};
+export type TgRemoveKeyboard = { remove_keyboard: true; selective?: boolean };
+export type TgReplyMarkup = TgInlineKeyboard | TgReplyKeyboard | TgRemoveKeyboard;
+
+// Arrange flat list into rows of N for ReplyKeyboard layout
+export function kbRows(items: string[], perRow = 2): { text: string }[][] {
+  const rows: { text: string }[][] = [];
+  for (let i = 0; i < items.length; i += perRow) {
+    rows.push(items.slice(i, i + perRow).map((t) => ({ text: t })));
+  }
+  return rows;
+}
 
 export async function sendMessage(chatId: number, text: string, opts: {
   parseMode?: 'Markdown' | 'HTML';
-  replyMarkup?: TgInlineKeyboard;
+  replyMarkup?: TgReplyMarkup;
   disablePreview?: boolean;
 } = {}): Promise<void> {
   const body: Record<string, unknown> = { chat_id: chatId, text };
@@ -47,7 +64,7 @@ export async function sendMessage(chatId: number, text: string, opts: {
 
 export async function editMessageText(chatId: number, messageId: number, text: string, opts: {
   parseMode?: 'Markdown' | 'HTML';
-  replyMarkup?: TgInlineKeyboard;
+  replyMarkup?: TgReplyMarkup;
 } = {}): Promise<void> {
   const body: Record<string, unknown> = { chat_id: chatId, message_id: messageId, text };
   if (opts.parseMode) body.parse_mode = opts.parseMode;

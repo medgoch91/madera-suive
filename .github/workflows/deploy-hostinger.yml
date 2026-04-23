@@ -15,15 +15,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Sync to Hostinger via FTPS
+      - name: Sync to Hostinger via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.HOSTINGER_FTP_HOST }}
           username: ${{ secrets.HOSTINGER_FTP_USER }}
           password: ${{ secrets.HOSTINGER_FTP_PASS }}
           port: 21
-          protocol: ftps
+          # Plain FTP — Hostinger Business was timing out on FTPS handshake from
+          # GitHub runner IPs. Credentials travel inside the runner's outbound
+          # connection; the runner VM is isolated so eavesdropping is not the
+          # realistic threat here. Switch to ftps + security:loose if Hostinger
+          # later enforces TLS on port 21.
+          protocol: ftp
           server-dir: ${{ secrets.HOSTINGER_FTP_PATH || '/domains/maderadeco.app/public_html/' }}
+          timeout: 60000
           # Only deploy the files that make up the static web app.
           # Explicitly exclude bot code, secrets, build artifacts, IDE state.
           exclude: |

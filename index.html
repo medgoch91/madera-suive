@@ -1097,19 +1097,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-icon">➕</span> <span data-i18n="nav.newBon">بون جديد</span>
     </button>
 
-    <button class="nav-btn" onclick="showPage('new-cheque',this)">
-      <span class="nav-icon">✏️</span> <span data-i18n="nav.newCheque">تسوية جديدة</span>
-    </button>
-
-    <!-- Section: أدوات -->
-    <div class="nav-section-sep">
-      <span class="nav-section-line"></span>
-      <span class="nav-section-label" data-i18n="sec.tools">أدوات</span>
-      <span class="nav-section-line"></span>
-    </div>
-    <button class="nav-btn" onclick="showPage('print-cheque',this)">
-      <span class="nav-icon">🖨️</span> <span data-i18n="nav.printCheque">طباعة الشيك</span>
-    </button>
+    <!-- new-cheque + print-cheque moved into tabs on top of التسويات page -->
 
     <!-- Admin section -->
     <div class="nav-section-sep admin-only" id="nav-section-admin" style="display:none">
@@ -2416,7 +2404,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -4779,6 +4767,39 @@ async function ckBulkDelete(){
     renderCheques(); updateSidebar();
   }catch(e){ hideLoader(); toast('فشل: '+(e&&e.message||''),'error'); }
 }
+// Inject the tab bar on top of the static #page-new-cheque markup, once per visit.
+// Called from the renders map whenever the user navigates to 'new-cheque'.
+function initNewCheque(){
+  var page = document.getElementById('page-new-cheque');
+  if(!page) return;
+  var existing = page.querySelector('.cheques-tabs-bar');
+  if(existing) existing.remove();
+  var wrap = document.createElement('div');
+  wrap.className = 'cheques-tabs-bar';
+  wrap.innerHTML = _renderChequesTabsHTML('new-cheque');
+  page.insertBefore(wrap, page.firstChild);
+}
+
+// Shared tab bar for the 3 cheque-related pages (list / new / print).
+// Renders a segmented pill control; clicks route through _gotoChequeTab().
+function _gotoChequeTab(key){
+  var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\'cheques\'"]');
+  showPage(key, navBtn);
+}
+function _renderChequesTabsHTML(active){
+  var tabs = [
+    { key:'cheques',       label:'📋 التسويات'   },
+    { key:'new-cheque',    label:'✏️ تسوية جديدة' },
+    { key:'print-cheque',  label:'🖨️ طباعة'      }
+  ];
+  return '<div class="filter-pills" style="gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+    + tabs.map(function(t){
+        var isActive = t.key === active;
+        return '<button class="pill' + (isActive ? ' active' : '') + '" onclick="_gotoChequeTab(\''+t.key+'\')">' + t.label + '</button>';
+      }).join('')
+    + '</div>';
+}
+
 function renderCheques(){
   const search=(document.getElementById('ck-search')||{value:''}).value.toLowerCase();
   var typeF = window._ckTypeFilter || ''; // '' | 'cheque' | 'effet' | 'espece'
@@ -4804,7 +4825,8 @@ function renderCheques(){
   const allSelected = filtered.length>0 && filtered.every(c=>ckSelected.has(c.id));
   const selSum = filtered.filter(c=>ckSelected.has(c.id)).reduce((s,c)=>s+Number(c.montant),0);
   document.getElementById('page-cheques').innerHTML=
-    buildDateBar('cheques','renderCheques')
+    _renderChequesTabsHTML('cheques')
+    +buildDateBar('cheques','renderCheques')
     +`<div class="toolbar">
       <input class="search-box" id="ck-search" placeholder="🔍 بحث بالرقم أو الفورنيسور..." oninput="renderCheques()" value="${search}">
       <div class="filter-pills">
@@ -5981,8 +6003,9 @@ function renderPrintCheque(){
   const modeTitle = isEffet ? '📜 معلومات الورقة' : '💳 معلومات الشيك';
   const uploadHint = isEffet ? 'ارفع صورة الورقة' : 'ارفع صورة الشيك';
   const printBtnLbl = isEffet ? '🖨️ طباعة الورقة' : '🖨️ طباعة الشيك';
-  document.getElementById('page-print-cheque').innerHTML=`
-  <div class="filter-pills" style="gap:8px;margin-bottom:14px">
+  document.getElementById('page-print-cheque').innerHTML=
+  _renderChequesTabsHTML('print-cheque')
+  +`<div class="filter-pills" style="gap:8px;margin-bottom:14px">
     <button type="button" class="pill ${!isEffet?'active':''}" onclick="setPrintMode('cheque')">💳 شيك</button>
     <button type="button" class="pill ${isEffet?'active':''}" onclick="setPrintMode('effet')">📜 ورقة</button>
   </div>

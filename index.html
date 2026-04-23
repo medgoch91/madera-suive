@@ -1077,9 +1077,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
-    <button class="nav-btn" onclick="showPage('elec-dist',this)" id="nav-elec-dist">
-      <span class="nav-icon">⚡</span> <span data-i18n="nav.elec">électricité à distance</span>
-    </button>
+    <!-- elec-dist merged into الأجراء as a tab -->
     <button class="nav-btn" onclick="showPage('factures',this)" id="nav-factures">
       <span class="nav-icon">🧾</span> <span data-i18n="nav.factures">الفواتير</span>
     </button>
@@ -9833,6 +9831,8 @@ let ouvriersPc=[];       // {id, nom, actif}
 let ouvrierPcAssigns=[]; // {id, ouvrier_id, pc_nom, prix}
 let pcTaswiyas=JSON.parse(localStorage.getItem('pc_taswiyas_v1')||'[]'); // {ouvrier_id, date_from, date_to, montant, date_paiement}
 let salSubPage='pointage';
+// Top-level worker grouping: 'workers' (الأجراء day-workers), 'pcs' (piece-work), 'elec' (subcontracting)
+let salTopGroup='workers';
 let salPointageSemFrom=(function(){
   const d=new Date();d.setDate(d.getDate()-d.getDay()+1);
   return d.toISOString().split('T')[0];
@@ -9925,18 +9925,69 @@ async function sbUpsert(table,body,onConflict){
 }
 
 // ─── RENDER ───────────────────────────────────────────────────
+// Hero-style top tab bar for الأجراء grouping (workers / PCs / elec-dist)
+function _gotoSalGroup(k){
+  salTopGroup = k;
+  // Reset sub-tab to a sensible default per group
+  if(k === 'workers' && !['pointage','dashboard','historique','ajout'].includes(salSubPage)) salSubPage='pointage';
+  renderSalaries();
+  try{ window.scrollTo(0,0); }catch(_){}
+}
+function _renderSalHeroTabsHTML(active){
+  var tabs = [
+    { key:'workers', icon:'👥', title:'الأجراء',             sub:'يومية · حضور · رواتب' },
+    { key:'pcs',     icon:'👷', title:'Par PCs',             sub:'عمال القطعة' },
+    { key:'elec',    icon:'⚡', title:'électricité à distance', sub:'المناولة' }
+  ];
+  var btns = tabs.map(function(t){
+    var on = t.key === active;
+    var bg = on
+      ? 'background:linear-gradient(135deg,rgba(147,51,234,0.18),rgba(6,182,212,0.12));border-color:var(--accent);box-shadow:0 6px 20px rgba(147,51,234,0.22)'
+      : 'background:var(--bg2);border-color:var(--border)';
+    var iconBg = on ? 'background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff' : 'background:var(--bg3);color:var(--text2)';
+    var titleCol = on ? 'color:var(--text);font-weight:800' : 'color:var(--text2);font-weight:700';
+    var subCol = on ? 'color:var(--accent)' : 'color:var(--text3)';
+    return ''
+      + '<button onclick="_gotoSalGroup(\''+t.key+'\')" '
+      +   'class="_sal-top-tab' + (on?' active':'') + '" '
+      +   'style="flex:1;min-width:200px;display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;border:2px solid transparent;cursor:pointer;transition:all 0.18s cubic-bezier(.4,0,.2,1);text-align:right;font-family:inherit;' + bg + '" '
+      +   'onmouseover="if(!this.classList.contains(\'active\')){this.style.transform=\'translateY(-2px)\';this.style.borderColor=\'rgba(147,51,234,0.35)\';}" '
+      +   'onmouseout="if(!this.classList.contains(\'active\')){this.style.transform=\'\';this.style.borderColor=\'var(--border)\';}">'
+      +   '<div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.18s;' + iconBg + '">' + t.icon + '</div>'
+      +   '<div style="flex:1;min-width:0">'
+      +     '<div style="font-size:15px;letter-spacing:-0.2px;line-height:1.2;' + titleCol + '">' + t.title + '</div>'
+      +     (t.sub ? '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>' : '')
+      +   '</div>'
+      + (on ? '<div style="width:6px;height:36px;border-radius:3px;background:linear-gradient(180deg,#9333ea,#06b6d4);flex-shrink:0"></div>' : '')
+      + '</button>';
+  }).join('');
+  return '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">' + btns + '</div>';
+}
+
 function renderSalaries(){
   const page=document.getElementById('page-salaries');
   if(!page)return;
   page.style.direction='rtl';page.style.width='100%';page.style.height='auto';
+  const heroTabs = _renderSalHeroTabsHTML(salTopGroup);
+
+  if(salTopGroup === 'elec'){
+    page.innerHTML = heroTabs + '<div style="max-width:1300px;margin:0 auto">' + renderSalElecDist() + '</div>';
+    return;
+  }
+  if(salTopGroup === 'pcs'){
+    // PCs = direct piece-work editor, no sub-tabs needed
+    page.innerHTML = heroTabs + renderSalPcs();
+    return;
+  }
+
+  // Default: 'workers' group — keep the original secondary sub-tabs
   const tabs=[
     {k:'pointage',lbl:'📅 الحضور'},
     {k:'dashboard',lbl:'💰 الأجور'},
     {k:'historique',lbl:'📊 السجل'},
-    {k:'ajout',lbl:'👤 الأجراء'},
-    {k:'pcs',lbl:'👷 Par PCs'},
+    {k:'ajout',lbl:'👤 إضافة أجير'},
   ];
-  const tabBar='<div class="sal-tabs" style="display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px">'
+  const subTabBar='<div class="sal-tabs" style="display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:4px">'
     +tabs.map(t=>'<button onclick="salSubPage=\''+t.k+'\';renderSalaries();window.scrollTo(0,0);" '
       +'style="padding:10px 16px;border-radius:var(--radius-sm);border:2px solid '+(salSubPage===t.k?'var(--accent)':'var(--border)')+';'
       +'background:'+(salSubPage===t.k?'rgba(147,51,234,0.12)':'transparent')+';'
@@ -9948,8 +9999,8 @@ function renderSalaries(){
   else if(salSubPage==='dashboard')  body=renderSalDashboard();
   else if(salSubPage==='historique') body=renderSalHistorique();
   else if(salSubPage==='ajout')      body=renderSalAjout();
-  else if(salSubPage==='pcs')        body=renderSalPcs();
-  page.innerHTML=tabBar+body;
+  else                               body=renderSalPointage(); // fallback
+  page.innerHTML=heroTabs+subTabBar+body;
 }
 
 // ─── ÉLECTRICITÉ À DISTANCE (top-level page) ──────────────────
@@ -13143,7 +13194,7 @@ function renderSalAjout(){
         +'<div style="flex:1"><div style="font-size:13px;font-weight:700">'+escB(o.nom)+'</div>'
         +'<div style="font-size:11px;color:var(--green);font-weight:600">'+fmtN(o.prix)+' DH / قطعة</div></div>'
         +'<span style="background:rgba(46,204,122,0.1);color:var(--green);border:1px solid rgba(46,204,122,0.25);border-radius:20px;padding:2px 9px;font-size:10px;font-weight:700">PCs</span>'
-        +'<button onclick="pcEditId='+o.id+';salSubPage=\'pcs\';renderSalaries();window.scrollTo(0,0)" style="padding:4px 9px;border-radius:20px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">✏️</button>'
+        +'<button onclick="pcEditId='+o.id+';salTopGroup=\'pcs\';renderSalaries();window.scrollTo(0,0)" style="padding:4px 9px;border-radius:20px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">✏️</button>'
         +'<button onclick="pcToggleActif('+o.id+')" style="padding:4px 9px;border-radius:20px;border:1px solid '+(o.actif!==false?'var(--green)':'var(--border)')+';background:transparent;color:'+(o.actif!==false?'var(--green)':'var(--text3)')+';font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">'+(o.actif!==false?'نشيط':'متوقف')+'</button>'
         +'<button onclick="pcDeleteAjir('+o.id+',\''+escB(o.nom)+'\')" style="padding:4px 9px;border-radius:20px;border:1px solid rgba(232,64,64,0.35);background:rgba(232,64,64,0.07);color:var(--red);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">🗑️</button>'
       +'</div>'
@@ -13330,7 +13381,7 @@ async function pcSaveNew(){
     localStorage.setItem('ouvriers_pc_v1',JSON.stringify(ouvriersPc));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم إضافة '+nom+' — أضف PCs من بطاقته';}
     const el=document.getElementById('pc-new-nom');if(el)el.value='';
-    setTimeout(function(){salSubPage='pcs';renderSalaries();},700);
+    setTimeout(function(){salTopGroup='pcs';renderSalaries();},700);
   } else {
     if(msg){msg.style.color='var(--red)';msg.textContent='خطأ في الحفظ';}
   }

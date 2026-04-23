@@ -1093,9 +1093,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-section-label" data-i18n="sec.add">إضافة</span>
       <span class="nav-section-line"></span>
     </div>
-    <button class="nav-btn" onclick="showPage('new-bon',this)">
-      <span class="nav-icon">➕</span> <span data-i18n="nav.newBon">بون جديد</span>
-    </button>
+    <!-- new-bon moved into tabs on top of البونات page -->
 
     <!-- new-cheque + print-cheque moved into tabs on top of التسويات page -->
 
@@ -3578,6 +3576,44 @@ function setBonChantierFilter(v){
   chantierFilter = (v==='' || v==null) ? null : Number(v);
   renderBons();
 }
+// Big prominent tab bar for the bons section (list / new).
+// Same hero-card pattern as the cheques tabs.
+function _gotoBonTab(key){
+  var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\'bons\'"]');
+  showPage(key, navBtn);
+}
+function _renderBonsTabsHTML(active){
+  var tabs = [
+    { key:'bons',    icon:'📋', title:'البونات',   sub:'قائمة البونات' },
+    { key:'new-bon', icon:'➕', title:'بون جديد',  sub:'إضافة بون جديد' }
+  ];
+  var btns = tabs.map(function(t){
+    var on = t.key === active;
+    var bg = on
+      ? 'background:linear-gradient(135deg,rgba(147,51,234,0.18),rgba(6,182,212,0.12));border-color:var(--accent);box-shadow:0 6px 20px rgba(147,51,234,0.22)'
+      : 'background:var(--bg2);border-color:var(--border)';
+    var iconBg = on
+      ? 'background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff'
+      : 'background:var(--bg3);color:var(--text2)';
+    var titleCol = on ? 'color:var(--text);font-weight:800' : 'color:var(--text2);font-weight:700';
+    var subCol = on ? 'color:var(--accent)' : 'color:var(--text3)';
+    return ''
+      + '<button onclick="_gotoBonTab(\''+t.key+'\')" '
+      +   'class="_bon-tab' + (on?' active':'') + '" '
+      +   'style="flex:1;min-width:180px;display:flex;align-items:center;gap:14px;padding:16px 18px;border-radius:16px;border:2px solid transparent;cursor:pointer;transition:all 0.18s cubic-bezier(.4,0,.2,1);text-align:right;font-family:inherit;' + bg + '" '
+      +   'onmouseover="if(!this.classList.contains(\'active\')){this.style.transform=\'translateY(-2px)\';this.style.borderColor=\'rgba(147,51,234,0.35)\';}" '
+      +   'onmouseout="if(!this.classList.contains(\'active\')){this.style.transform=\'\';this.style.borderColor=\'var(--border)\';}">'
+      +   '<div style="flex-shrink:0;width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;transition:all 0.18s;' + iconBg + '">' + t.icon + '</div>'
+      +   '<div style="flex:1;min-width:0">'
+      +     '<div style="font-size:15px;letter-spacing:-0.2px;line-height:1.2;' + titleCol + '">' + t.title + '</div>'
+      +     '<div style="font-size:11.5px;margin-top:3px;' + subCol + '">' + t.sub + '</div>'
+      +   '</div>'
+      + (on ? '<div style="width:6px;height:36px;border-radius:3px;background:linear-gradient(180deg,#9333ea,#06b6d4);flex-shrink:0"></div>' : '')
+      + '</button>';
+  }).join('');
+  return '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">' + btns + '</div>';
+}
+
 function renderBons(){
   const search=(document.getElementById('bon-search')||{value:''}).value.toLowerCase();
   let filtered=filterByDate(bons,'bons');
@@ -3631,7 +3667,8 @@ function renderBons(){
     +'</div>'
     : '';
   document.getElementById('page-bons').innerHTML=
-    buildDateBar('bons','renderBons')
+    _renderBonsTabsHTML('bons')
+    +buildDateBar('bons','renderBons')
     +_dupBanner
     +`<div class="toolbar">
       <input class="search-box" id="bon-search" placeholder="🔍 بحث بالرقم، الفورنيسور، سلعة أو ملاحظة..." oninput="renderBons()" value="${search}">
@@ -8739,6 +8776,19 @@ function initNewBon(){
   // Reset state
   bonLignes = [];
   bonRemiseType = '%';
+
+  // Inject the bons tab bar at the top of the static #page-new-bon markup
+  try{
+    var nbPage = document.getElementById('page-new-bon');
+    if(nbPage){
+      var existingBar = nbPage.querySelector('.bons-tabs-bar');
+      if(existingBar) existingBar.remove();
+      var tabsWrap = document.createElement('div');
+      tabsWrap.className = 'bons-tabs-bar';
+      tabsWrap.innerHTML = _renderBonsTabsHTML('new-bon');
+      nbPage.insertBefore(tabsWrap, nbPage.firstChild);
+    }
+  }catch(_){}
 
   // Clear DOM — new card layout + legacy table shim
   const cards = document.getElementById('bon-cards-body');

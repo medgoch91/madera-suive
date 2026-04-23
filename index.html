@@ -8285,9 +8285,22 @@ async function renderUsersActivity(){
     + '</div>';
 
   // Timeline
-  var actionIcon = {login:'🔓',logout:'🔒',session_restore:'🔁',POST:'➕',PATCH:'✏️',PUT:'✏️',DELETE:'🗑'};
-  var actionColor = {login:'#10b981',logout:'#64748b',session_restore:'#06b6d4',POST:'#10b981',PATCH:'#f59e0b',DELETE:'#ef4444',PUT:'#f59e0b'};
-  var actionLabel = {login:'تسجيل دخول', logout:'تسجيل خروج', session_restore:'استئناف جلسة', POST:'إضافة', PATCH:'تعديل', PUT:'تعديل', DELETE:'حذف'};
+  var actionIcon = {login:'🔓',logout:'🔒',POST:'➕',PATCH:'✏️',PUT:'✏️',DELETE:'🗑'};
+  var actionColor = {login:'#10b981',logout:'#64748b',POST:'#10b981',PATCH:'#f59e0b',DELETE:'#ef4444',PUT:'#f59e0b'};
+  var actionLabel = {login:'تسجيل دخول', logout:'تسجيل خروج', POST:'إضافة', PATCH:'تعديل', PUT:'تعديل', DELETE:'حذف'};
+  // Arabic labels for common field names so the timeline reads naturally
+  var fieldLabel = {
+    num:'رقم', nom:'اسم', fournisseur:'فورنيسور', client_nom:'عميل', client_ville:'مدينة', client_ice:'ICE',
+    montant:'مبلغ', total:'مجموع', total_ttc:'TTC', total_ht:'HT', total_tva:'TVA', total_net:'صافي',
+    qte:'كمية', stock:'مخزون', statut:'حالة', status:'حالة', date:'تاريخ', echeance:'استحقاق',
+    designation:'تسمية', type:'نوع', source:'مصدر', ref:'مرجع', ice:'ICE', tel:'هاتف', ville:'مدينة',
+    technician_name:'تقني', product_id:'منتج', article_id:'سلعة', bon_number:'رقم بون',
+    quantity_received:'كمية مستلمة', quantity_needed:'كمية مطلوبة', labor_cost_per_piece_ttc:'سعر القطعة',
+    reason:'سبب', notes:'ملاحظات', note:'ملاحظة', email:'بريد', adresse:'عنوان', phone:'هاتف',
+    cheque_id:'رقم شيك', bon_id:'رقم بون', chantier_id:'ورش', cat:'صنف', unite:'وحدة',
+    salarie_id:'أجير', ouvrier_id:'عامل', date_paiement:'تاريخ الدفع', date_from:'من', date_to:'إلى',
+    prix:'سعر', prix_u:'سعر وحدة', tva:'TVA', statut_jour:'حالة اليوم',
+  };
   // Pretty Arabic labels for internal table names
   var tableLabel = {
     bons:'بون', cheques:'شيك', factures:'فاتورة',
@@ -8335,32 +8348,32 @@ async function renderUsersActivity(){
     var parsed = null;
     try { parsed = (typeof d === 'string') ? JSON.parse(d) : d; }
     catch(e) {
-      // Truncated JSON — extract fields via regex
       parsed = _scrapeFieldsFromTruncatedJSON(String(d));
     }
     if(!parsed || typeof parsed !== 'object') return escB(String(d).slice(0,80));
     // Session events
-    if(r.action === 'login' || r.action === 'session_restore'){
+    if(r.action === 'login'){
       var parts = [];
       if(parsed.ua) parts.push(_fmtUA(parsed.ua));
       if(parsed.source && parsed.source !== 'password') parts.push(parsed.source);
       return escB(parts.join(' · ')) || '—';
     }
     if(r.action === 'logout') return '';
-    // CRUD on a table — show row id + 2-3 key field names
+    // CRUD on a table — show row id + 2-3 key field names using Arabic labels
     var prefix = r.row_id ? ('id ' + r.row_id) : '';
     var fields = Object.keys(parsed).filter(function(k){
       return k !== 'ua' && k !== 'created_at' && k !== 'updated_at' && k !== 'lignes' && k !== 'details';
     });
-    var preferred = ['num','nom','fournisseur','client_nom','status','statut','montant','total','total_ttc','qte','stock','designation','date','echeance'];
+    var preferred = ['num','nom','fournisseur','client_nom','technician_name','status','statut','montant','total','total_ttc','qte','quantity_received','stock','designation','date','echeance','product_id','article_id','bon_number','reason','type'];
     var ordered = preferred.filter(function(k){return fields.indexOf(k)>=0;}).concat(fields.filter(function(k){return preferred.indexOf(k)<0;}));
     var summary = ordered.slice(0,3).map(function(k){
       var v = parsed[k];
       if(v === null || v === undefined || v === '') return null;
-      if(typeof v === 'object') return k+':{…}';
+      if(typeof v === 'object') return null; // skip nested objects / arrays silently
       var s = String(v);
       if(s.length > 28) s = s.slice(0,26) + '…';
-      return k + ':' + s;
+      var label = fieldLabel[k] || k;
+      return label + ':' + s;
     }).filter(Boolean).join(' · ');
     return [prefix, summary].filter(Boolean).map(escB).join(' · ');
   }

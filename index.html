@@ -1819,7 +1819,7 @@ async function loadAllData(){
     });
 
     fournisseurs = (fourRows||[]).map(function(f){
-      return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||''};
+      return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
     });
 
     nextBId = bons.length ? Math.max(...bons.map(b=>b.id))+1 : 1;
@@ -2109,7 +2109,7 @@ async function sbSaveCheque(cheque){
 }
 
 async function sbSaveFournisseur(f){
-  const data={nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||''};
+  const data={nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
   if(f.id && fournisseurs.find(x=>x.id===f.id)){
     await sbFetch('fournisseurs?id=eq.'+f.id,'PATCH',data);
   } else {
@@ -5210,6 +5210,47 @@ function scrollToRow(rowId){
 // ===== FOURNISSEURS =====
 let fourFilter='';
 
+// Form state for families multi-select (toggled while editing/adding a fournisseur)
+let _fourFormFamilies = [];
+
+function _fourBuildFamilyChipsHTML(){
+  const fams = (typeof getArticleFamilies === 'function') ? getArticleFamilies() : [];
+  const sel = _fourFormFamilies || [];
+  const chips = fams.map(function(f){
+    const active = sel.indexOf(f) >= 0;
+    return '<button type="button" onclick="fourFormToggleFamily('+JSON.stringify(f).replace(/"/g,'&quot;')+')" style="padding:4px 12px;border-radius:14px;border:1px solid '+(active?'var(--accent)':'var(--border)')+';background:'+(active?'rgba(147,51,234,0.18)':'var(--bg2)')+';color:'+(active?'var(--accent)':'var(--text2)')+';font-size:11.5px;font-family:Cairo,sans-serif;font-weight:'+(active?'700':'500')+';cursor:pointer">'+(active?'✓ ':'')+escB(f)+'</button>';
+  }).join('');
+  return chips
+    + '<button type="button" onclick="fourFormAddFamily()" style="padding:4px 10px;border-radius:14px;border:1px dashed var(--text3);background:transparent;color:var(--text3);font-size:11px;font-family:Cairo,sans-serif;cursor:pointer">+ جديدة</button>';
+}
+
+function fourFormRenderFamilyChips(){
+  const c = document.getElementById('four-fam-chips');
+  if(c) c.innerHTML = _fourBuildFamilyChipsHTML();
+}
+
+function fourFormToggleFamily(name){
+  const i = _fourFormFamilies.indexOf(name);
+  if(i>=0) _fourFormFamilies.splice(i,1); else _fourFormFamilies.push(name);
+  fourFormRenderFamilyChips();
+}
+
+function fourFormAddFamily(){
+  const nn = prompt('اسم العائلة الجديدة:','');
+  if(nn===null) return;
+  const name = String(nn).trim();
+  if(!name){ toast('الاسم فارغ','warning'); return; }
+  if(getArticleFamilies().indexOf(name)<0){
+    const list = loadCustomFamilies();
+    list.push(name);
+    saveCustomFamilies(list);
+    const hidden = loadHiddenFamilies().filter(function(x){ return x!==name; });
+    saveHiddenFamilies(hidden);
+  }
+  if(_fourFormFamilies.indexOf(name)<0) _fourFormFamilies.push(name);
+  fourFormRenderFamilyChips();
+}
+
 // ── Pure helpers: stats, ledger, csv export, deep-link ──
 function _fourTodayISO(){
   const d=new Date(); const p=n=>String(n).padStart(2,'0');
@@ -5473,6 +5514,11 @@ function renderFournisseurs(){
           </div>
           <div class="form-full"><label class="field-lbl">ملاحظات</label><input class="field-inp" id="four-notes" placeholder="..."></div>
         </div>
+        <div style="margin-top:14px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">
+          <label class="field-lbl" style="display:block;margin-bottom:8px">🏷️ العائلات اللي كيبيعهم <span style="color:var(--text3);font-weight:500">— اختياري</span></label>
+          <div id="four-fam-chips" style="display:flex;flex-wrap:wrap;gap:6px">${_fourBuildFamilyChipsHTML()}</div>
+          <div style="font-size:10.5px;color:var(--text3);margin-top:6px">ℹ️ ملي تفلتر العائلات، ف بون جديد ماغاديش يبان غير السلع دياول هاد العائلات</div>
+        </div>
         <div style="display:flex;gap:8px;margin-top:14px">
           <button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveFournisseurForm()">💾 حفظ</button>
           <button class="btn btn-outline" style="padding:12px" onclick="resetFournisseurForm()" title="إلغاء">✕</button>
@@ -5496,6 +5542,8 @@ function openEditFournisseur(nom){
   setV('four-cat',f.cat||'مورد');
   setV('four-stat',f.stat||'نشيط');
   setV('four-notes',f.notes||'');
+  _fourFormFamilies = Array.isArray(f.families) ? f.families.slice() : [];
+  fourFormRenderFamilyChips();
   const title=document.getElementById('four-form-title');
   if(title)title.textContent='✏️ تعديل — '+nom;
   document.getElementById('four-nom').focus();
@@ -5515,6 +5563,7 @@ function saveFournisseurForm(){
     cat:document.getElementById('four-cat').value,
     stat:document.getElementById('four-stat').value,
     notes:document.getElementById('four-notes').value.trim(),
+    families:(_fourFormFamilies||[]).slice(),
   };
 
   if(editId){
@@ -5547,7 +5596,7 @@ function saveFournisseurForm(){
           msg.style.color='var(--green)';msg.textContent='✅ تم التعديل!';
         }
       } else {
-        const newF={nom:data.nom,tel:data.tel,email:data.email,ville:data.ville,cat:data.cat,stat:data.stat,notes:data.notes};
+        const newF={nom:data.nom,tel:data.tel,email:data.email,ville:data.ville,cat:data.cat,stat:data.stat,notes:data.notes,families:data.families};
         const res=await sbFetch('fournisseurs','POST',newF);
         if(res&&res[0]){newF.id=res[0].id;fournisseurs.push(newF);}
         msg.style.color='var(--green)';msg.textContent='✅ تم الإضافة!';
@@ -5568,6 +5617,8 @@ function resetFournisseurForm(){
   ['four-nom','four-tel','four-email','four-ville','four-notes','four-edit-id'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const cat=document.getElementById('four-cat');if(cat)cat.value='مورد';
   const stat=document.getElementById('four-stat');if(stat)stat.value='نشيط';
+  _fourFormFamilies = [];
+  fourFormRenderFamilyChips();
   const title=document.getElementById('four-form-title');if(title)title.textContent='➕ إضافة فورنيسور';
   const msg=document.getElementById('msg-four');if(msg)msg.textContent='';
 }
@@ -9933,16 +9984,27 @@ function _bonExcludeSelected(pool){
   return pool.filter(function(a){ return !usedIds.has(a.id) && !usedNoms.has(String(a.nom||'').trim().toLowerCase()); });
 }
 
+function _fourFamFilter(fourObj){
+  const fams = (fourObj && Array.isArray(fourObj.families)) ? fourObj.families : [];
+  return fams.length>0 ? function(a){ return fams.indexOf((a.cat||'').trim())>=0; } : null;
+}
+
 function bonArtFocus(){
   const f = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
   if(fourObj){
-    const hasLinks = Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
-    if(hasLinks){
-      const pool = _bonExcludeSelected(articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); }));
+    const famFilter = _fourFamFilter(fourObj);
+    if(famFilter){
+      const pool = _bonExcludeSelected(articles.filter(famFilter));
       bonArtShowPool(pool.slice(0,10), f, fourObj);
     } else {
-      bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, fourObj);
+      const hasLinks = Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
+      if(hasLinks){
+        const pool = _bonExcludeSelected(articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); }));
+        bonArtShowPool(pool.slice(0,10), f, fourObj);
+      } else {
+        bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, fourObj);
+      }
     }
   } else {
     bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, null);
@@ -9954,9 +10016,13 @@ function bonArtShowPool(pool, f, fourObj){
   if(!sug || !pool.length){ if(sug)sug.style.display='none'; return; }
   sug.innerHTML='';
   if(fourObj){
+    const fams = Array.isArray(fourObj.families) ? fourObj.families : [];
     const hasLinks = Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
     var hdr=document.createElement('div');
-    if(hasLinks){
+    if(fams.length>0){
+      hdr.style.cssText='padding:4px 14px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border)';
+      hdr.textContent='🏷️ '+fams.join('، ')+' ('+pool.length+')';
+    } else if(hasLinks){
       hdr.style.cssText='padding:4px 14px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border)';
       hdr.textContent='🔗 سلع '+escB(f)+' ('+pool.length+')';
     } else {
@@ -9997,12 +10063,15 @@ function bonArtSearch(val){
   const q = val.toLowerCase();
   const f = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
 
-  // ── Articles — strict filter if supplier has linked products ─
+  // ── Articles — families filter takes priority, then supplier_products links ─
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
-  const hasLinks = fourObj && Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
-  const pool = _bonExcludeSelected(hasLinks
-    ? articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); })
-    : articles);
+  const famFilter = _fourFamFilter(fourObj);
+  const hasLinks = !famFilter && fourObj && Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
+  const pool = _bonExcludeSelected(famFilter
+    ? articles.filter(famFilter)
+    : (hasLinks
+        ? articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); })
+        : articles));
   const matches = pool.filter(function(a){
     return a.nom.toLowerCase().includes(q) || (a.ref||'').toLowerCase().includes(q);
   }).slice(0,8);
@@ -10027,7 +10096,12 @@ function bonArtSearch(val){
 
   // ── Articles only ─────────────────────────────────────────
   if(matches.length){
-    if(hasLinks){
+    if(famFilter){
+      var hdrFam = document.createElement('div');
+      hdrFam.style.cssText = 'padding:4px 14px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border)';
+      hdrFam.textContent = '🏷️ ' + (fourObj.families||[]).join('، ') + ' (' + pool.length + ')';
+      sug.appendChild(hdrFam);
+    } else if(hasLinks){
       var hdrInfo = document.createElement('div');
       hdrInfo.style.cssText = 'padding:4px 14px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(79,142,247,0.06);border-bottom:1px solid var(--border)';
       hdrInfo.textContent = '🔗 سلع ' + escB(f) + ' (' + pool.length + ')';

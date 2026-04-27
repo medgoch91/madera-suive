@@ -7086,6 +7086,30 @@ function addFamily(){
   renderArticles();
 }
 
+// Add a family inline from the new-article modal — refresh datalist + chips + autofill input
+function addFamilyFromModal(){
+  const nn = prompt('اسم العائلة الجديدة:','');
+  if(nn===null) return;
+  const name = String(nn).trim();
+  if(!name){ toast('الاسم فارغ','warning'); return; }
+  const existing = getArticleFamilies();
+  if(existing.indexOf(name)<0){
+    const list = loadCustomFamilies();
+    list.push(name);
+    saveCustomFamilies(list);
+    const hidden = loadHiddenFamilies().filter(function(x){ return x!==name; });
+    saveHiddenFamilies(hidden);
+  }
+  const fams = getArticleFamilies();
+  const dl = document.getElementById('ma-cat-list');
+  const chips = document.getElementById('ma-cat-chips');
+  const inp = document.getElementById('ma-cat');
+  if(dl) dl.innerHTML = fams.map(f=>'<option value="'+escB(f)+'">').join('');
+  if(chips) chips.innerHTML = fams.map(f=>'<button type="button" onclick="document.getElementById(\'ma-cat\').value='+JSON.stringify(f).replace(/"/g,'&quot;')+'" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:11px;font-family:Cairo,sans-serif;cursor:pointer">'+escB(f)+'</button>').join('');
+  if(inp) inp.value = name;
+  toast('تمت إضافة "'+name+'"','success');
+}
+
 // Delete a family: move all articles using it to 'بدون تصنيف', then remove from custom list
 async function deleteFamily(name){
   const f = String(name||'').trim();
@@ -7463,11 +7487,18 @@ function openAddArticleModal(){
           +'<option>م</option><option>م²</option><option>م³</option><option>كيس</option>'
           +'<option>علبة</option><option>أخرى</option>'
         +'</select></div>'
-      +'<div><label class="field-lbl">العائلة / التصنيف</label>'
-        +'<input class="field-inp" id="ma-cat" list="ma-cat-list" placeholder="مثال: مواد أولية، خشب، كهرباء..." autocomplete="off">'
+      +'<div class="form-full"><label class="field-lbl">العائلة / التصنيف</label>'
+        +'<div style="display:flex;gap:6px;align-items:stretch">'
+          +'<input class="field-inp" id="ma-cat" list="ma-cat-list" placeholder="اكتب اسم العائلة (جديدة ولا اختر من تحت)" autocomplete="off" style="flex:1">'
+          +'<button type="button" onclick="addFamilyFromModal()" title="إضافة عائلة جديدة" style="padding:0 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:rgba(147,51,234,0.12);color:var(--accent);font-family:Cairo,sans-serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">➕ جديدة</button>'
+        +'</div>'
         +'<datalist id="ma-cat-list">'
           + getArticleFamilies().map(f=>'<option value="'+escB(f)+'">').join('')
-        +'</datalist></div>'
+        +'</datalist>'
+        +'<div id="ma-cat-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'
+          + getArticleFamilies().map(f=>'<button type="button" onclick="document.getElementById(\'ma-cat\').value='+JSON.stringify(f).replace(/"/g,'&quot;')+'" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:11px;font-family:Cairo,sans-serif;cursor:pointer">'+escB(f)+'</button>').join('')
+        +'</div>'
+      +'</div>'
     +'</div>'
     +(fNoms.length
       ?'<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px 16px;margin-bottom:14px" id="ma-prix-section">'

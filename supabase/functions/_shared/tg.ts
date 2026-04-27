@@ -85,6 +85,25 @@ export async function answerCallbackQuery(id: string, text?: string): Promise<vo
   });
 }
 
+// Upload a file (up to 50 MB for bots) — used for backup dumps, reports, etc.
+export async function sendDocument(chatId: number, file: Blob | Uint8Array, filename: string, opts: {
+  caption?: string;
+  parseMode?: 'Markdown' | 'HTML';
+} = {}): Promise<boolean> {
+  const fd = new FormData();
+  fd.append('chat_id', String(chatId));
+  const blob = file instanceof Blob ? file : new Blob([file], { type: 'application/octet-stream' });
+  fd.append('document', blob, filename);
+  if (opts.caption) fd.append('caption', opts.caption);
+  if (opts.parseMode) fd.append('parse_mode', opts.parseMode);
+  const res = await fetch(`${BASE}/sendDocument`, { method: 'POST', body: fd });
+  if (!res.ok) {
+    console.error('tg sendDocument failed', res.status, await res.text());
+    return false;
+  }
+  return true;
+}
+
 // Parse "/command arg1 arg2" into { cmd, args }
 export function parseCommand(text: string | undefined): { cmd: string; args: string[] } | null {
   if (!text || !text.startsWith('/')) return null;

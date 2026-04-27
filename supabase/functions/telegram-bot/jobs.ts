@@ -3,7 +3,7 @@
 // subscription. Keeps the wording close to the old Python digest.
 
 import { sb } from '../_shared/sb.ts';
-import { sendMessage, type TgInlineKeyboard } from '../_shared/tg.ts';
+import { sendMessage, sendDocument, type TgInlineKeyboard } from '../_shared/tg.ts';
 import { sendWebPush } from '../_shared/push.ts';
 import { buildTodayMessage } from './commands.ts';
 import { todayCasa, fmtMoney, safeNum } from '../_shared/util.ts';
@@ -118,4 +118,68 @@ export async function jobMonthlyReport(): Promise<Response> {
   const text = `📊 *تقرير شهر ${first.slice(0, 7)}*\n\n💰 رقم المعاملات: *${ca.toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.*\n💸 المصاريف: *${dep.toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.*\n📈 الهامش: *${marg.toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.*`;
   const sent = await broadcastTelegram(text);
   return new Response(JSON.stringify({ ok: true, job: 'monthly_report', telegram: sent }));
+}
+
+// ── backup_telegram — daily 02:00 Casa ─────────────────────────
+// Dump every business table to JSON and send as Telegram document.
+// Retention is manual (user keeps/deletes in their Telegram chat).
+const BACKUP_TABLES = [
+  'fournisseurs', 'articles', 'prix', 'bons', 'cheques', 'supplier_products',
+  'salaries', 'salarie_presences', 'salarie_avances', 'salarie_taswiyas', 'sal_catalogue',
+  'ouvriers_pc', 'ouvrier_pc_assign', 'ouvrier_pc_presences',
+  'fact_clients', 'fact_produits', 'factures', 'fact_societe',
+  'chantiers', 'technicians', 'products', 'product_recipe',
+  'material_dispatches', 'subcontracting_orders', 'material_returns', 'technician_payments',
+  'bot_subscribers', 'push_subscriptions', 'audit_log',
+];
+
+export async function jobBackupTelegram(): Promise<Response> {
+  const today = todayCasa();
+  const dump: Record<string, unknown> = {
+    _meta: {
+      exportedAt: new Date().toISOString(),
+      casablancaDate: today,
+      version: 'auto-cron',
+      tables: BACKUP_TABLES.length,
+    },
+  };
+
+  let totalRows = 0;
+  const errors: string[] = [];
+  for (const t of BACKUP_TABLES) {
+    const { data, error } = await sb.from(t).select('*');
+    if (error) {
+      console.error('backup table', t, error);
+      dump[t] = { _error: error.message };
+      errors.push(t);
+    } else {
+      dump[t] = data;
+      totalRows += data?.length ?? 0;
+    }
+  }
+
+  const json = JSON.stringify(dump, null, 2);
+  const filename = `backup-maderadeco-${today}.json`;
+  const sizeKb = (json.length / 1024).toFixed(1);
+  const errLine = errors.length ? `\n⚠️ خطأ ف ${errors.length} tables: ${errors.join(', ')}` : '';
+  const caption = `🗄️ *Backup auto* — ${today}\n📊 ${totalRows} sajalat · ${BACKUP_TABLES.length} tables · ${sizeKb} KB${errLine}`;
+
+  const blob = new Blob([json], { type: 'application/json' });
+
+  const { data: subs } = await sb.from('bot_subscribers').select('chat_id');
+  const chatIds = (subs ?? []).map((s: { chat_id: number }) => s.chat_id);
+
+  let sent = 0;
+  for (const chatId of chatIds) {
+    try {
+      const ok = await sendDocument(chatId, blob, filename, { caption, parseMode: 'Markdown' });
+      if (ok) sent++;
+    } catch (e) {
+      console.error('backup send to', chatId, 'failed', e);
+    }
+  }
+
+  return new Response(JSON.stringify({
+    ok: true, job: 'backup', telegram: sent, rows: totalRows, size_kb: Number(sizeKb), errors,
+  }));
 }

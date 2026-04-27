@@ -3,7 +3,7 @@
 //   POST /functions/v1/telegram-bot          → Telegram webhook update
 //   POST /functions/v1/telegram-bot?cron=X   → pg_cron trigger for job X
 
-import { parseCommand, type TgUpdate } from '../_shared/tg.ts';
+import { parseCommand, answerCallbackQuery, type TgUpdate } from '../_shared/tg.ts';
 import {
   cmdStart, cmdSubscribe, cmdUnsubscribe, cmdTestPush,
   cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel,
@@ -13,6 +13,7 @@ import {
   jobChequesDueMorning, jobChequesTodayPing,
   jobWorkersEod, jobMonthlyReport,
 } from './jobs.ts';
+import { handleChequeCallback } from './callbacks.ts';
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
@@ -47,7 +48,12 @@ Deno.serve(async (req: Request) => {
 
 async function route(update: TgUpdate): Promise<void> {
   if (update.callback_query) {
-    // TODO: port CHQPAID / CHQUNPAID / CHQDEFER inline-button callbacks
+    const data = update.callback_query.data ?? '';
+    if (data.startsWith('CHQPAID:') || data.startsWith('CHQUNPAID:') || data.startsWith('CHQDEFER:')) {
+      await handleChequeCallback(update.callback_query);
+    } else {
+      await answerCallbackQuery(update.callback_query.id);
+    }
     return;
   }
 

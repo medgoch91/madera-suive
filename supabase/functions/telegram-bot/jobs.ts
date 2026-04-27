@@ -3,10 +3,10 @@
 // subscription. Keeps the wording close to the old Python digest.
 
 import { sb } from '../_shared/sb.ts';
-import { sendMessage } from '../_shared/tg.ts';
+import { sendMessage, type TgInlineKeyboard } from '../_shared/tg.ts';
 import { sendWebPush } from '../_shared/push.ts';
 import { buildTodayMessage } from './commands.ts';
-import { todayCasa } from '../_shared/util.ts';
+import { todayCasa, fmtMoney, safeNum } from '../_shared/util.ts';
 
 async function broadcastTelegram(text: string, parseMode: 'Markdown' | 'HTML' = 'Markdown'): Promise<number> {
   const { data: subs } = await sb.from('bot_subscribers').select('chat_id');
@@ -27,18 +27,66 @@ export async function jobChequesDueMorning(): Promise<Response> {
 }
 
 // ── cheques_today_ping — 16h and 18h ────────────────────────────
+// Sends ONE message per due cheque with inline action buttons (paid / unpaid /
+// defer 7 days). Matches the old Python telegram_bot flow.
 export async function jobChequesTodayPing(): Promise<Response> {
   const today = todayCasa();
   const { data: dueToday } = await sb.from('cheques')
-    .select('num,fournisseur,montant').eq('echeance', today).neq('status', 'مدفوع');
+    .select('id,num,fournisseur,montant,type').eq('echeance', today).neq('status', 'مدفوع');
   if (!dueToday || !dueToday.length) {
     return new Response(JSON.stringify({ ok: true, job: 'cheques_today_ping', skipped: 'none_due' }));
   }
-  const total = dueToday.reduce((s, c) => s + Number(c.montant || 0), 0);
-  const text = `⏰ *تذكير: ${dueToday.length} شيك كيحل اليوم*\n\nالمجموع: ${total.toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.\n\nافتح /today للتفاصيل.`;
-  const sent = await broadcastTelegram(text);
-  await sendWebPush('⏰ شيكات اليوم', `${dueToday.length} شيك كيحل — افتح التطبيق.`, './#cheques', 'cheques-ping');
-  return new Response(JSON.stringify({ ok: true, job: 'cheques_today_ping', telegram: sent }));
+
+  const { data: subs } = await sb.from('bot_subscribers').select('chat_id');
+  const chatIds = (subs ?? []).map((s: { chat_id: number }) => s.chat_id);
+
+  let sent = 0;
+  for (const c of dueToday) {
+    const rid = c.id;
+    const type = String(c.type ?? 'cheque').toLowerCase();
+    const label = type === 'effet' ? '📝 كمبيالة (effet)' : '💳 شيك';
+    const num = String(safeNum(c.num)).padStart(4, '0');
+    const four = c.fournisseur ?? '?';
+    const text = [
+      `${label} — *حل اليوم*`,
+      `رقم: ${num}`,
+      `المورد: ${four}`,
+      `المبلغ: *${fmtMoney(c.montant)} د.م.*`,
+      `📅 ${today}`,
+      '',
+      'واش تخلص اليوم؟',
+    ].join('\n');
+
+    const replyMarkup: TgInlineKeyboard = {
+      inline_keyboard: [
+        [
+          { text: '✅ تخلص', callback_data: `CHQPAID:${rid}` },
+          { text: '❌ باقي',  callback_data: `CHQUNPAID:${rid}` },
+        ],
+        [{ text: '📅 أجّل 7 أيام', callback_data: `CHQDEFER:${rid}` }],
+      ],
+    };
+
+    for (const chatId of chatIds) {
+      try {
+        await sendMessage(chatId, text, { parseMode: 'Markdown', replyMarkup });
+        sent++;
+      } catch (e) {
+        console.error(`cheques_today_ping send to ${chatId} failed`, e);
+      }
+    }
+  }
+
+  const totalSum = dueToday.reduce((s, c) => s + safeNum(c.montant), 0);
+  await sendWebPush(
+    '⏰ شيكات اليوم',
+    `${dueToday.length} شيك كيحل — ${fmtMoney(totalSum)} د.م.`,
+    './#cheques',
+    'cheques-ping',
+  );
+  return new Response(JSON.stringify({
+    ok: true, job: 'cheques_today_ping', telegram: sent, cheques: dueToday.length,
+  }));
 }
 
 // ── workers_eod — 20h summary ───────────────────────────────────

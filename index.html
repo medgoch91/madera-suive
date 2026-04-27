@@ -2717,8 +2717,9 @@ function updateChequeTotal(){
 // ===== DASHBOARD =====
 // ===== SHARED DATE FILTER =====
 const dateFilters = {
-  bons:   {from:'', to:'', preset:''},
-  cheques:{from:'', to:'', preset:''},
+  bons:        {from:'', to:'', preset:''},
+  cheques:     {from:'', to:'', preset:''},
+  fournisseurs:{from:'', to:'', preset:''},
 };
 
 function getDateRange(preset){
@@ -2762,6 +2763,7 @@ function setDatePreset(page, preset){
   if(page==='bons') renderBons();
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
+  else if(page==='fournisseurs') renderFournisseurs();
 }
 
 function applyCustomDate(page){
@@ -2773,6 +2775,7 @@ function applyCustomDate(page){
   if(page==='bons') renderBons();
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
+  else if(page==='fournisseurs') renderFournisseurs();
 }
 
 function resetDateFilter(page){
@@ -2780,6 +2783,7 @@ function resetDateFilter(page){
   if(page==='bons') renderBons();
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
+  else if(page==='fournisseurs') renderFournisseurs();
 }
 
 function buildDateBar(page, renderFn){
@@ -5205,9 +5209,128 @@ function scrollToRow(rowId){
 
 // ===== FOURNISSEURS =====
 let fourFilter='';
-let fourDateFrom='';
-let fourDateTo='';
-let fourDatePreset='';
+
+// ── Pure helpers: stats, ledger, csv export, deep-link ──
+function _fourTodayISO(){
+  const d=new Date(); const p=n=>String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());
+}
+function _fourIsPaid(c){ return c.status==='مدفوع' || c.status==='Payé'; }
+function _fourIsBounced(c){ return c.status==='مرتجع'; }
+function _fourPaidDate(c){ return c.paid_at || c.date || ''; }
+function _fourBonAmt(b){ return Number(b.totalNet||b.total||0); }
+
+function fourStats(nom, fromISO, toISO){
+  const fb = bons.filter(b=>b.fournisseur===nom);
+  const fc = cheques.filter(c=>c.fournisseur===nom);
+  const inRange = d => (!fromISO || d>=fromISO) && (!toISO || d<=toISO);
+
+  const bonsBefore = fromISO ? fb.filter(b=>(b.date||'')<fromISO) : [];
+  const bonsIn     = fb.filter(b=>inRange(b.date||''));
+  const paidBefore = fromISO ? fc.filter(c=>_fourIsPaid(c) && _fourPaidDate(c)<fromISO) : [];
+  const paidIn     = fc.filter(c=>_fourIsPaid(c) && inRange(_fourPaidDate(c)));
+
+  const sumB = arr => arr.reduce((s,b)=>s+_fourBonAmt(b),0);
+  const sumC = arr => arr.reduce((s,c)=>s+Number(c.montant||0),0);
+
+  return {
+    openingBal:    sumB(bonsBefore) - sumC(paidBefore),
+    achatsPeriod:  sumB(bonsIn),
+    payePeriod:    sumC(paidIn),
+    pendingTotal:  sumC(fc.filter(c=>!_fourIsPaid(c) && !_fourIsBounced(c))),
+    enCompteTotal: sumB(fb.filter(b=>!b.chequeId)),
+    soldeNow:      sumB(fb) - sumC(fc.filter(_fourIsPaid)),
+  };
+}
+
+function fourLedger(nom, fromISO, toISO){
+  const fb = bons.filter(b=>b.fournisseur===nom);
+  const fc = cheques.filter(c=>c.fournisseur===nom);
+  const inRange = d => (!fromISO || d>=fromISO) && (!toISO || d<=toISO);
+
+  const opening = fromISO
+    ? fb.filter(b=>(b.date||'')<fromISO).reduce((s,b)=>s+_fourBonAmt(b),0)
+      - fc.filter(c=>_fourIsPaid(c) && _fourPaidDate(c)<fromISO).reduce((s,c)=>s+Number(c.montant||0),0)
+    : 0;
+
+  const events = [];
+  fb.forEach(b=>{
+    if(inRange(b.date||'')) events.push({
+      kind:'bon', date:b.date||'', id:b.id, num:b.num,
+      label:'بون #'+(b.num||'')+(b.lignes&&b.lignes.length?' · '+b.lignes.length+' سلعة':''),
+      amount: +_fourBonAmt(b),
+      pending:false,
+    });
+  });
+  fc.forEach(c=>{
+    if(_fourIsBounced(c)) return; // skip bounced cheques
+    const isP = _fourIsPaid(c);
+    const d = isP ? _fourPaidDate(c) : (c.date||'');
+    if(!inRange(d)) return;
+    events.push({
+      kind: isP ? 'cheque-paid' : 'cheque-pending',
+      date:d, id:c.id, num:c.num,
+      label:'شيك #'+(c.num||'')+(isP?' (مدفوع)':' (معلق'+(c.echeance?' · استحقاق '+fmtDate(c.echeance):'')+')'),
+      amount: -Number(c.montant||0),
+      pending: !isP,
+    });
+  });
+
+  events.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+
+  let running = opening;
+  events.forEach(e=>{
+    if(!e.pending) running += e.amount;
+    e.runningBal = running;
+  });
+
+  return { opening, closing:running, events, fromISO:fromISO||'', toISO:toISO||_fourTodayISO() };
+}
+
+function exportFourCsv(nom){
+  const df = dateFilters.fournisseurs;
+  const led = fourLedger(nom, df.from||'', df.to||_fourTodayISO());
+  const rows = [['التاريخ','النوع','الرقم','التفاصيل','المبلغ','الرصيد']];
+  rows.push([df.from||'بداية', 'رصيد افتتاحي','','','', led.opening.toFixed(2)]);
+  led.events.forEach(e=>{
+    rows.push([
+      e.date,
+      e.kind==='bon'?'بون':(e.pending?'شيك معلق':'شيك مدفوع'),
+      e.num||'',
+      e.label,
+      (e.pending?'['+(-e.amount).toFixed(2)+']':e.amount.toFixed(2)),
+      e.runningBal.toFixed(2),
+    ]);
+  });
+  rows.push([df.to||_fourTodayISO(),'الرصيد النهائي','','','',led.closing.toFixed(2)]);
+
+  const csv = rows.map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+  const blob = new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'}); // BOM for Excel UTF-8
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'releve_'+nom.replace(/[^a-zA-Z0-9_-]/g,'_')+'_'+(df.from||'all')+'_'+(df.to||_fourTodayISO())+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ a.remove(); URL.revokeObjectURL(url); }, 100);
+}
+
+function fourGoto(kind, num){
+  document.getElementById('modal-main').classList.remove('open');
+  if(kind==='bon'){
+    showPage('bons');
+    setTimeout(()=>{
+      const inp=document.getElementById('bon-search');
+      if(inp){ inp.value=String(num); inp.dispatchEvent(new Event('input')); }
+    }, 150);
+  } else {
+    showPage('cheques');
+    setTimeout(()=>{
+      const inp=document.getElementById('ck-search');
+      if(inp){ inp.value=String(num); inp.dispatchEvent(new Event('input')); }
+    }, 150);
+  }
+}
 // Big prominent tab bar merging السلع + الفورنيسورات under one catalog entry
 function _gotoCatalogTab(key){
   var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\'articles\'"]');
@@ -5245,25 +5368,30 @@ function _renderCatalogTabsHTML(active){
 
 function renderFournisseurs(){
   const search=(document.getElementById('four-search')||{value:''}).value.toLowerCase();
+  const df = dateFilters.fournisseurs;
+  const fromISO = df.from || '';
+  const toISO   = df.to   || '';
   const allNoms=[...new Set([...fournisseurs.map(f=>f.nom),...bons.map(b=>b.fournisseur)])];
+
   const all=allNoms.map(nom=>{
     const fi=fournisseurs.find(f=>f.nom===nom)||{id:null,nom,tel:'',ville:'',cat:'مورد',stat:'نشيط',email:'',notes:''};
-    const fb=bons.filter(b=>b.fournisseur===nom);
-    const fCk=cheques.filter(c=>c.fournisseur===nom);
-    const total=fCk.reduce((s,c)=>s+Number(c.montant),0);
-    const restant=fCk.filter(c=>c.status==='معلق').reduce((s,c)=>s+Number(c.montant),0);
-    const freeBons=fb.filter(b=>!b.chequeId);
-    const freeBonsAmt=freeBons.reduce((s,b)=>s+Number(b.total||0),0);
-    const last=fb.length?[...fb].sort((a,b)=>b.date.localeCompare(a.date))[0].date:'—';
-    return{...fi,total,restant,freeBonsAmt,bonsCount:fb.length,freeBons:freeBons.length,lastDate:last};
+    const s=fourStats(nom, fromISO, toISO);
+    return{...fi, ...s};
   }).filter(f=>(!fourFilter||f.stat===fourFilter||f.cat===fourFilter)&&(!search||(f.nom||'').toLowerCase().includes(search)||(f.tel||'').includes(search)||(f.ville||'').toLowerCase().includes(search)))
-  .sort((a,b)=>b.total-a.total);
+  .sort((a,b)=>b.soldeNow-a.soldeNow);
+
+  const sumK = (k)=>all.reduce((s,f)=>s+f[k],0);
+  const totOpen=sumK('openingBal'), totAch=sumK('achatsPeriod'), totPay=sumK('payePeriod'), totSol=sumK('soldeNow');
+
+  const soldeColor = v => v>0.005 ? 'var(--red)' : (v<-0.005 ? 'var(--green)' : 'var(--text3)');
+  const soldeIcon  = v => v>0.005 ? '🔴' : (v<-0.005 ? '🟢' : '✓');
 
   document.getElementById('page-fournisseurs').innerHTML=
     _renderCatalogTabsHTML('fournisseurs')
     +`<div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
       <!-- LEFT: table -->
       <div>
+        ${buildDateBar('fournisseurs')}
         <div class="toolbar">
           <input class="search-box" id="four-search" placeholder="🔍 بحث باسم، تيليفون، مدينة..." oninput="renderFournisseurs()" value="${search}">
           <div class="filter-pills">
@@ -5277,24 +5405,30 @@ function renderFournisseurs(){
         </div>
         <div class="dash-panel">
           <table class="data-table">
-            <thead><tr><th>الفورنيسور</th><th>التيليفون</th><th>المدينة</th><th>التصنيف</th><th>الحالة</th><th>بونات باقية</th><th>مستحق</th><th>الإجمالي</th><th>إجراءات</th></tr></thead>
+            <thead><tr>
+              <th>الفورنيسور</th>
+              <th style="text-align:left" title="رصيد افتتاحي قبل الفترة">🔒 افتتاحي</th>
+              <th style="text-align:left" title="مشتريات خلال الفترة">📦 مشتريات</th>
+              <th style="text-align:left" title="مدفوع نقدا خلال الفترة">✅ مدفوع</th>
+              <th style="text-align:left" title="الرصيد الحالي = إجمالي المشتريات − إجمالي المدفوع (مدى الحياة)">⚖️ الرصيد</th>
+              <th>إجراءات</th>
+            </tr></thead>
             <tbody>
               ${all.map(f=>{
                 const n=f.nom.replace(/'/g,"\\'");
-                const freeBadge=f.freeBons?'<span style="color:var(--amber);font-weight:700" title="'+fmt(f.freeBonsAmt)+'">'+f.freeBons+'</span>':'<span style="color:var(--green)">✓</span>';
-                const statBadge=f.stat==='نشيط'?'badge-linked':'badge-free';
-                const restantCell = f.restant>0
-                  ? '<td style="font-weight:700;color:var(--amber)" title="شيكات معلقة">'+fmt(f.restant)+'</td>'
-                  : '<td style="color:var(--text3)">—</td>';
+                const chips=[];
+                if(f.pendingTotal>0.005)  chips.push('<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--amber);font-size:10.5px;font-weight:600" title="شيكات وقعتها وما تخلصاوش بعد">📝 معلق '+fmt(f.pendingTotal)+'</span>');
+                if(f.enCompteTotal>0.005) chips.push('<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(147,51,234,0.12);color:var(--accent);font-size:10.5px;font-weight:600" title="بونات بلا أي شيك">💼 ف الحساب '+fmt(f.enCompteTotal)+'</span>');
+                const cellMuted = v => v<0.005 ? '<td style="color:var(--text3);text-align:left">—</td>' : '<td style="text-align:left;font-weight:600">'+fmt(v)+'</td>';
                 return '<tr>'
-                  +'<td style="font-weight:700;cursor:pointer" onclick="openFModal(\''+n+'\')">'+f.nom+'</td>'
-                  +'<td style="color:var(--text2)">'+( f.tel||'—')+'</td>'
-                  +'<td style="color:var(--text2)">'+(f.ville||'—')+'</td>'
-                  +'<td><span class="badge" style="background:rgba(167,139,250,0.1);color:var(--purple)">'+(f.cat||'—')+'</span></td>'
-                  +'<td><span class="badge '+statBadge+'">'+(f.stat||'نشيط')+'</span></td>'
-                  +'<td style="text-align:center">'+freeBadge+'</td>'
-                  + restantCell
-                  +'<td style="font-weight:700;color:var(--accent)">'+fmt(f.total)+'</td>'
+                  +'<td style="cursor:pointer" onclick="openFModal(\''+n+'\')">'
+                    +'<div style="font-weight:700">'+f.nom+'</div>'
+                    +(chips.length?'<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">'+chips.join('')+'</div>':'')
+                  +'</td>'
+                  + cellMuted(f.openingBal)
+                  + cellMuted(f.achatsPeriod)
+                  + cellMuted(f.payePeriod)
+                  +'<td style="text-align:left;font-weight:800;color:'+soldeColor(f.soldeNow)+'" title="الرصيد الحالي">'+soldeIcon(f.soldeNow)+' '+fmt(Math.abs(f.soldeNow))+'</td>'
                   +'<td><div style="display:flex;gap:6px">'
                     +'<button class="btn-ghost" onclick="openFModal(\''+n+'\')">👁️</button>'
                     +'<button class="btn-ghost" onclick="openEditFournisseur(\''+n+'\')">✏️</button>'
@@ -5302,10 +5436,16 @@ function renderFournisseurs(){
                   +'</div></td>'
                 +'</tr>';
               }).join('')}
-              ${!all.length?'<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">لا توجد نتائج</div></div></td></tr>':''}
+              ${!all.length?'<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">لا توجد نتائج</div></div></td></tr>':''}
             </tbody>
           </table>
-          ${all.length?'<div style="padding:10px 16px;font-size:12px;color:var(--text3);border-top:1px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px"><span>'+all.length+' فورنيسور</span><span>⚠️ مستحق إجمالي: <b style="color:var(--amber)">'+fmt(all.reduce((s,f)=>s+f.restant,0))+'</b></span><span style="font-weight:700;color:var(--accent)">الإجمالي: '+fmt(all.reduce((s,f)=>s+f.total,0))+'</span></div>':''}
+          ${all.length?'<div style="padding:10px 16px;font-size:12px;color:var(--text3);border-top:1px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center">'
+            +'<span>'+all.length+' فورنيسور</span>'
+            +'<span>🔒 افتتاحي: <b style="color:var(--text2)">'+fmt(totOpen)+'</b></span>'
+            +'<span>📦 مشتريات: <b style="color:var(--text2)">'+fmt(totAch)+'</b></span>'
+            +'<span>✅ مدفوع: <b style="color:var(--green)">'+fmt(totPay)+'</b></span>'
+            +'<span>⚖️ الرصيد: <b style="color:'+soldeColor(totSol)+'">'+fmt(totSol)+'</b></span>'
+          +'</div>':''}
         </div>
       </div>
 
@@ -5468,9 +5608,77 @@ function openFModal(nom){
     +'<div class="info-item"><div class="info-item-lbl">الإيميل</div><div class="info-item-val" style="font-size:12px">'+(fi.email||'—')+'</div></div>'
     +'<div class="info-item"><div class="info-item-lbl">المدينة</div><div class="info-item-val">'+(fi.ville||'—')+'</div></div>'
     +'<div class="info-item"><div class="info-item-lbl">التصنيف / الحالة</div><div class="info-item-val">'+(fi.cat||'—')+' — <span style="color:'+statColor+'">'+(fi.stat||'نشيط')+'</span></div></div>'
-    +'<div class="info-item"><div class="info-item-lbl">إجمالي التسويات</div><div class="info-item-val" style="color:var(--accent)">'+fmt(total)+'</div></div>'
-    +'<div class="info-item"><div class="info-item-lbl">بونات باقية</div><div class="info-item-val" style="color:var(--amber)">'+free.length+' بون — '+fmt(freeTotal)+'</div></div>'
     +'</div>';
+
+  // ── 6-KPI panel + inline ledger ───────────────────────────
+  const _df = dateFilters.fournisseurs;
+  const _from = _df.from || '';
+  const _to   = _df.to   || '';
+  const _stats  = fourStats(nom, _from, _to);
+  const _ledger = fourLedger(nom, _from, _to);
+  const _rangeLbl = (!_from && !_to)
+    ? 'كل الفترة'
+    : (fmtDate(_from||'—')+' → '+fmtDate(_to||'اليوم'));
+  const _soldeColor = _stats.soldeNow>0.005?'var(--red)':(_stats.soldeNow<-0.005?'var(--green)':'var(--text3)');
+
+  const _kpiCell = (icon,lbl,val,color,title)=>'<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 8px;text-align:center" title="'+(title||'')+'">'
+    +'<div style="font-size:10.5px;color:var(--text3);margin-bottom:4px;font-weight:600">'+icon+' '+lbl+'</div>'
+    +'<div style="font-size:13px;font-weight:800;color:'+(color||'var(--text)')+'">'+fmt(val)+'</div>'
+    +'</div>';
+
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--text)">📊 ملخص الحساب — <span style="color:var(--text2);font-weight:500">'+_rangeLbl+'</span></div>'
+      +'<div style="font-size:11px;color:var(--text3)">عدّل الفترة من فوق الجدول</div>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">'
+      +_kpiCell('🔒','افتتاحي', _stats.openingBal, 'var(--text2)', 'الرصيد قبل بداية الفترة')
+      +_kpiCell('📦','مشتريات', _stats.achatsPeriod, 'var(--accent)', 'المشتريات خلال الفترة')
+      +_kpiCell('✅','مدفوع',   _stats.payePeriod, 'var(--green)',  'النقد المدفوع خلال الفترة')
+      +_kpiCell('📝','معلق',    _stats.pendingTotal, 'var(--amber)','شيكات وقعتها وما تخلصاوش بعد (مدى الحياة)')
+      +_kpiCell('💼','ف الحساب',_stats.enCompteTotal, 'var(--purple)','بونات بلا أي شيك (مدى الحياة)')
+      +_kpiCell('⚖️','الرصيد',  _stats.soldeNow, _soldeColor, 'الرصيد الحالي = مشتريات − مدفوع (مدى الحياة)')
+    +'</div>'
+  +'</div>';
+
+  // ── Inline ledger ─────────────────────────────────────────
+  const _ledRows = _ledger.events.map(e=>{
+    const isPending = e.pending;
+    const amtCol = e.amount>0 ? 'var(--accent)' : 'var(--green)';
+    const amtTxt = isPending
+      ? '<span style="color:var(--amber);font-style:italic">['+fmt(Math.abs(e.amount))+']</span>'
+      : (e.amount>=0 ? '+ '+fmt(e.amount) : '− '+fmt(Math.abs(e.amount)));
+    const balCol = e.runningBal>0.005 ? 'var(--red)' : (e.runningBal<-0.005 ? 'var(--green)' : 'var(--text3)');
+    const goto = e.kind==='bon'
+      ? 'fourGoto(\'bon\','+JSON.stringify(e.num||'')+')'
+      : 'fourGoto(\'cheque\','+JSON.stringify(e.num||'')+')';
+    return '<tr style="cursor:pointer" onclick="'+goto+'">'
+      +'<td style="white-space:nowrap;color:var(--text2);font-size:12px">'+(e.date?fmtDate(e.date):'—')+'</td>'
+      +'<td style="font-size:12px">'+e.label+'</td>'
+      +'<td style="text-align:left;font-weight:700;color:'+(isPending?'var(--amber)':amtCol)+';white-space:nowrap">'+amtTxt+'</td>'
+      +'<td style="text-align:left;font-weight:700;color:'+balCol+';white-space:nowrap">'+fmt(e.runningBal)+'</td>'
+    +'</tr>';
+  }).join('');
+
+  const _hasLed = _ledger.events.length>0;
+  html += '<div style="margin-bottom:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--text)">📜 كشف الحساب <span style="color:var(--text3);font-weight:500;font-size:11px">('+_ledger.events.length+' عملية)</span></div>'
+      +'<div style="display:flex;gap:6px">'
+        +'<button class="btn-ghost" onclick="exportFourCsv(\''+n+'\')" title="تنزيل Excel/CSV">📥 Excel</button>'
+        +'<button class="btn-ghost" onclick="openFReleve(\''+n+'\')" title="رلوفي للطباعة (مدى الحياة)">🖨️ PDF</button>'
+      +'</div>'
+    +'</div>'
+    +'<div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)">'
+      +(_from || _to
+        ?'<div style="padding:8px 14px;background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between"><span>🔒 رصيد افتتاحي '+(_from?'('+fmtDate(_from)+')':'')+'</span><b style="color:var(--text)">'+fmt(_ledger.opening)+'</b></div>'
+        :'')
+      +(_hasLed
+        ? '<table class="data-table" style="margin:0"><thead><tr><th>التاريخ</th><th>التفاصيل</th><th style="text-align:left">المبلغ</th><th style="text-align:left">الرصيد</th></tr></thead><tbody>'+_ledRows+'</tbody></table>'
+        : '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">لا توجد عمليات في هذه الفترة</div>')
+      +'<div style="padding:10px 14px;background:rgba(239,68,68,0.06);border-top:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between"><span>⚖️ الرصيد '+(_to?'('+fmtDate(_to)+')':'الحالي')+'</span><b style="color:'+_soldeColor+';font-size:14px">'+fmt(_ledger.closing)+'</b></div>'
+    +'</div>'
+  +'</div>';
 
   if(fi.notes)html+='<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px;font-size:13px;color:var(--text2);margin-bottom:14px">📝 '+fi.notes+'</div>';
 

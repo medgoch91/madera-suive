@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v32-art-name-bidi';
+const CACHE = 'suivi-v33-art-name-fix';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

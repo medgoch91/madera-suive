@@ -7302,8 +7302,8 @@ function renderArticles(){
         +'<div style="display:flex;align-items:center;gap:10px;min-width:0;flex:1">'
           +chk
           +thumb
-          +'<div style="min-width:0;flex:1"><div dir="auto" style="font-size:14px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;word-break:break-word" title="'+escB(a.nom)+'">'+escB(a.nom)+'</div>'
-            +'<div style="font-size:11px;color:var(--text2);margin-top:2px;overflow-wrap:anywhere">'+escB(a.unite||'')+(a.ref?' · <span style="font-family:monospace">'+escB(a.ref)+'</span>':'')+'</div></div>'
+          +'<div style="min-width:0;flex:1"><div dir="auto" style="font-size:14px;font-weight:700;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word" title="'+escB(a.nom)+'">'+escB(a.nom)+'</div>'
+            +'<div style="font-size:11px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escB(a.unite||'')+(a.ref?' · <span style="font-family:monospace">'+escB(a.ref)+'</span>':'')+'</div></div>'
         +'</div>'
         +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">'
           +'<div style="display:flex;gap:4px;align-items:center">'+sBadge+menuBtn+'</div>'

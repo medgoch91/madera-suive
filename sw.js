@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v44-cheque-edit-modal';
+const CACHE = 'suivi-v45-pcs-add-fix';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

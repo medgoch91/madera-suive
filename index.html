@@ -14094,7 +14094,7 @@ function renderSalPcs(){
 
   var html='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'
     +'<div style="font-size:15px;font-weight:700">👷 عمال PCs</div>'
-    +'<button onclick="salSubPage=\'ajout\';salNewType=\'pcs\';renderSalaries()" style="padding:7px 14px;background:rgba(46,204,122,0.1);border:1px solid rgba(46,204,122,0.3);color:var(--green);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">➕ عامل جديد</button>'
+    +'<button onclick="salTopGroup=\'workers\';salSubPage=\'ajout\';salNewType=\'pcs\';renderSalaries();window.scrollTo(0,0);" style="padding:7px 14px;background:rgba(46,204,122,0.1);border:1px solid rgba(46,204,122,0.3);color:var(--green);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">➕ عامل جديد</button>'
   +'</div>';
 
   if(!ouvriersPc.length){

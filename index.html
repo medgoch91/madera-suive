@@ -12451,7 +12451,12 @@ async function edDeleteOrder(id){
 
 function renderSalElecDist(){
   if(!edLoaded){
-    loadEdData().then(function(){renderElecDist();});
+    loadEdData().then(function(){
+      // Re-render whichever shell holds us — page-salaries (when accessed via
+      // الأجراء → électricité à distance) OR page-elec-dist (top-level route).
+      if(typeof renderSalaries === 'function') renderSalaries();
+      if(typeof renderElecDist === 'function') renderElecDist();
+    });
     return '<div style="text-align:center;padding:60px;color:var(--text3);font-size:13px">⏳ جاري التحميل...</div>';
   }
   var sel=edProducts.find(function(p){return Number(p.id)===Number(edSelProductId);});
@@ -12851,7 +12856,7 @@ function renderSalElecDist(){
   if(edOrders.length){
     ordersHtml='<div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">'
       +'<span>📋 آخر التسليمات ('+edOrders.length+')</span>'
-      +'<button onclick="loadEdData(true).then(renderElecDist)" style="padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px">🔄 تحديث</button>'
+      +'<button onclick="loadEdData(true).then(function(){if(typeof renderSalaries===\'function\')renderSalaries();if(typeof renderElecDist===\'function\')renderElecDist();})" style="padding:4px 10px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px">🔄 تحديث</button>'
     +'</div>'
     +'<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">'
     +'<div style="display:grid;grid-template-columns:90px 1fr 1fr 70px 90px 90px 40px;background:var(--bg3);padding:8px 12px;font-size:11px;font-weight:700;color:var(--text3);border-bottom:1px solid var(--border)">'

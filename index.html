@@ -1627,7 +1627,7 @@ function _sbAudit(table, method, params, body){
   };
   fetch(SB_URL+'/rest/v1/audit_log', {
     method:'POST',
-    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),'Prefer':'return=minimal'},
     body: JSON.stringify(payload)
   }).catch(function(){});
 }
@@ -1642,7 +1642,7 @@ function _sbAuditEvent(eventType, details){
     var userId = (cu && cu.id) || null;
     fetch(SB_URL+'/rest/v1/audit_log', {
       method:'POST',
-      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'return=minimal'},
+      headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),'Prefer':'return=minimal'},
       body: JSON.stringify({
         user_name: user,
         user_email: user,
@@ -2020,13 +2020,19 @@ async function importClientsCSV(ev){
 }
 
 async function sbSavePrix(articleId, fournisseur, prixVal){
-  // upsert with on_conflict
+  // upsert with on_conflict — must use the user's JWT (anon has no write rights post-RLS migration)
   const url=SB_URL+'/rest/v1/prix?on_conflict=article_id,fournisseur';
-  await fetch(url,{
+  const bearer=(typeof window!=='undefined' && window._sbAccessToken) || SB_KEY;
+  const res=await fetch(url,{
     method:'POST',
-    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'},
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+bearer,'Prefer':'resolution=merge-duplicates,return=minimal'},
     body:JSON.stringify({article_id:articleId,fournisseur,prix:prixVal})
   });
+  if(!res.ok){
+    const e=await res.text();
+    console.error('SB Error [POST prix '+res.status+']:',e);
+    if(typeof toast==='function') toast('⚠️ ما تخزنش السعر: '+(sbParseError?sbParseError(e):e).slice(0,80),'error');
+  }
 }
 
 // Race-safe helper: bump a "PREFIX-NNNN" num past server max before POST
@@ -7574,13 +7580,19 @@ function openAddArticleModal(){
   },100);
 }
 
-function sbUpsertSupplierProduct(supplierId, productId, price){
+async function sbUpsertSupplierProduct(supplierId, productId, price){
   spLinks[supplierId+'_'+productId] = price;
-  return fetch(SB_URL+'/rest/v1/supplier_products?on_conflict=supplier_id,product_id',{
+  const bearer=(typeof window!=='undefined' && window._sbAccessToken) || SB_KEY;
+  const res=await fetch(SB_URL+'/rest/v1/supplier_products?on_conflict=supplier_id,product_id',{
     method:'POST',
-    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'},
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+bearer,'Prefer':'resolution=merge-duplicates,return=minimal'},
     body:JSON.stringify({supplier_id:parseInt(supplierId),product_id:parseInt(productId),last_purchase_price_ttc:price,updated_at:new Date().toISOString()})
   });
+  if(!res.ok){
+    const e=await res.text();
+    console.error('SB Error [POST supplier_products '+res.status+']:',e);
+  }
+  return res;
 }
 
 function updatePrix(aId,f,val,inp){
@@ -10347,7 +10359,7 @@ async function _saveBonImpl(){
           try{
             await fetch(SB_URL+'/rest/v1/prix?on_conflict=article_id,fournisseur',{
               method:'POST',
-              headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'},
+              headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),'Prefer':'resolution=merge-duplicates,return=minimal'},
               body:JSON.stringify({article_id:pl.articleId,fournisseur:fournisseur,prix:pl.prix})
             });
           }catch(_){}
@@ -10363,7 +10375,7 @@ async function _saveBonImpl(){
           spLinks[fourObjSP.id+'_'+l.articleId] = l.prix;
           return fetch(SB_URL+'/rest/v1/supplier_products?on_conflict=supplier_id,product_id',{
             method:'POST',
-            headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY,'Prefer':'resolution=merge-duplicates,return=minimal'},
+            headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),'Prefer':'resolution=merge-duplicates,return=minimal'},
             body:JSON.stringify({supplier_id:fourObjSP.id,product_id:l.articleId,last_purchase_price_ttc:l.prix,updated_at:new Date().toISOString()})
           });
         }));
@@ -10550,7 +10562,7 @@ async function sbUpsert(table,body,onConflict){
     method:'POST',
     headers:{
       'Content-Type':'application/json','apikey':SB_KEY,
-      'Authorization':'Bearer '+SB_KEY,
+      'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),
       'Prefer':'resolution=merge-duplicates,return=representation'
     },
     body:JSON.stringify(body)
@@ -11558,7 +11570,7 @@ async function pcSavePresence(ouvrierId,date,pc_nom,prix,inputEl){
     method:'POST',
     headers:{
       'Content-Type':'application/json','apikey':SB_KEY,
-      'Authorization':'Bearer '+SB_KEY,
+      'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),
       'Prefer':'resolution=merge-duplicates,return=representation'
     },
     body:JSON.stringify({ouvrier_id:ouvrierId,date,pc_nom,qte,prix})
@@ -11595,7 +11607,7 @@ async function sbRpc(name, params){
   const url = SB_URL+'/rest/v1/rpc/'+name;
   const res = await fetch(url, {
     method:'POST',
-    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+SB_KEY},
+    headers:{'Content-Type':'application/json','apikey':SB_KEY,'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY)},
     body:JSON.stringify(params||{})
   });
   if(!res.ok){const e=await res.text();console.error('RPC '+name+' error:',e);return {__sbError:true,msg:e};}

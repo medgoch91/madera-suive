@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v42-bon-notif-multichat';
+const CACHE = 'suivi-v43-bon-edit-notif';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

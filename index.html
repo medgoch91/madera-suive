@@ -1431,7 +1431,7 @@ function setupTelegramChatId(){
   }
 }
 
-async function sendTelegramNotif(bon){
+async function sendTelegramNotif(bon, opts){
   // Collect chat IDs from BOTH sources so the notif fires reliably:
   //   1. localStorage 'tg_chat_id' (legacy: set once via the cheque-share flow)
   //   2. bot_subscribers table (every chat that ran /subscribe in the Telegram bot)
@@ -1444,8 +1444,10 @@ async function sendTelegramNotif(bon){
   }catch(e){ console.warn('bot_subscribers fetch for notif failed:', e); }
   if(!chatIds.size) return;
 
+  const edited = !!(opts && opts.edited);
+  const heading = edited ? `✏️ تعديل بون — ${bon.fournisseur}` : `📦 بون جديد — ${bon.fournisseur}`;
   const lines = (bon.lignes||[]).map(l=>`  • ${l.nom} × ${l.qte} = ${Number(l.qte*l.prix).toFixed(2)} DH`).join('\n');
-  const text = `📦 بون جديد — ${bon.fournisseur}\n`
+  const text = `${heading}\n`
     + `🔢 رقم: ${bon.num}\n`
     + `📅 التاريخ: ${bon.date}\n`
     + `\n${lines}\n`
@@ -4304,7 +4306,10 @@ function saveEditBon(id){
   delete _editBonOriginalLignes[id];
 
   const editedBon=bons.find(x=>x.id===id);
-  if(editedBon)sbSaveBon(editedBon);
+  if(editedBon){
+    sbSaveBon(editedBon);
+    sendTelegramNotif(editedBon, {edited:true});
+  }
   document.getElementById('modal-main').classList.remove('open');
   renderBons();updateSidebar();
   try{toast('✅ تم حفظ التعديلات','success');}catch(e){}

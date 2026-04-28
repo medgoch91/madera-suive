@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v35-art-card-stockbadge';
+const CACHE = 'suivi-v36-art-name-singleline';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

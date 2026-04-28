@@ -7305,9 +7305,9 @@ function renderArticles(){
           +'<div dir="auto" style="font-size:14px;font-weight:700;line-height:1.3;overflow-wrap:break-word" title="'+escB(a.nom)+'">'+escB(a.nom)+'</div>'
           +'<div dir="auto" style="font-size:11px;color:var(--text2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escB(a.unite||'')+(a.ref?' · <span style="font-family:monospace">'+escB(a.ref)+'</span>':'')+'</div>'
         +'</div>'
-        +'<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">'+sBadge+menuBtn+'</div>'
+        +'<div style="flex-shrink:0">'+menuBtn+'</div>'
       +'</div>'
-      +'<div style="margin-top:10px"><span class="badge badge-active">'+fps.length+' سعر'+(stockN!=null?' · '+stockN+' قطعة':'')+'</span></div>'
+      +'<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">'+sBadge+'<span class="badge badge-active">'+fps.length+' سعر'+(stockN!=null?' · '+stockN+' قطعة':'')+'</span></div>'
       +(fps.length
         ?'<div class="prices-list" style="margin-top:10px;display:flex;flex-direction:column;gap:4px">'+fps.map(({f,p})=>'<div class="price-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12px"><span style="font-weight:600;color:var(--accent);flex-shrink:0">\u2066'+fmtN(p)+' DH\u2069</span><span style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">'+escB(f)+'</span></div>').join('')+'</div>'
         :'<div style="font-size:11px;color:var(--text2);margin-top:6px">لا يوجد سعر بعد</div>')

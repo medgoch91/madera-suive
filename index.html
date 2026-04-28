@@ -4983,6 +4983,7 @@ function renderCheques(){
                 <div style="display:flex;gap:6px">
                   <button class="btn-ghost" onclick="chSt(${c.id},'مدفوع')" style="font-size:11px">مدفوع</button>
                   <button class="btn-ghost" onclick="chSt(${c.id},'معلق')" style="font-size:11px">معلق</button>
+                  <button class="btn-ghost" onclick="openEditChequeModal(${c.id})" title="تعديل">✏️</button>
                   <button class="btn-ghost" onclick="printCheque(${c.id})" title="${isEspece?'إيصال نقد':'طباعة'}">🖨️</button>
                 </div>
               </td>
@@ -5033,6 +5034,121 @@ function chSt(id,s){
   renderCheques(); updateSidebar();
   // Re-render bons so their "paid" badge refreshes
   if(typeof renderBons==='function') renderBons();
+}
+
+// ===== EDIT CHEQUE MODAL =====
+function openEditChequeModal(id){
+  const c = cheques.find(x => x.id === id);
+  if(!c){ toast('شيك ما تلقاش','warning'); return; }
+  const fNoms = (typeof getFNoms === 'function') ? getFNoms() : [];
+  const t = c.type || 'cheque';
+  const isEspece = t === 'espece';
+  const types = [
+    {k:'cheque', icon:'💳', lbl:'شيك'},
+    {k:'effet',  icon:'📜', lbl:'ورقة'},
+    {k:'espece', icon:'💵', lbl:'نقد'},
+  ];
+  const statuses = [
+    {k:'معلق',   col:'#f59e0b'},
+    {k:'مدفوع',  col:'#10b981'},
+    {k:'مرتجع',  col:'#dc2626'},
+  ];
+  const html = '<div class="modal-title"><span>✏️ تعديل شيك #'+escB(String(c.num||''))+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<div class="form-grid" style="gap:12px">'
+      +'<div class="form-full"><label class="field-lbl">النوع</label>'
+        +'<div id="ec-type-pills" style="display:flex;gap:6px">'
+          + types.map(x => '<button type="button" class="pill'+(t===x.k?' active':'')+'" data-ec-type="'+x.k+'" onclick="ecSetType(\''+x.k+'\')" style="flex:1">'+x.icon+' '+x.lbl+'</button>').join('')
+        +'</div>'
+      +'</div>'
+      +'<div><label class="field-lbl">الرقم</label><input class="field-inp" id="ec-num" value="'+escB(String(c.num||''))+'"></div>'
+      +'<div><label class="field-lbl">المبلغ (DH)</label><input class="field-inp" id="ec-montant" type="number" step="0.01" value="'+Number(c.montant||0)+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">الفورنيسور</label>'
+        +'<input class="field-inp" id="ec-four" list="ec-four-list" value="'+escB(c.fournisseur||'')+'">'
+        +'<datalist id="ec-four-list">'+ fNoms.map(n => '<option value="'+escB(n)+'">').join('') +'</datalist>'
+      +'</div>'
+      +'<div><label class="field-lbl">تاريخ الإصدار</label><input class="field-inp" id="ec-date" type="date" value="'+escB(c.date||'')+'"></div>'
+      +'<div id="ec-echeance-wrap" style="'+(isEspece?'display:none':'')+'"><label class="field-lbl">الاستحقاق</label><input class="field-inp" id="ec-echeance" type="date" value="'+escB(c.echeance||'')+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">الحالة</label>'
+        +'<div style="display:flex;gap:6px">'
+          + statuses.map(s => '<button type="button" class="pill" data-ec-status="'+s.k+'" onclick="ecSetStatus(\''+s.k+'\')" style="flex:1;'+(c.status===s.k?'border-color:'+s.col+';background:'+s.col+'22;color:'+s.col+';font-weight:800':'')+'">'+s.k+'</button>').join('')
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;margin-top:18px">'
+      +'<button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveEditCheque('+id+')">💾 حفظ</button>'
+      +'<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
+    +'</div>'
+    +'<div id="ec-msg" style="text-align:center;font-size:12px;margin-top:8px;min-height:16px"></div>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  // Track current pill state (persisted on dataset of the modal container)
+  const cont = document.getElementById('modal-main-c');
+  cont.dataset.ecType   = t;
+  cont.dataset.ecStatus = c.status || 'معلق';
+  document.getElementById('modal-main').classList.add('open');
+}
+
+function ecSetType(k){
+  const cont = document.getElementById('modal-main-c');
+  if(!cont) return;
+  cont.dataset.ecType = k;
+  document.querySelectorAll('#ec-type-pills .pill').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-ec-type') === k);
+  });
+  const wrap = document.getElementById('ec-echeance-wrap');
+  if(wrap) wrap.style.display = (k === 'espece') ? 'none' : '';
+}
+
+function ecSetStatus(k){
+  const cont = document.getElementById('modal-main-c');
+  if(!cont) return;
+  cont.dataset.ecStatus = k;
+  const cols = {'معلق':'#f59e0b','مدفوع':'#10b981','مرتجع':'#dc2626'};
+  document.querySelectorAll('[data-ec-status]').forEach(b => {
+    const sk = b.getAttribute('data-ec-status');
+    const active = sk === k;
+    const col = cols[sk] || '#f59e0b';
+    b.style.cssText = 'flex:1;'+(active?'border-color:'+col+';background:'+col+'22;color:'+col+';font-weight:800':'');
+  });
+}
+
+async function saveEditCheque(id){
+  const c = cheques.find(x => x.id === id);
+  if(!c) return;
+  const msg = document.getElementById('ec-msg');
+  const cont = document.getElementById('modal-main-c');
+  const num = (document.getElementById('ec-num')||{value:''}).value.trim();
+  const montant = parseFloat((document.getElementById('ec-montant')||{value:'0'}).value) || 0;
+  const four = (document.getElementById('ec-four')||{value:''}).value.trim();
+  const date = (document.getElementById('ec-date')||{value:''}).value;
+  const ech = (document.getElementById('ec-echeance')||{value:''}).value;
+  const type = (cont && cont.dataset.ecType) || c.type || 'cheque';
+  const status = (cont && cont.dataset.ecStatus) || c.status || 'معلق';
+  if(!num){ if(msg){ msg.style.color='var(--red)'; msg.textContent='الرقم مطلوب'; } return; }
+  if(!four){ if(msg){ msg.style.color='var(--red)'; msg.textContent='الفورنيسور مطلوب'; } return; }
+  if(!date){ if(msg){ msg.style.color='var(--red)'; msg.textContent='تاريخ الإصدار مطلوب'; } return; }
+  if(montant <= 0){ if(msg){ msg.style.color='var(--red)'; msg.textContent='المبلغ خاصو يكون موجب'; } return; }
+  // Auto-stamp paid_at when status flips to/from paid
+  const prevStatus = c.status;
+  c.num = num;
+  c.fournisseur = four;
+  c.montant = montant;
+  c.date = date;
+  c.echeance = (type === 'espece') ? null : (ech || null);
+  c.type = type;
+  c.status = status;
+  if(status === 'مدفوع' && prevStatus !== 'مدفوع') c.paid_at = new Date().toISOString().slice(0,10);
+  if(status !== 'مدفوع' && prevStatus === 'مدفوع') c.paid_at = null;
+  if(msg){ msg.style.color='var(--text2)'; msg.textContent='⏳ جاري الحفظ...'; }
+  try{
+    await sbSaveCheque(c);
+    document.getElementById('modal-main').classList.remove('open');
+    toast('✅ تم حفظ التعديلات','success');
+    renderCheques();
+    if(typeof updateSidebar === 'function') updateSidebar();
+  }catch(e){
+    if(msg){ msg.style.color='var(--red)'; msg.textContent='❌ فشل الحفظ: '+(e && e.message ? e.message : e); }
+  }
 }
 
 // ===== ÉCHÉANCIER (calendrier des paiements) =====

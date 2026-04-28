@@ -1432,21 +1432,33 @@ function setupTelegramChatId(){
 }
 
 async function sendTelegramNotif(bon){
-  const chatId = localStorage.getItem('tg_chat_id');
-  if(!chatId) return;
+  // Collect chat IDs from BOTH sources so the notif fires reliably:
+  //   1. localStorage 'tg_chat_id' (legacy: set once via the cheque-share flow)
+  //   2. bot_subscribers table (every chat that ran /subscribe in the Telegram bot)
+  const chatIds = new Set();
+  const local = localStorage.getItem('tg_chat_id');
+  if(local) chatIds.add(String(local).trim());
+  try{
+    const subs = await sbFetch('bot_subscribers','GET',null,'select=chat_id');
+    if(Array.isArray(subs)) subs.forEach(s => { if(s && s.chat_id!=null) chatIds.add(String(s.chat_id)); });
+  }catch(e){ console.warn('bot_subscribers fetch for notif failed:', e); }
+  if(!chatIds.size) return;
+
   const lines = (bon.lignes||[]).map(l=>`  • ${l.nom} × ${l.qte} = ${Number(l.qte*l.prix).toFixed(2)} DH`).join('\n');
   const text = `📦 بون جديد — ${bon.fournisseur}\n`
     + `🔢 رقم: ${bon.num}\n`
     + `📅 التاريخ: ${bon.date}\n`
     + `\n${lines}\n`
     + `\n💰 المجموع: ${Number(bon.total).toFixed(2)} DH TTC`;
-  try{
-    await fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{
+
+  await Promise.allSettled([...chatIds].map(chatId =>
+    fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({chat_id:chatId,text,parse_mode:'HTML'})
-    });
-  }catch(e){ console.warn('Telegram notif failed',e); }
+      body:JSON.stringify({chat_id:chatId,text})
+    }).then(r => { if(!r.ok) console.warn('TG notif failed', chatId, r.status); })
+      .catch(e => console.warn('TG notif failed for', chatId, e))
+  ));
 }
 
 // ── Offline write queue ──────────────────────────────────────────

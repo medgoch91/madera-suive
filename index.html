@@ -5756,8 +5756,8 @@ function openFModal(nom){
         +'</div>'
         +'<div style="display:flex;align-items:center;gap:6px">'
           +'<input type="number" value="'+p+'" min="0" step="0.01" '
-          +'style="width:110px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;text-align:center;font-weight:600;color:var(--accent)" '
-          +'onchange="updatePrix('+a.id+',\''+n+'\',this.value)">'
+          +'style="width:110px;padding:6px 10px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;text-align:center;font-weight:600;color:var(--accent);transition:border-color 0.18s,box-shadow 0.18s" '
+          +'onchange="updatePrix('+a.id+',\''+n+'\',this.value,this)">'
 
           +'<span style="font-size:12px;color:var(--text2)">DH</span>'
         +'</div>'
@@ -7495,7 +7495,7 @@ function openArticleModal(id){
   fps.forEach(({f,p})=>{
     const fn=f.replace(/'/g,"\'");
     html+='<tr><td style="font-weight:500">'+f+'</td><td>'
-      +'<input type="number" value="'+p+'" placeholder="السعر" style="width:100px;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none" onchange="updatePrix('+id+',\''+fn+'\',this.value)">'
+      +'<input type="number" value="'+p+'" placeholder="السعر" style="width:100px;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none;transition:border-color 0.18s,box-shadow 0.18s" onchange="updatePrix('+id+',\''+fn+'\',this.value,this)">'
       +' DH</td></tr>';
   });
   html+='</tbody></table>';
@@ -7583,16 +7583,48 @@ function sbUpsertSupplierProduct(supplierId, productId, price){
   });
 }
 
-function updatePrix(aId,f,val){
+function updatePrix(aId,f,val,inp){
   const p=parseFloat(val);
   if(p>0){
     prix[aId+'_'+f]=p;
     sbSavePrix(aId,f,p);
     const fourObj=fournisseurs.find(function(x){return x.nom===f;});
     if(fourObj) sbUpsertSupplierProduct(fourObj.id, aId, p);
+    if(inp) flashSaved(inp);
   } else {
     delete prix[aId+'_'+f];
+    if(inp) flashSaved(inp,'cleared');
   }
+}
+
+// Brief green-border + ✓ flash next to an input to confirm an auto-save.
+// kind: 'saved' (green ✓) | 'cleared' (amber ✕)
+function flashSaved(inp, kind){
+  if(!inp || !inp.parentNode) return;
+  const cleared = kind==='cleared';
+  const col = cleared ? 'var(--amber)' : 'var(--green)';
+  const sym = cleared ? '✕' : '✓';
+  const orig = { border: inp.style.borderColor, shadow: inp.style.boxShadow };
+  inp.style.borderColor = col;
+  inp.style.boxShadow   = '0 0 0 2px '+(cleared?'rgba(245,158,11,0.18)':'rgba(16,185,129,0.18)');
+  let mark = inp.parentNode.querySelector('._save-flash');
+  if(!mark){
+    mark = document.createElement('span');
+    mark.className = '_save-flash';
+    mark.style.cssText = 'display:inline-block;margin:0 6px;font-size:13px;font-weight:800;opacity:0;transition:opacity 0.18s;line-height:1';
+    inp.insertAdjacentElement('afterend', mark);
+  }
+  mark.style.color = col;
+  mark.textContent = sym;
+  // Force reflow so the transition kicks in even on rapid successive saves.
+  void mark.offsetWidth;
+  mark.style.opacity = '1';
+  if(inp._flashT) clearTimeout(inp._flashT);
+  inp._flashT = setTimeout(function(){
+    inp.style.borderColor = orig.border;
+    inp.style.boxShadow   = orig.shadow;
+    if(mark) mark.style.opacity = '0';
+  }, 1500);
 }
 
 function deleteArticle(id){

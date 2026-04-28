@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v39-elec-rerender-shell';
+const CACHE = 'suivi-v40-prix-save-feedback';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

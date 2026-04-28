@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v38-elec-loading-fix';
+const CACHE = 'suivi-v39-elec-rerender-shell';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -10607,11 +10607,21 @@ function renderSalaries(){
 }
 
 // ─── ÉLECTRICITÉ À DISTANCE (top-level page) ──────────────────
+// Renders into BOTH possible shells:
+//   - page-elec-dist  (top-level route #elec-dist)
+//   - page-salaries   (الأجراء → électricité à distance hero tab, salTopGroup='elec')
+// Each is no-op if its element is hidden / absent. This is what the 39 call sites
+// in this section rely on so any UI mutation refreshes the visible shell.
 function renderElecDist(){
   const page=document.getElementById('page-elec-dist');
-  if(!page)return;
-  page.style.direction='rtl';page.style.width='100%';page.style.height='auto';
-  page.innerHTML='<div style="max-width:1300px;margin:0 auto">'+renderSalElecDist()+'</div>';
+  if(page){
+    page.style.direction='rtl';page.style.width='100%';page.style.height='auto';
+    page.innerHTML='<div style="max-width:1300px;margin:0 auto">'+renderSalElecDist()+'</div>';
+  }
+  if(typeof salTopGroup !== 'undefined' && salTopGroup === 'elec'
+     && typeof renderSalaries === 'function' && document.getElementById('page-salaries')){
+    renderSalaries();
+  }
 }
 
 // ─── POINTAGE ────────────────────────────────────────────────

@@ -1457,6 +1457,33 @@ async function sendTelegramBroadcast(text){
   ));
 }
 
+// Send a Telegram message after a new cheque/effet/espèce is saved.
+async function sendChequeNotif(c){
+  const typeLbl = c.type === 'effet' ? '📜 ورقة' : (c.type === 'espece' ? '💵 نقد' : '💳 شيك');
+  const lines = [
+    `${typeLbl} *جديد* — ${c.fournisseur || '?'}`,
+    `🔢 رقم: ${c.num}`,
+    `📅 ${c.date}` + (c.echeance ? ` · استحقاق: ${c.echeance}` : ''),
+    `💰 ${Number(c.montant || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.`,
+  ];
+  if (c.bonIds && c.bonIds.length) lines.push(`📋 ${c.bonIds.length} بون مربوط`);
+  if (c.status && c.status !== 'معلق') lines.push(`الحالة: ${c.status}`);
+  await sendTelegramBroadcast(lines.join('\n'));
+}
+
+// Send a Telegram message after a new facture is saved.
+async function sendFactureNotif(f){
+  const lines = [
+    `🧾 *فاتورة جديدة* — ${f.client_nom || '?'}`,
+    `🔢 رقم: ${f.num}`,
+    `📅 ${f.date}` + (f.echeance ? ` · استحقاق: ${f.echeance}` : ''),
+    `💰 ${Number(f.total_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م. TTC`,
+  ];
+  if (f.client_ville) lines.push(`📍 ${f.client_ville}`);
+  if (f.statut && f.statut !== 'معلقة') lines.push(`الحالة: ${f.statut}`);
+  await sendTelegramBroadcast(lines.join('\n'));
+}
+
 async function sendTelegramNotif(bon, opts){
   const edited = !!(opts && opts.edited);
   const heading = edited ? `✏️ تعديل بون — ${bon.fournisseur}` : `📦 بون جديد — ${bon.fournisseur}`;
@@ -7958,6 +7985,7 @@ function saveCheque(){
       msg.style.color='var(--green)';
       var typeLbl = type==='cheque'?'الشيك':(type==='effet'?'الورقة':'الدفعة');
       msg.textContent='✅ تم حفظ '+typeLbl+' '+nc.num+' — '+nc.bonIds.length+' بون مربوط';
+      sendChequeNotif(nc);
       updateSidebar();
       setTimeout(function(){showPage('cheques',document.querySelectorAll('.nav-btn')[2]);},1000);
     }catch(e){
@@ -15316,6 +15344,7 @@ async function _factSaveNewImpl(){
 
     // ── Step 5: Success — reset local form state ──
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم حفظ الفاتورة!';}
+    sendFactureNotif(saved);
     factNewLignes=[factBlankLigne(),factBlankLigne(),factBlankLigne(),factBlankLigne()];
     factNewClient='';factNewVille='';factNewIce='';factNewNotes='';factNewNumOverride=null;
 

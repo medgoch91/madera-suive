@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v51-pointage-notif-fallback';
+const CACHE = 'suivi-v52-cheque-facture-notif';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

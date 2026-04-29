@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v63-fr-coverage-pass2';
+const CACHE = 'suivi-v64-fr-coverage-pass3';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

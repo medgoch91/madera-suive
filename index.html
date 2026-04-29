@@ -2652,6 +2652,53 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'متبقي':'Restant', 'سعر':'Prix', 'كمية':'Qté',
   'بحث':'Rechercher', 'فلترة':'Filtrer',
   // Reports KPIs (kept i18n as-is)
+  // Cheques hero cards
+  'طباعة الشيك':'Imprimer chèque', 'طباعة ملف PDF':'Imprimer PDF',
+  'قائمة الشيكات':'Liste des chèques', 'قائمة الموردين':'Liste fournisseurs',
+  'قائمة السلع':'Liste articles', 'قائمة البونات':'Liste des bons',
+  // Filter labels
+  'الكل':'Tout', 'مرفوض':'Refusé',
+  // Sort
+  'الأحدث أولاً':'Plus récent d\'abord', 'الأقدم أولاً':'Plus ancien d\'abord',
+  'بالتاريخ':'Par date', 'بالمبلغ':'Par montant', 'بالفورنيسور':'Par fournisseur',
+  // Footer / counts
+  'فاتورة':'facture', 'فاتورات':'factures',
+  'الإجمالي:':'Total :', 'إجمالي:':'Total :',
+  // Print/cheque labels
+  'حذف الشيك':'Supprimer chèque', 'تعديل الشيك':'Modifier chèque',
+  // Misc table headers
+  'البونات':'Bons', 'تاريخ الإصدار':'Date d\'émission',
+  'الإصدار':'Émission', 'الاستحقاق':'Échéance',
+  'الفورنيسور':'Fournisseur', 'الزبون':'Client',
+  // Quick actions
+  '🖨️ طباعة الشيك':'🖨️ Imprimer chèque', '✏️ Nouveau règlement':'✏️ Nouveau règlement',
+  // Top bar / page actions
+  '➕ بون جديد':'➕ Nouveau bon', '➕ تسوية جديدة':'➕ Nouveau règlement',
+  '➕ Nouveau règlement':'➕ Nouveau règlement',
+  '+ Nouveau règlement':'+ Nouveau règlement',
+  // Footer / Sidebar bottom
+  'في الانتظار':'En attente',
+  // Echeancier
+  'الجدول الزمني':'Échéancier', '📅 الجدول الزمني':'📅 Échéancier',
+  'هذا اليوم':'Aujourd\'hui', 'الأسبوع':'Semaine', 'الشهر':'Mois',
+  'يوم':'jour', 'أيام':'jours', 'شهر':'mois', 'أشهر':'mois',
+  // Misc common
+  'صلاحيات':'Autorisations', 'صفحة':'page', 'صفحات':'pages',
+  // 0/empty
+  'لا توجد':'Aucun(e)',
+  // Hero subtitle (cheques cards)
+  'شيك · ورقة · نقد':'Chèque · Effet · Espèces',
+  // article cards / catalog
+  'بدون رقم':'Sans n°', 'بدون تصنيف':'Sans catégorie',
+  // workers / pointage
+  '👤 إضافة أجير':'👤 Ajouter salarié',
+  // Cmd+K palette
+  'البحث السريع':'Recherche rapide', 'اكتب للبحث...':'Tapez pour chercher...',
+  // Modal common
+  'تأكيد الحذف':'Confirmer la suppression',
+  'هل أنت متأكد؟':'Êtes-vous sûr(e) ?',
+  // Misc UX
+  'مزامنة':'Synchronisation', '🔄 مزامنة':'🔄 Synchronisation',
 });
 
 // Translate the inner text of a single text node (preserves leading/trailing spaces).
@@ -2682,10 +2729,41 @@ function _i18nTextNode(node){
       if(sub){ tr = sub + ' ' + m[2]; }
     }
   }
+  let suffix = '';
+  if(!tr){
+    // Try "TEXT (N)" or "TEXT (anything)" — strip trailing parenthesized group.
+    const m = trimmed.match(/^(.+?)\s*(\([^()]*\))$/);
+    if(m){
+      const head = m[1].trim();
+      const sub = AR_FR_DICT[head];
+      if(sub){ tr = sub; suffix = ' '+m[2]; }
+      else {
+        // ICON TEXT (N) → strip icon AND parens
+        const iconMatch = head.match(/^(\S+)\s+(.+)$/);
+        if(iconMatch && !/^[\p{L}\p{N}]+$/u.test(iconMatch[1])){
+          const sub2 = AR_FR_DICT[iconMatch[2]];
+          if(sub2){ tr = sub2; prefix = iconMatch[1]+' '; suffix = ' '+m[2]; }
+        }
+      }
+    }
+  }
+  if(!tr){
+    // Try "TEXT: ..." or "TEXT — ..." — translate just the head before separator.
+    const m = trimmed.match(/^(.+?)\s*([:——-])\s*(.*)$/);
+    if(m){
+      const head = m[1].trim();
+      const sub = AR_FR_DICT[head];
+      if(sub){
+        const tail = m[3];
+        const tailTr = AR_FR_DICT[tail];
+        tr = sub + ' '+m[2]+' ' + (tailTr || tail);
+      }
+    }
+  }
   if(tr){
     const lead  = (raw.match(/^\s*/)||[''])[0];
     const trail = (raw.match(/\s*$/)||[''])[0];
-    node.nodeValue = lead + prefix + tr + trail;
+    node.nodeValue = lead + prefix + tr + suffix + trail;
     return;
   }
   if(/[؀-ۿ]/.test(trimmed)){

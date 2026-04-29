@@ -16155,32 +16155,43 @@ async function _captureHtmlAsPngBlob(html, opts){
   const width = (opts && opts.width) || 900;
   return new Promise(function(resolve, reject){
     const iframe = document.createElement('iframe');
-    iframe.style.cssText = 'position:fixed;left:-99999px;top:0;width:'+width+'px;height:1300px;border:0;visibility:hidden';
-    document.body.appendChild(iframe);
-    iframe.onload = async function(){
+    iframe.style.cssText = 'position:fixed;left:-99999px;top:0;width:'+width+'px;height:1400px;border:0;visibility:hidden';
+    // Use srcdoc — single 'load' event fires AFTER the inner document is parsed,
+    // unlike the document.open/write path where 'load' can fire on the empty
+    // about:blank before our HTML is in.
+    iframe.srcdoc = html;
+    let timer = setTimeout(function(){
+      try{ iframe.remove(); }catch(_){}
+      reject(new Error('iframe load timeout (10s)'));
+    }, 10000);
+    iframe.addEventListener('load', async function(){
+      clearTimeout(timer);
       try {
-        await new Promise(r => setTimeout(r, 700)); // let webfonts + images settle
-        const body = iframe.contentDocument.body;
+        // Extra delay so webfonts/images finish; html2canvas can otherwise capture text in fallback fonts.
+        await new Promise(r => setTimeout(r, 1200));
+        const doc = iframe.contentDocument;
+        if (!doc || !doc.body) throw new Error('iframe body unreachable (cross-origin?)');
+        const body = doc.body;
         const canvas = await html2canvas(body, {
           backgroundColor: '#ffffff',
           scale: 2,
           useCORS: true,
           logging: false,
           width: body.scrollWidth || width,
-          height: body.scrollHeight || 1300,
+          height: body.scrollHeight || 1400,
+          windowWidth: body.scrollWidth || width,
+          windowHeight: body.scrollHeight || 1400,
         });
         canvas.toBlob(function(blob){
-          iframe.remove();
+          try{ iframe.remove(); }catch(_){}
           if (blob) resolve(blob); else reject(new Error('Blob conversion returned null'));
         }, 'image/png', 0.92);
       } catch (e) {
-        iframe.remove();
+        try{ iframe.remove(); }catch(_){}
         reject(e);
       }
-    };
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(html);
-    iframe.contentDocument.close();
+    });
+    document.body.appendChild(iframe);
   });
 }
 
@@ -16191,33 +16202,49 @@ async function sendTelegramPhotoBroadcast(blob, filename, caption){
   try {
     const subs = await sbFetch('bot_subscribers','GET',null,'select=chat_id');
     if (Array.isArray(subs)) subs.forEach(s => { if (s && s.chat_id != null) chatIds.add(String(s.chat_id)); });
-  } catch (e) { /* ignore */ }
+  } catch (e) { console.warn('[photo] bot_subscribers fetch failed', e); }
+  console.log('[photo] recipients:', [...chatIds]);
   if (!chatIds.size) return 0;
-  const results = await Promise.allSettled([...chatIds].map(chatId => {
+  const results = await Promise.allSettled([...chatIds].map(async (chatId) => {
     const fd = new FormData();
     fd.append('chat_id', String(chatId));
     fd.append('photo', blob, filename);
     if (caption) fd.append('caption', caption);
-    return fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendPhoto', { method: 'POST', body: fd })
-      .then(r => r.ok ? true : Promise.reject(new Error('HTTP '+r.status)));
+    const r = await fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendPhoto', { method: 'POST', body: fd });
+    if (!r.ok) {
+      const errBody = await r.text().catch(() => '');
+      console.error('[photo] TG sendPhoto failed', chatId, r.status, errBody);
+      throw new Error('HTTP '+r.status+' '+errBody.slice(0,150));
+    }
+    return true;
   }));
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') console.error('[photo] chat result rejected:', r.reason);
+  });
   return results.filter(r => r.status === 'fulfilled').length;
 }
 
 async function factShareToTelegram(id){
   const f = factures.find(function(x){return x.id===id;});
   if (!f) { try{ toast('الفاتورة غير موجودة','error'); }catch(_){} return; }
-  try{ toast('⏳ جاري إرسال صورة الفاتورة...','info'); }catch(_){}
+  console.log('[factShare] start id=', id);
+  try{ toast('⏳ جاري التحضير...','info'); }catch(_){}
   try {
+    console.log('[factShare] building HTML');
     const html = _buildFactureHtml(id);
-    if (!html) throw new Error('build failed');
+    if (!html) throw new Error('build returned null');
+    console.log('[factShare] HTML built, length=', html.length, 'rendering offscreen...');
+    try{ toast('🖼️ جاري الرندر...','info'); }catch(_){}
     const blob = await _captureHtmlAsPngBlob(html, { width: 900 });
+    console.log('[factShare] blob size=', blob.size, 'sending...');
+    try{ toast('📤 جاري الإرسال...','info'); }catch(_){}
     const caption = `🧾 فاتورة #${f.num} — ${f.client_nom || '?'}\n💰 ${Number(f.total_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} د.م. TTC`;
     const sent = await sendTelegramPhotoBroadcast(blob, 'facture-'+f.num+'.png', caption);
-    try{ toast(sent > 0 ? `✅ ت-بعثات للتليجرام (${sent})` : '⚠️ ما لقيتش chat — سجل /subscribe ف البوت','success'); }catch(_){}
+    console.log('[factShare] sent count=', sent);
+    try{ toast(sent > 0 ? `✅ ت-بعثات للتليجرام (${sent} chat)` : '⚠️ ما لقيتش chat — سجل /subscribe ف البوت','warning'); }catch(_){}
   } catch (e) {
-    console.error('factShareToTelegram error:', e);
-    try{ toast('❌ فشل: '+(e.message||e),'error'); }catch(_){}
+    console.error('[factShare] ERROR:', e);
+    try{ toast('❌ فشل: '+(e && e.message ? e.message : e),'error'); }catch(_){}
   }
 }
 

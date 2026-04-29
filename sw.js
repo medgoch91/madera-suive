@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v54-notif-debug-logs';
+const CACHE = 'suivi-v55-photo-srcdoc-fix';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

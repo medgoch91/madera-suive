@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v45-pcs-add-fix';
+const CACHE = 'suivi-v46-csp-sri';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

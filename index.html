@@ -4400,6 +4400,13 @@ function saveEditBon(id){
   var _chRaw=(document.getElementById('eb-chantier')||{value:''}).value;
   b.chantierId = _chRaw ? Number(_chRaw) : null;
   b.total=b.lignes.reduce((s,l)=>s+Number(l.qte||0)*Number(l.prix||0),0);
+  // Re-derive totalNet from the new total + existing remise. Without this,
+  // total_net carries over the stale value from the bon's previous state and
+  // the ledger / solde computations diverge. (Caused the BON-0002 / ZAID BOIS
+  // 346k-vs-42k inconsistency.)
+  var _remVal = Number(b.remiseVal||0);
+  var _remMt  = b.remiseType === '%' ? b.total * _remVal / 100 : Math.min(b.total, _remVal);
+  b.totalNet  = Math.round(Math.max(0, b.total - _remMt) * 100) / 100;
 
   // ── Stock delta: compare original vs current lignes by articleId ──
   var orig=_editBonOriginalLignes[id]||[];

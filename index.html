@@ -1112,9 +1112,6 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn" onclick="showPage('factures',this)" id="nav-factures">
       <span class="nav-icon">🧾</span> <span data-i18n="nav.factures">الفواتير</span>
     </button>
-    <button class="nav-btn" onclick="showPage('reports',this)" id="nav-reports">
-      <span class="nav-icon">📊</span> <span data-i18n="nav.reports">التقارير</span>
-    </button>
 
     <!-- 'إضافة' section removed — new-bon/new-cheque/print-cheque are now tabs inside their pages -->
 
@@ -1392,7 +1389,6 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- ÉLECTRICITÉ À DISTANCE PAGE -->
     <div class="page" id="page-elec-dist"></div>
-    <div class="page" id="page-reports"></div>
 
     <!-- FACTURES PAGE -->
     <div class="page" id="page-factures"></div>
@@ -2410,7 +2406,7 @@ function toggleLang(){
   try{ if(typeof toast==='function') toast(CURRENT_LANG==='fr'?'Langue : Français':'اللغة: العربية','info'); }catch(e){}
 }
 
-const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',reports:'📊 التقارير'};
+const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance'};
 const pageActions={
   'new-bon':'',
   bons:`<button class="btn btn-accent" onclick="showPage('new-bon',document.querySelector('.nav-btn:nth-child(7)'))">➕ بون جديد</button>`,
@@ -2444,7 +2440,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist,reports:renderReports};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -2749,7 +2745,6 @@ const dateFilters = {
   bons:        {from:'', to:'', preset:''},
   cheques:     {from:'', to:'', preset:''},
   fournisseurs:{from:'', to:'', preset:''},
-  reports:     {from:'', to:'', preset:'month'},
 };
 
 function getDateRange(preset){
@@ -2794,7 +2789,6 @@ function setDatePreset(page, preset){
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
   else if(page==='fournisseurs') renderFournisseurs();
-  else if(page==='reports') renderReports();
 }
 
 function applyCustomDate(page){
@@ -2807,7 +2801,6 @@ function applyCustomDate(page){
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
   else if(page==='fournisseurs') renderFournisseurs();
-  else if(page==='reports') renderReports();
 }
 
 function resetDateFilter(page){
@@ -2816,7 +2809,6 @@ function resetDateFilter(page){
   else if(page==='cheques') renderCheques();
   else if(page==='dashboard') renderDashboard();
   else if(page==='fournisseurs') renderFournisseurs();
-  else if(page==='reports') renderReports();
 }
 
 function buildDateBar(page, renderFn){
@@ -5165,314 +5157,6 @@ async function saveEditCheque(id){
 }
 
 // ===== ÉCHÉANCIER (calendrier des paiements) =====
-// ===== REPORTS (📊 التقارير) =====
-// Top-level page with 3 sub-tabs:
-//   1. P&L mensuel — revenue (factures) − expenses (bons + salaries + PCs + technicians)
-//   2. Cash flow — pending cheques + factures unpaid grouped by due-date horizon
-//   3. Top X — top fournisseurs / articles / chantiers by amount
-let reportsSubPage = 'pl';                    // 'pl' | 'cashflow' | 'tops'
-let reportsTopType = 'fournisseurs';          // for tops sub-tab: 'fournisseurs' | 'articles' | 'chantiers'
-
-function _rpInRange(d, from, to){
-  if(!d) return false;
-  if(from && d < from) return false;
-  if(to && d > to) return false;
-  return true;
-}
-
-// Compute P&L numbers for [from, to] range. Returns { revenue, bons, salaries, pcs, technicians, totalExpenses, margin, marginPct }
-function _rpComputePL(from, to){
-  const inR = (d) => _rpInRange(d, from, to);
-  const revenue   = (factures||[]).filter(f => inR(f.date)).reduce((s,f)=> s + Number(f.total_ttc||0), 0);
-  const bonsCost  = (bons||[]).filter(b => inR(b.date)).reduce((s,b)=> s + Number(b.totalNet||b.total||0), 0);
-  const salCost   = (typeof salTaswiyas !== 'undefined' ? salTaswiyas : []).filter(t => inR(t.date_paiement)).reduce((s,t)=> s + Number(t.montant||0), 0);
-  const pcCost    = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => inR(r.date)).reduce((s,r)=> s + (Number(r.qte||0) * Number(r.prix||0)), 0);
-  const techCost  = (typeof edPayments !== 'undefined' ? edPayments : []).filter(p => inR(p.pay_date)).reduce((s,p)=> s + Number(p.amount||0), 0);
-  const totalExpenses = bonsCost + salCost + pcCost + techCost;
-  const margin    = revenue - totalExpenses;
-  const marginPct = revenue > 0 ? (margin / revenue) * 100 : 0;
-  return { revenue, bonsCost, salCost, pcCost, techCost, totalExpenses, margin, marginPct };
-}
-
-function renderReports(){
-  const page = document.getElementById('page-reports');
-  if(!page) return;
-  page.style.direction = 'rtl';
-  const tabs = [
-    { k:'pl',       lbl:'💰 الأرباح والخسائر' },
-    { k:'cashflow', lbl:'📅 توقع الخزينة' },
-    { k:'tops',     lbl:'🏆 الأعلى' },
-  ];
-  const tabBar = '<div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap">'
-    + tabs.map(t => {
-        const active = reportsSubPage === t.k;
-        return '<button onclick="reportsSubPage=\''+t.k+'\';renderReports()" '
-          + 'style="padding:10px 18px;border-radius:var(--radius-sm);border:2px solid '+(active?'var(--accent)':'var(--border)')+';'
-          + 'background:'+(active?'rgba(147,51,234,0.12)':'transparent')+';'
-          + 'color:'+(active?'var(--accent)':'var(--text2)')+';'
-          + 'font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;min-height:44px">'
-          + t.lbl + '</button>';
-      }).join('')
-    + '</div>';
-  let body = '';
-  if(reportsSubPage === 'pl')        body = renderReportsPL();
-  else if(reportsSubPage === 'cashflow') body = renderReportsCashflow();
-  else if(reportsSubPage === 'tops') body = renderReportsTops();
-  page.innerHTML = '<div style="max-width:1300px;margin:0 auto">' + tabBar + body + '</div>';
-}
-
-// ── 1. P&L Mensuel ────────────────────────────────────────────
-function renderReportsPL(){
-  const df = dateFilters.reports;
-  if(!df.from && !df.to && !df.preset){ df.preset = 'month'; setDatePreset('reports','month'); return ''; }
-  const from = df.from, to = df.to;
-  const pl = _rpComputePL(from, to);
-
-  const dateBar = buildDateBar('reports');
-  const colMargin = pl.margin > 0 ? '#10b981' : (pl.margin < 0 ? '#ef4444' : 'var(--text3)');
-
-  // KPIs
-  const kpiRow = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">'
-    + _rpKpi('💰 المداخيل', fmt(pl.revenue), '#10b981', 'مجموع الفواتير ف الفترة')
-    + _rpKpi('💸 المصاريف', fmt(pl.totalExpenses), '#f59e0b', 'بونات + رواتب + PCs + تقنيون')
-    + _rpKpi(pl.margin>=0?'📈 الربح':'📉 الخسارة', fmt(Math.abs(pl.margin)), colMargin, pl.margin>=0?'مداخيل ناقص مصاريف':'مصاريف فاتو المداخيل')
-    + _rpKpi('📊 هامش %', pl.marginPct.toFixed(1)+'%', colMargin, 'الربح ÷ المداخيل')
-    + '</div>';
-
-  // Breakdown table
-  const expenseRows = [
-    ['📦 المشتريات (بونات)', pl.bonsCost,  'rgba(147,51,234,0.12)', 'var(--accent)'],
-    ['👥 رواتب الأجراء',    pl.salCost,   'rgba(245,158,11,0.12)', '#f59e0b'],
-    ['👷 عمال PCs',         pl.pcCost,    'rgba(6,182,212,0.12)',  '#06b6d4'],
-    ['⚡ التقنيون',         pl.techCost,  'rgba(168,85,247,0.12)', '#a855f7'],
-  ];
-  const breakdown = '<div class="card" style="padding:18px 20px;margin-bottom:14px">'
-    + '<div style="font-size:14px;font-weight:700;margin-bottom:14px">📋 التفصيل</div>'
-    + '<table class="data-table" style="margin:0">'
-    + '<thead><tr><th>البند</th><th style="text-align:left">المبلغ</th><th style="text-align:left">% من المصاريف</th></tr></thead>'
-    + '<tbody>'
-    + expenseRows.map(([lbl,amt,bg,col]) => {
-        const pct = pl.totalExpenses>0 ? (amt/pl.totalExpenses*100) : 0;
-        return '<tr><td style="font-weight:600">'+lbl+'</td>'
-          + '<td style="text-align:left;font-weight:700">'+fmt(amt)+'</td>'
-          + '<td style="text-align:left">'
-          + '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:6px;background:'+bg+';border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct.toFixed(0)+'%;background:'+col+'"></div></div>'
-          + '<span style="font-weight:600;color:'+col+';min-width:40px;text-align:left">'+pct.toFixed(1)+'%</span></div>'
-          + '</td></tr>';
-      }).join('')
-    + '</tbody>'
-    + '<tfoot><tr style="background:var(--bg3);font-weight:800"><td>المجموع</td><td style="text-align:left">'+fmt(pl.totalExpenses)+'</td><td>—</td></tr></tfoot>'
-    + '</table>'
-    + '</div>';
-
-  const summary = '<div class="card" style="padding:18px 20px;background:linear-gradient(135deg,rgba(147,51,234,0.06),rgba(6,182,212,0.04))">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'
-    + '<div><div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">معادلة الفترة</div>'
-    + '<div style="font-size:14px;font-weight:600;color:var(--text2);margin-top:4px">'+fmt(pl.revenue)+' − '+fmt(pl.totalExpenses)+' = <span style="color:'+colMargin+';font-weight:800">'+fmt(pl.margin)+'</span></div></div>'
-    + '<div style="text-align:left"><div style="font-size:11px;color:var(--text3)">الفترة</div><div style="font-size:13px;font-weight:700">'+(from?fmtDate(from):'—')+' → '+(to?fmtDate(to):'اليوم')+'</div></div>'
-    + '</div></div>';
-
-  return dateBar + kpiRow + breakdown + summary;
-}
-
-// ── 2. Cash flow forecast ─────────────────────────────────────
-function renderReportsCashflow(){
-  const todayISO = (function(){const d=new Date();const p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());})();
-  const horizons = [
-    { k:'overdue',  lbl:'🔴 متأخر',     from:'',         to:todayISO,   color:'#ef4444' },
-    { k:'7d',       lbl:'⚠️ 7 أيام',     from:todayISO,   days:7,        color:'#f59e0b' },
-    { k:'30d',      lbl:'📅 30 يوم',     from:todayISO,   days:30,       color:'#06b6d4' },
-    { k:'90d',      lbl:'📆 90 يوم',     from:todayISO,   days:90,       color:'#9333ea' },
-    { k:'later',    lbl:'⏳ بعد 90 يوم', from:todayISO,   days:99999,    color:'var(--text3)' },
-  ];
-  const addDays = (iso, n) => { const d=new Date(iso+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); };
-
-  // Pending cheques (cash OUT)
-  const pendingCheques = (cheques||[]).filter(c => (c.status||'')!=='مدفوع' && (c.status||'')!=='مرتجع' && (c.type||'cheque')!=='espece' && c.echeance);
-  // Unpaid factures (cash IN)
-  const unpaidFactures = (factures||[]).filter(f => f.statut!=='مدفوعة' && f.echeance);
-
-  const bucketize = (items, getDate) => {
-    const buckets = { overdue:[], '7d':[], '30d':[], '90d':[], later:[] };
-    items.forEach(it => {
-      const d = getDate(it);
-      if(!d) return;
-      if(d < todayISO) buckets.overdue.push(it);
-      else if(d <= addDays(todayISO,7))  buckets['7d'].push(it);
-      else if(d <= addDays(todayISO,30)) buckets['30d'].push(it);
-      else if(d <= addDays(todayISO,90)) buckets['90d'].push(it);
-      else buckets.later.push(it);
-    });
-    return buckets;
-  };
-  const outBuckets = bucketize(pendingCheques, c => c.echeance);
-  const inBuckets  = bucketize(unpaidFactures, f => f.echeance);
-
-  const sumOut = (arr) => arr.reduce((s,c)=> s + Number(c.montant||0), 0);
-  const sumIn  = (arr) => arr.reduce((s,f)=> s + Number(f.total_ttc||0), 0);
-
-  // Running cumulative
-  let cumOut = 0, cumIn = 0;
-  const rows = horizons.map(h => {
-    const outSum = sumOut(outBuckets[h.k] || []);
-    const inSum  = sumIn(inBuckets[h.k]  || []);
-    cumOut += outSum;
-    cumIn  += inSum;
-    const net = cumIn - cumOut;
-    return { ...h, outSum, inSum, outCount:(outBuckets[h.k]||[]).length, inCount:(inBuckets[h.k]||[]).length, cumOut, cumIn, net };
-  });
-
-  const totalOut = rows.reduce((s,r)=> s + r.outSum, 0);
-  const totalIn  = rows.reduce((s,r)=> s + r.inSum, 0);
-  const finalNet = totalIn - totalOut;
-
-  const intro = '<div style="background:linear-gradient(135deg,rgba(147,51,234,0.08),rgba(79,142,247,0.06));border:1px solid rgba(147,51,234,0.25);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;font-size:12.5px;line-height:1.7;color:var(--text2)">'
-    + 'توقع كيفاش غادي تتحرك الخزينة ف 90 يوم الجاية. '
-    + '<b style="color:#10b981">داخل</b> = فواتير ما تخلصاتش بعد · '
-    + '<b style="color:#ef4444">خارج</b> = شيكات معلقة (إستحقاق فالمستقبل).'
-    + '</div>';
-
-  const kpiRow = '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:18px">'
-    + _rpKpi('💰 إجمالي داخل', fmt(totalIn), '#10b981', 'فواتير معلقة (90+ يوم)')
-    + _rpKpi('💸 إجمالي خارج', fmt(totalOut), '#ef4444', 'شيكات معلقة (90+ يوم)')
-    + _rpKpi(finalNet>=0?'📈 صافي إيجابي':'📉 صافي سلبي', fmt(Math.abs(finalNet)), finalNet>=0?'#10b981':'#ef4444', 'داخل ناقص خارج')
-    + '</div>';
-
-  const tbl = '<div class="card" style="padding:18px 20px">'
-    + '<div style="font-size:14px;font-weight:700;margin-bottom:14px">📅 الجدول الزمني</div>'
-    + '<table class="data-table" style="margin:0">'
-    + '<thead><tr><th>الفترة</th><th style="text-align:left">داخل</th><th style="text-align:left">خارج</th><th style="text-align:left">صافي تراكمي</th></tr></thead>'
-    + '<tbody>'
-    + rows.map(r => {
-        const netCol = r.net>0?'#10b981':(r.net<0?'#ef4444':'var(--text3)');
-        return '<tr><td><span style="color:'+r.color+';font-weight:700">'+r.lbl+'</span>'
-          + (r.outCount||r.inCount ? '<span style="display:block;font-size:10.5px;color:var(--text3);margin-top:2px">'+(r.inCount?r.inCount+' فاتورة':'')+(r.inCount&&r.outCount?' · ':'')+(r.outCount?r.outCount+' شيك':'')+'</span>' : '')
-          + '</td>'
-          + '<td style="text-align:left;color:#10b981;font-weight:700">'+(r.inSum>0?fmt(r.inSum):'—')+'</td>'
-          + '<td style="text-align:left;color:#ef4444;font-weight:700">'+(r.outSum>0?fmt(r.outSum):'—')+'</td>'
-          + '<td style="text-align:left;color:'+netCol+';font-weight:800">'+fmt(r.net)+'</td>'
-          + '</tr>';
-      }).join('')
-    + '</tbody>'
-    + '<tfoot><tr style="background:var(--bg3);font-weight:800"><td>المجموع 90 يوم</td>'
-    + '<td style="text-align:left;color:#10b981">'+fmt(totalIn)+'</td>'
-    + '<td style="text-align:left;color:#ef4444">'+fmt(totalOut)+'</td>'
-    + '<td style="text-align:left;color:'+(finalNet>=0?'#10b981':'#ef4444')+'">'+fmt(finalNet)+'</td></tr></tfoot>'
-    + '</table>'
-    + '</div>';
-
-  return intro + kpiRow + tbl;
-}
-
-// ── 3. Top X (fournisseurs / articles / chantiers) ────────────
-function renderReportsTops(){
-  const df = dateFilters.reports;
-  if(!df.from && !df.to && !df.preset){ df.preset = 'month'; setDatePreset('reports','month'); return ''; }
-  const from = df.from, to = df.to;
-  const inR = (d) => _rpInRange(d, from, to);
-
-  const types = [
-    { k:'fournisseurs', lbl:'🏢 الفورنيسورات' },
-    { k:'articles',     lbl:'📦 السلع' },
-    { k:'chantiers',    lbl:'🏗️ الورش' },
-  ];
-  const subBar = '<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'
-    + types.map(t => {
-        const active = reportsTopType === t.k;
-        return '<button onclick="reportsTopType=\''+t.k+'\';renderReports()" '
-          + 'style="padding:7px 14px;border-radius:var(--radius-sm);border:1px solid '+(active?'var(--accent)':'var(--border)')+';'
-          + 'background:'+(active?'rgba(147,51,234,0.12)':'transparent')+';'
-          + 'color:'+(active?'var(--accent)':'var(--text2)')+';'
-          + 'font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">'
-          + t.lbl + '</button>';
-      }).join('')
-    + '</div>';
-
-  const dateBar = buildDateBar('reports');
-  const periodBons = (bons||[]).filter(b => inR(b.date));
-
-  let rows = [];
-  let cols = [];
-  if(reportsTopType === 'fournisseurs'){
-    const map = {};
-    periodBons.forEach(b => {
-      const k = b.fournisseur || '—';
-      const amt = Number(b.totalNet||b.total||0);
-      if(!map[k]) map[k] = { name:k, total:0, count:0 };
-      map[k].total += amt;
-      map[k].count += 1;
-    });
-    rows = Object.values(map).sort((a,b)=> b.total - a.total).slice(0,15);
-    cols = ['الفورنيسور','عدد البونات','المبلغ'];
-  } else if(reportsTopType === 'articles'){
-    const map = {};
-    periodBons.forEach(b => {
-      (b.lignes||[]).forEach(l => {
-        const k = (l.nom || '—').trim();
-        const amt = Number(l.qte||0) * Number(l.prix||0);
-        const qte = Number(l.qte||0);
-        if(!map[k]) map[k] = { name:k, total:0, qte:0, count:0 };
-        map[k].total += amt;
-        map[k].qte   += qte;
-        map[k].count += 1;
-      });
-    });
-    rows = Object.values(map).sort((a,b)=> b.total - a.total).slice(0,15);
-    cols = ['السلعة','الكمية','المبلغ'];
-  } else if(reportsTopType === 'chantiers'){
-    const chantierName = (id) => {
-      const c = (chantiers||[]).find(x => Number(x.id) === Number(id));
-      return c ? c.nom : '— بدون ورش —';
-    };
-    const map = {};
-    periodBons.forEach(b => {
-      const k = b.chantierId ? chantierName(b.chantierId) : '— بدون ورش —';
-      const amt = Number(b.totalNet||b.total||0);
-      if(!map[k]) map[k] = { name:k, total:0, count:0 };
-      map[k].total += amt;
-      map[k].count += 1;
-    });
-    rows = Object.values(map).sort((a,b)=> b.total - a.total).slice(0,15);
-    cols = ['الورش','عدد البونات','المبلغ'];
-  }
-
-  const totalAll = rows.reduce((s,r)=> s + r.total, 0);
-
-  const tbl = rows.length
-    ? '<div class="card" style="padding:0;overflow:hidden">'
-      + '<table class="data-table" style="margin:0">'
-      + '<thead><tr><th style="width:40px">#</th><th>'+cols[0]+'</th><th style="text-align:center">'+cols[1]+'</th><th style="text-align:left">'+cols[2]+'</th><th style="text-align:left">% من المجموع</th></tr></thead>'
-      + '<tbody>'
-      + rows.map((r,i) => {
-          const pct = totalAll>0 ? (r.total/totalAll*100) : 0;
-          const rank = i+1;
-          const medal = rank===1?'🥇':(rank===2?'🥈':(rank===3?'🥉':'#'+rank));
-          return '<tr><td style="font-weight:700;color:var(--text3)">'+medal+'</td>'
-            + '<td style="font-weight:600">'+escB(r.name)+'</td>'
-            + '<td style="text-align:center;color:var(--text2)">'+(r.qte != null ? Number(r.qte).toFixed(0) : r.count)+'</td>'
-            + '<td style="text-align:left;font-weight:700;color:var(--accent)">'+fmt(r.total)+'</td>'
-            + '<td style="text-align:left">'
-            + '<div style="display:flex;align-items:center;gap:8px"><div style="flex:1;max-width:140px;height:6px;background:rgba(147,51,234,0.12);border-radius:3px;overflow:hidden"><div style="height:100%;width:'+pct.toFixed(0)+'%;background:var(--accent)"></div></div>'
-            + '<span style="font-weight:600;min-width:40px;text-align:left">'+pct.toFixed(1)+'%</span></div>'
-            + '</td></tr>';
-        }).join('')
-      + '</tbody>'
-      + '<tfoot><tr style="background:var(--bg3);font-weight:800"><td colspan="3">المجموع ('+rows.length+')</td><td style="text-align:left;color:var(--accent)">'+fmt(totalAll)+'</td><td>100%</td></tr></tfoot>'
-      + '</table>'
-      + '</div>'
-    : '<div style="text-align:center;padding:40px;color:var(--text3)">لا توجد بيانات ف هاد الفترة</div>';
-
-  return subBar + dateBar + tbl;
-}
-
-function _rpKpi(lbl, val, color, sub){
-  return '<div class="card" style="padding:14px 16px">'
-    + '<div style="font-size:11px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">'+lbl+'</div>'
-    + '<div style="font-size:22px;font-weight:800;color:'+color+';margin-top:6px;letter-spacing:-0.3px">'+val+'</div>'
-    + (sub?'<div style="font-size:10.5px;color:var(--text3);margin-top:4px">'+sub+'</div>':'')
-    + '</div>';
-}
-
 // Shows pending cheques + effets grouped by due-date window (past-due / 7j / 30j / 90j / later)
 let echHorizon = 90; // days into the future to show
 function setEchHorizon(d){ echHorizon = Number(d)||90; renderEcheancier(); }

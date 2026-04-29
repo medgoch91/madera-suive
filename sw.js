@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v61-admin-edit-permissions';
+const CACHE = 'suivi-v62-runtime-fr-translator';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

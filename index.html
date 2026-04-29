@@ -2484,6 +2484,189 @@ var I18N={
 };
 var CURRENT_LANG=(function(){try{return localStorage.getItem('app_lang')||'ar';}catch(e){return 'ar';}})();
 function t(k){ try{return (I18N[CURRENT_LANG]&&I18N[CURRENT_LANG][k])||(I18N.ar[k])||k;}catch(e){return k;} }
+
+// ── AR → FR static-string dictionary for the runtime DOM translator ──
+// Comprehensive coverage of the visible UI (buttons, labels, statuses,
+// table headers, common phrases). Missing strings are tracked in
+// window._i18nMisses so we can iterate. Add to this dict and ship.
+const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : function(x){return x;})({
+  // Pages / nav
+  'الداشبورد':'Tableau de bord', 'البونات':'Bons', 'التسويات':'Règlements',
+  'الجدول الزمني':'Échéancier', '📅 الجدول الزمني':'📅 Échéancier',
+  'الفورنيسورات':'Fournisseurs', 'السلع':'Articles', 'فورنيسور و السلعة':'Fournisseurs & Articles',
+  'الأجراء':'Salariés', 'الفواتير':'Factures', 'إدارة المستخدمين':'Gestion utilisateurs',
+  '⚙️ إدارة المستخدمين':'⚙️ Gestion utilisateurs', 'نشاط المستخدمين':'Activité utilisateurs',
+  '⚡ électricité à distance':'⚡ Électricité à distance',
+  'بون جديد':'Nouveau bon', 'تسوية جديدة':'Nouveau règlement', 'سلعة جديدة':'Nouvel article',
+  'فورنيسور جديد':'Nouveau fournisseur', '🖨️ طباعة الشيك':'🖨️ Imprimer chèque',
+  // Sections
+  'الإدارة':'Gestion', 'إضافة':'Ajouter', 'أدوات':'Outils',
+  // Buttons (with + without emoji prefix)
+  'حفظ':'Enregistrer', '💾 حفظ':'💾 Enregistrer', '💾 حفظ البون':'💾 Enregistrer le bon',
+  'حذف':'Supprimer', '🗑️ حذف':'🗑️ Supprimer', '🗑 حذف':'🗑 Supprimer',
+  'تعديل':'Modifier', '✏️ تعديل':'✏️ Modifier',
+  'إلغاء':'Annuler', 'إغلاق':'Fermer', 'عودة':'Retour',
+  'طباعة':'Imprimer', '🖨️ طباعة':'🖨️ Imprimer', '🖨 طباعة':'🖨 Imprimer', '🖨️ طبع':'🖨️ Imprimer',
+  'تصدير':'Exporter', '📥 Excel':'📥 Excel', '🖨️ PDF':'🖨️ PDF',
+  'تحديث':'Actualiser', '🔄 تحديث':'🔄 Actualiser',
+  'بحث':'Rechercher', 'اختر':'Choisir', 'تأكيد':'Confirmer',
+  '➕ إضافة':'➕ Ajouter', '➕ بون جديد':'➕ Nouveau bon', '➕ تسوية جديدة':'➕ Nouveau règlement',
+  '➕ سلعة جديدة':'➕ Nouvel article', '➕ فورنيسور جديد':'➕ Nouveau fournisseur',
+  '➕ تقني جديد':'➕ Nouveau technicien', '➕ عامل جديد':'➕ Nouvel ouvrier', '➕ جديدة':'➕ Nouvelle',
+  'إنشاء':'Créer', '💾 إنشاء':'💾 Créer', '💾 إضافة':'💾 Ajouter',
+  'دخول':'Connexion', 'خروج':'Déconnexion',
+  // Common labels
+  'الاسم':'Nom', 'الاسم الكامل':'Nom complet', 'الاسم *':'Nom *',
+  'التيليفون':'Téléphone', 'الإيميل':'Email', 'المدينة':'Ville',
+  'التصنيف':'Catégorie', 'العائلة':'Famille', 'العائلة / التصنيف':'Famille / Catégorie',
+  'الحالة':'Statut', 'الفورنيسور':'Fournisseur', 'الزبون':'Client',
+  'التاريخ':'Date', 'الاستحقاق':'Échéance', 'تاريخ الإصدار':'Date d\'émission',
+  'المبلغ':'Montant', 'الرقم':'Numéro', 'النوع':'Type',
+  'المجموع':'Total', 'الإجمالي':'Total général', 'مجموع':'Total',
+  'الكمية':'Quantité', 'السعر':'Prix', 'الوحدة':'Unité',
+  'المرجع':'Référence', 'المرجع (REF)':'Référence (REF)',
+  'الملاحظات':'Notes', 'ملاحظات':'Notes', 'ملاحظة':'Note',
+  'التصنيف / الحالة':'Catégorie / Statut',
+  'الإجراءات':'Actions', 'إجراءات':'Actions',
+  'الصلاحيات':'Autorisations', 'الدور':'Rôle', 'كلمة السر':'Mot de passe',
+  'البونات المربوطة':'Bons liés', 'البونات الباقية':'Bons restants', 'بونات باقية':'Bons restants',
+  'مستحق':'Dû', 'إجمالي المشتريات':'Total achats',
+  'افتتاحي':'Ouverture', 'مشتريات':'Achats', 'مدفوع':'Payé', 'الرصيد':'Solde',
+  'ف الحساب':'En compte', 'كشف الحساب':'Relevé de compte',
+  'مستخدم جديد':'Nouvel utilisateur', '➕ مستخدم جديد':'➕ Nouvel utilisateur',
+  // Statuses
+  'معلق':'En attente', 'مرتجع':'Retourné', 'نشيط':'Actif', 'متوقف':'Inactif',
+  'حاضر':'Présent', 'غائب':'Absent', 'عطلة':'Congé', 'نص نهار':'Demi-journée',
+  'باقي':'Restant', 'مربوط':'Lié', 'مدفوعة':'Payée', 'غير مصنف':'Non classé',
+  'مؤكد':'Confirmé', 'غير مؤكد':'Non confirmé', 'محسوم':'Réglé',
+  // Payment types
+  'شيك':'Chèque', 'ورقة':'Effet', 'نقد':'Espèces',
+  // Roles
+  'مدير':'Administrateur', 'محاسب':'Comptable', 'مخزني':'Magasinier',
+  'تجاري':'Commercial', 'تقني':'Technicien', 'مشاهد فقط':'Lecture seule',
+  // Time presets
+  'اليوم':'Aujourd\'hui', '7 أيام':'7 jours', 'هاد الشهر':'Ce mois',
+  'الشهر الفات':'Mois dernier', 'هاد العام':'Cette année', 'كولشي':'Tout',
+  '📅 تاريخ':'📅 Date', '✕ مسح':'✕ Effacer',
+  // Units (raw values)
+  'قطعة':'pièce', 'كغ':'kg', 'طن':'tonne', 'لتر':'litre', 'م':'m', 'م²':'m²', 'م³':'m³',
+  'كيس':'sac', 'علبة':'boîte', 'أخرى':'autre',
+  // Suffixes / common phrases
+  'بون':'bon', 'بون.':'bon.', 'فاتورة':'facture', 'سلعة':'article', 'فورنيسور':'fournisseur',
+  'بون مربوط':'bon lié', 'سلع':'articles', 'بونات':'bons',
+  'لا توجد نتائج':'Aucun résultat', 'لا توجد بيانات':'Aucune donnée',
+  'لا يوجد':'Aucun', 'لا يوجد سعر بعد':'Aucun prix défini',
+  'لا توجد سلع':'Aucun article', 'لا توجد بونات':'Aucun bon', 'لا توجد شيكات':'Aucun chèque',
+  'لا توجد فواتير':'Aucune facture', 'لا توجد عمليات':'Aucune opération',
+  'لا توجد عمليات في هذه الفترة':'Aucune opération sur la période',
+  'جاري التحميل...':'Chargement...', '⏳ جاري التحميل...':'⏳ Chargement...',
+  'جاري الحفظ...':'Enregistrement...', '⏳ جاري الحفظ...':'⏳ Enregistrement...',
+  '⏳ جاري التحضير...':'⏳ Préparation...', '⏳ جاري الإرسال...':'⏳ Envoi...',
+  '🖼️ جاري الرندر...':'🖼️ Rendu en cours...',
+  '✅ تم الحفظ!':'✅ Enregistré !', '✅ تم الإضافة!':'✅ Ajouté !',
+  '✅ تم التعديل!':'✅ Modifié !', '✅ تم الحذف':'✅ Supprimé',
+  'الرصيد الحالي':'Solde actuel', 'الرصيد الافتتاحي':'Solde d\'ouverture',
+  'رصيد افتتاحي':'Solde d\'ouverture', 'الرصيد كما في':'Solde au',
+  // Reports
+  'الفترة':'Période', 'من':'De', 'إلى':'À', 'من تاريخ':'Du', 'إلى تاريخ':'Au',
+  // Article modal
+  'صورة السلعة':'Photo de l\'article', 'صورة السلعة (اختياري)':'Photo (optionnel)',
+  'إضافة صورة':'Ajouter photo', 'تغيير':'Changer',
+  'الأسعار:':'Prix :', '🏷️ السعر TTC لكل فورنيسور (اختياري)':'🏷️ Prix TTC par fournisseur (optionnel)',
+  '📦 السلع والأسعار':'📦 Articles & prix', '📦 السلع':'📦 Articles',
+  'العائلات':'Familles', 'العائلات اللي كيبيعهم':'Familles vendues',
+  '🏷️ العائلات اللي كيبيعهم':'🏷️ Familles vendues',
+  // Misc UI
+  'أنت':'Vous', '🔒 ما تقدرش تحذف حسابك':'🔒 Auto-suppression interdite',
+  '🔒 لا تقدر تعدل حسابك من هنا':'🔒 Auto-modification interdite',
+  '🔒 غير مصرح':'🔒 Non autorisé', 'غير مصرح':'Non autorisé',
+  'أرشفة':'Archiver', 'تفعيل':'Activer', 'إيقاف':'Désactiver',
+  '⏸ إيقاف':'⏸ Désactiver', '▶ تنشيط':'▶ Activer',
+  '○ موقوف':'○ Désactivé', '● نشيط':'● Actif', '○ مؤرشف':'○ Archivé',
+  '✦ كلشي مسموح':'✦ Tout autorisé', '⚠ بلا صلاحيات':'⚠ Aucune autorisation',
+  '🔑 الصلاحيات':'🔑 Autorisations',
+  '🔑 الصفحات المسموح بها':'🔑 Pages autorisées',
+  '⚠️ المدير يشوف كلشي دايماً بغض النظر على الصلاحيات':'⚠️ L\'administrateur voit tout, sans restriction',
+  '✏️ تتبدل تلقائياً حسب الدور — تقدر تعدلها يدويا':'✏️ Réinitialisé selon le rôle — modifiable',
+  '⚠️ المدير يشوف كلشي — الصلاحيات بلا تأثير':'⚠️ Admin = accès complet — autorisations sans effet',
+  // Ledger / KPIs labels
+  'ملخص الحساب':'Résumé du compte', '📊 ملخص الحساب':'📊 Résumé du compte',
+  'كل الفترة':'Toute la période',
+  // Cheques actions
+  'تخلص':'Régler', '✅ تخلص':'✅ Régler', 'ف الحساب:':'En compte :',
+});
+
+// Translate the inner text of a single text node (preserves leading/trailing spaces).
+function _i18nTextNode(node){
+  if(CURRENT_LANG !== 'fr') return;
+  const raw = node.nodeValue;
+  if(!raw) return;
+  const trimmed = raw.trim();
+  if(!trimmed) return;
+  const tr = AR_FR_DICT[trimmed];
+  if(tr){
+    const lead  = (raw.match(/^\s*/)||[''])[0];
+    const trail = (raw.match(/\s*$/)||[''])[0];
+    node.nodeValue = lead + tr + trail;
+  } else if(/[؀-ۿ]/.test(trimmed)){
+    // Track misses so we can grow the dict iteratively.
+    try{
+      window._i18nMisses = window._i18nMisses || new Set();
+      if(window._i18nMisses.size < 1000) window._i18nMisses.add(trimmed);
+    }catch(_){}
+  }
+}
+
+function _i18nAttribute(el, attrName){
+  if(CURRENT_LANG !== 'fr' || !el || !el.getAttribute) return;
+  const v = el.getAttribute(attrName);
+  if(!v) return;
+  const trimmed = v.trim();
+  if(!trimmed) return;
+  const tr = AR_FR_DICT[trimmed];
+  if(tr) el.setAttribute(attrName, tr);
+  else if(/[؀-ۿ]/.test(trimmed)){
+    try{
+      window._i18nMisses = window._i18nMisses || new Set();
+      if(window._i18nMisses.size < 1000) window._i18nMisses.add(trimmed);
+    }catch(_){}
+  }
+}
+
+function _i18nWalk(root){
+  if(CURRENT_LANG !== 'fr') return;
+  const r = root || document.body;
+  if(!r) return;
+  // Skip <script>, <style>, <code> contents — only translate visible text.
+  const skipTags = { SCRIPT:1, STYLE:1, CODE:1, NOSCRIPT:1 };
+  const walker = document.createTreeWalker(r, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.parentNode && skipTags[n.parentNode.tagName]) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+  });
+  const queue = [];
+  let n; while((n = walker.nextNode())) queue.push(n);
+  queue.forEach(_i18nTextNode);
+  // Translate placeholder + title attributes on this subtree.
+  if(r.querySelectorAll){
+    r.querySelectorAll('[placeholder]').forEach(el => _i18nAttribute(el, 'placeholder'));
+    r.querySelectorAll('[title]').forEach(el => _i18nAttribute(el, 'title'));
+  }
+}
+
+let _i18nObserver = null;
+function _i18nSetupObserver(){
+  if(_i18nObserver || typeof MutationObserver === 'undefined') return;
+  _i18nObserver = new MutationObserver(function(muts){
+    if(CURRENT_LANG !== 'fr') return;
+    muts.forEach(function(mut){
+      mut.addedNodes && mut.addedNodes.forEach(function(node){
+        if(node.nodeType === 1) _i18nWalk(node);
+        else if(node.nodeType === 3) _i18nTextNode(node);
+      });
+    });
+  });
+  if(document.body) _i18nObserver.observe(document.body, { childList:true, subtree:true });
+}
+
 function applyI18n(){
   try{
     document.querySelectorAll('[data-i18n]').forEach(function(el){
@@ -2500,13 +2683,21 @@ function applyI18n(){
       var tk='pt.'+currentPage; var v=t(tk);
       ptEl.textContent = (v && v!==tk) ? v : (pageTitles[currentPage]||'');
     }
+    // Runtime translator: walk + observer for everything outside the data-i18n list.
+    if(CURRENT_LANG === 'fr'){
+      _i18nWalk(document.body);
+      _i18nSetupObserver();
+    }
   }catch(e){}
 }
 function toggleLang(){
   CURRENT_LANG = CURRENT_LANG==='ar'?'fr':'ar';
   try{localStorage.setItem('app_lang', CURRENT_LANG);}catch(e){}
+  // Switching to AR can't undo translated nodes individually — full reload is the
+  // pragmatic answer (otherwise we'd need to remember every original string).
+  if(CURRENT_LANG === 'ar'){ location.reload(); return; }
   applyI18n();
-  try{ if(typeof toast==='function') toast(CURRENT_LANG==='fr'?'Langue : Français':'اللغة: العربية','info'); }catch(e){}
+  try{ if(typeof toast==='function') toast('Langue : Français','info'); }catch(e){}
 }
 
 const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance'};

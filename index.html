@@ -6043,6 +6043,45 @@ function openFModal(nom){
   html += '</div></div>';
   // ────────────────────────────────────────────────────────
 
+  // ── Bons of this fournisseur (chronological list) ─────────
+  const _fbSorted = fb.slice().sort((x,y) => (y.date||'').localeCompare(x.date||''));
+  html += '<div style="margin-bottom:16px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+    + '<div style="font-size:13px;font-weight:700;color:var(--text)">📋 البونات <span style="color:var(--text3);font-weight:500;font-size:11px">('+_fbSorted.length+')</span></div>'
+    + (_fbSorted.length>0
+        ? '<span style="font-size:11px;color:var(--text3)">إجمالي: <b style="color:var(--accent)">'+fmt(_fbSorted.reduce((s,b)=>s+Number(b.totalNet||b.total||0),0))+'</b></span>'
+        : '')
+    + '</div>';
+  if (_fbSorted.length) {
+    html += '<div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;max-height:300px;overflow-y:auto;border:1px solid var(--border)">'
+      + '<table class="data-table" style="margin:0">'
+      + '<thead><tr><th>التاريخ</th><th>الرقم</th><th style="text-align:center">سلع</th><th style="text-align:left">المجموع</th><th>الحالة</th></tr></thead>'
+      + '<tbody>'
+      + _fbSorted.map(b => {
+          const lcount = Array.isArray(b.lignes) ? b.lignes.length : 0;
+          let statusBadge;
+          if (b.chequeId) {
+            const linkedCheque = (cheques||[]).find(c => c.id === b.chequeId);
+            const isPaid = linkedCheque && (linkedCheque.status === 'مدفوع' || linkedCheque.status === 'Payé');
+            if (isPaid) statusBadge = '<span class="badge" style="background:rgba(16,185,129,0.12);color:var(--green);font-size:10px">✅ مدفوع</span>';
+            else        statusBadge = '<span class="badge" style="background:rgba(245,158,11,0.12);color:var(--amber);font-size:10px">📝 معلق</span>';
+          } else {
+            statusBadge = '<span class="badge" style="background:rgba(147,51,234,0.12);color:var(--accent);font-size:10px">💼 ف الحساب</span>';
+          }
+          return '<tr style="cursor:pointer" onclick="fourGoto(\'bon\','+JSON.stringify(b.num||'').replace(/"/g,'&quot;')+')">'
+            + '<td style="white-space:nowrap;color:var(--text2);font-size:12px">'+(b.date?fmtDate(b.date):'—')+'</td>'
+            + '<td style="font-weight:700;color:var(--accent)">'+escB(String(b.num||''))+'</td>'
+            + '<td style="text-align:center;color:var(--text2)">'+lcount+'</td>'
+            + '<td style="text-align:left;font-weight:700">'+fmt(b.totalNet||b.total||0)+'</td>'
+            + '<td>'+statusBadge+'</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px;background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">ما كاينش بون من هاد الفورنيسور</div>';
+  }
+  html += '</div>';
+
   if(free.length){
     html+='<div style="background:linear-gradient(135deg,rgba(79,142,247,0.1),rgba(124,92,252,0.1));border:1px solid rgba(79,142,247,0.25);border-radius:var(--radius);padding:16px;margin-bottom:16px">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
@@ -7756,6 +7795,48 @@ function openArticleModal(id){
       +' DH</td></tr>';
   });
   html+='</tbody></table>';
+
+  // ── Bons containing this article ─────────────────────────────
+  const _artBons = [];
+  (bons||[]).forEach(b => {
+    const lignes = typeof b.lignes === 'string' ? (function(){try{return JSON.parse(b.lignes||'[]');}catch(_){return [];}})() : (b.lignes||[]);
+    lignes.forEach(l => {
+      const matches = (l.articleId != null && Number(l.articleId) === Number(id))
+        || (l.nom && a.nom && String(l.nom).trim().toLowerCase() === String(a.nom).trim().toLowerCase());
+      if (matches) {
+        _artBons.push({ b, l });
+      }
+    });
+  });
+  _artBons.sort((x,y) => (y.b.date||'').localeCompare(x.b.date||''));
+
+  html += '<div style="font-size:13px;color:var(--text2);margin:18px 0 10px;font-weight:600;display:flex;justify-content:space-between;align-items:center">'
+    + '<span>📋 البونات اللي فيهم هاد السلعة <span style="color:var(--text3);font-weight:500;font-size:11px">('+_artBons.length+')</span></span>'
+    + (_artBons.length>0
+        ? '<span style="color:var(--text3);font-size:11px">إجمالي: <b style="color:var(--accent)">'+fmt(_artBons.reduce((s,r)=>s+Number(r.l.qte||0)*Number(r.l.prix||0),0))+'</b></span>'
+        : '')
+    + '</div>';
+  if (_artBons.length) {
+    html += '<div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;max-height:300px;overflow-y:auto;border:1px solid var(--border)">'
+      + '<table class="data-table" style="margin:0">'
+      + '<thead><tr><th>التاريخ</th><th>الرقم</th><th>الفورنيسور</th><th style="text-align:center">الكمية</th><th style="text-align:left">السعر</th><th style="text-align:left">المجموع</th></tr></thead>'
+      + '<tbody>'
+      + _artBons.map(r => {
+          const sub = Number(r.l.qte||0) * Number(r.l.prix||0);
+          return '<tr style="cursor:pointer" onclick="fourGoto(\'bon\','+JSON.stringify(r.b.num||'').replace(/"/g,'&quot;')+')">'
+            + '<td style="white-space:nowrap;color:var(--text2);font-size:12px">'+(r.b.date?fmtDate(r.b.date):'—')+'</td>'
+            + '<td style="font-weight:700;color:var(--accent)">'+escB(String(r.b.num||''))+'</td>'
+            + '<td style="font-size:12px">'+escB(r.b.fournisseur||'—')+'</td>'
+            + '<td style="text-align:center;font-weight:600">'+r.l.qte+'</td>'
+            + '<td style="text-align:left;color:var(--text2);font-weight:600">'+fmt(r.l.prix)+'</td>'
+            + '<td style="text-align:left;font-weight:700;color:var(--accent)">'+fmt(sub)+'</td>'
+            + '</tr>';
+        }).join('')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div style="padding:18px;text-align:center;color:var(--text3);font-size:12px;background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">ما تشريناش هاد السلعة من قبل</div>';
+  }
+
   html+='<div style="margin-top:14px;display:flex;gap:10px">'
     +'<button class="btn" style="flex:1;background:rgba(232,64,64,0.1);color:var(--red);border:1px solid rgba(232,64,64,0.3)" onclick="deleteArticle('+id+')">🗑️ حذف</button>'
     +'</div>';

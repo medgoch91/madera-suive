@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v56-saveeditbon-totalnet';
+const CACHE = 'suivi-v57-bons-section-modals';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

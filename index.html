@@ -3814,7 +3814,7 @@ function renderBons(){
     +'</div>'
     : '';
   document.getElementById('page-bons').innerHTML=
-    _renderBonsTabsHTML('bons')
+    _renderCatalogTabsHTML('bons')
     +buildDateBar('bons','renderBons')
     +_dupBanner
     +`<div class="toolbar">
@@ -5629,15 +5629,18 @@ function fourGoto(kind, num){
     }, 150);
   }
 }
-// Big prominent tab bar merging السلع + الفورنيسورات under one catalog entry
+// Big prominent tab bar merging السلع + الفورنيسورات + البونات under one catalog entry
 function _gotoCatalogTab(key){
-  var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\'articles\'"]');
+  // Match the sidebar button for the destination page so the active highlight is correct.
+  var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\''+key+'\'"]')
+            || document.querySelector('.nav-btn[onclick*="showPage(\'articles\'"]');
   showPage(key, navBtn);
 }
 function _renderCatalogTabsHTML(active){
   var tabs = [
     { key:'articles',     icon:'📦', title:'السلع',          sub:'قائمة السلع' },
-    { key:'fournisseurs', icon:'🏢', title:'الفورنيسورات',   sub:'قائمة الموردين' }
+    { key:'fournisseurs', icon:'🏢', title:'الفورنيسورات',   sub:'قائمة الموردين' },
+    { key:'bons',         icon:'📋', title:'البونات',         sub:'قائمة البونات' }
   ];
   var btns = tabs.map(function(t){
     var on = t.key === active;

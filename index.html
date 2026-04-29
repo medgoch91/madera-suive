@@ -8174,14 +8174,19 @@ function saveUsers(users){ localStorage.setItem('suivi_users', JSON.stringify(us
 function _userFromSupabase(supaUser){
   if(!supaUser) return null;
   const meta = supaUser.user_metadata || {};
+  // Role / permissions live in user_metadata. Legacy users with no metadata
+  // default to admin so we never lock anyone out — admin is the back-compat
+  // value (matches what the app did before per-user permissions).
+  const role = meta.role || 'admin';
+  const isAdmin = role === 'admin';
   return {
-    id: supaUser.id,                    // UUID
-    username: supaUser.email,           // displayed in topbar
+    id: supaUser.id,
+    username: supaUser.email,
     email: supaUser.email,
-    role: 'admin',                      // single-tenant — everyone is admin
+    role: role,
     nom: meta.nom || meta.name || (supaUser.email||'').split('@')[0] || 'مدير',
     active: true,
-    permissions: null,                  // null = full access (admin bypass)
+    permissions: isAdmin ? null : (meta.permissions || (typeof getRoleDefaults==='function' ? getRoleDefaults(role) : null)),
   };
 }
 
@@ -8704,31 +8709,40 @@ async function loadAdminUsers(){
       list.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">👤</div><div class="empty-title">لا يوجد مستخدمون</div></div>';
       return;
     }
+    // Stash users so the edit modal can read them without re-fetching.
+    window._adminUsers = users;
     list.innerHTML = users.map(u => {
       const initials = ((u.nom || u.email || '?').split(' ').map(w=>w[0]).join('').slice(0,2) || '?').toUpperCase();
       const last = u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString('fr-MA') : 'ما دخل بعد';
       const created = u.created_at ? new Date(u.created_at).toLocaleDateString('fr-MA') : '—';
+      const roleDef = (typeof getRoleDef === 'function') ? getRoleDef(u.role) : { icon:'⚙️', label:u.role||'admin', color:'#9333ea' };
+      const isAdmin = u.role === 'admin' || !u.role;
+      const allowedCount = isAdmin ? 'كلشي' : Object.keys(u.permissions || {}).filter(k => u.permissions[k]).length + ' صفحة';
+      const idEsc = JSON.stringify(u.id).replace(/"/g,'&quot;');
+      const emailEsc = JSON.stringify(u.email||'').replace(/"/g,'&quot;');
       return '<div class="user-card">'
         + '<div class="user-card-header">'
-          + '<div class="user-avatar-lg admin-av">'+escB(initials)+'</div>'
+          + '<div class="user-avatar-lg admin-av" style="background:linear-gradient(135deg,'+roleDef.color+'cc,'+roleDef.color+'99)">'+escB(initials)+'</div>'
           + '<div style="flex:1;min-width:0">'
             + '<div class="user-card-name">'+escB(u.nom || u.email.split('@')[0])+'</div>'
             + '<div class="user-card-username" dir="ltr">'+escB(u.email||'')+'</div>'
             + '<div class="user-badges">'
-              + '<span class="role-badge" style="background:rgba(147,51,234,0.18);color:var(--accent);border:1px solid rgba(147,51,234,0.4)">⚙️ مدير</span>'
+              + '<span class="role-badge" style="background:'+roleDef.color+'22;color:'+roleDef.color+';border:1px solid '+roleDef.color+'44">'+roleDef.icon+' '+escB(roleDef.label)+'</span>'
               + (u.confirmed ? '<span class="badge badge-linked">● مؤكد</span>' : '<span class="badge badge-free">⏳ غير مؤكد</span>')
               + (u.is_self ? '<span style="font-size:10px;color:var(--text3);padding:2px 8px;border-radius:20px;border:1px solid var(--border)">أنت</span>' : '')
             + '</div>'
           + '</div>'
         + '</div>'
         + '<div class="user-card-body">'
+          + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2);padding:4px 0"><span>🔑 الصلاحيات</span><span>'+escB(allowedCount)+'</span></div>'
           + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2);padding:4px 0"><span>📅 أنشئ</span><span>'+escB(created)+'</span></div>'
           + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2);padding:4px 0"><span>🕐 آخر دخول</span><span>'+escB(last)+'</span></div>'
         + '</div>'
         + '<div class="user-card-footer">'
+          + '<button class="uca-btn primary" onclick="openAdminUserEdit('+idEsc+')">✏️ تعديل</button>'
           + (u.is_self
-              ? '<div class="self-note">🔒 ما تقدرش تحذف حسابك</div>'
-              : '<button class="uca-btn danger" onclick="deleteAdminUser('+JSON.stringify(u.id).replace(/"/g,'&quot;')+','+JSON.stringify(u.email||'').replace(/"/g,'&quot;')+')">🗑️ حذف</button>')
+              ? '<div class="self-note" style="flex:0">🔒</div>'
+              : '<button class="uca-btn danger" onclick="deleteAdminUser('+idEsc+','+emailEsc+')">🗑️</button>')
         + '</div>'
       + '</div>';
     }).join('');
@@ -8763,6 +8777,117 @@ async function addAdminUser(){
     loadAdminUsers();
   }catch(e){
     console.error('addAdminUser failed:', e);
+    setMsg('❌ '+(e.message||e),'var(--red)');
+  }
+}
+
+// Open the edit modal for a real Auth user. Lets admin change role, per-page
+// permissions, name, or reset the password.
+function openAdminUserEdit(id){
+  const u = (window._adminUsers || []).find(x => x.id === id);
+  if(!u){ try{ toast('المستخدم غير موجود','error'); }catch(_){} return; }
+  const currentRole = u.role || 'admin';
+  const currentPerms = (currentRole === 'admin') ? null : (u.permissions || (typeof getRoleDefaults==='function' ? getRoleDefaults(currentRole) : {}));
+
+  const roleOptions = Object.keys(ROLE_DEFINITIONS).map(r => {
+    const d = ROLE_DEFINITIONS[r];
+    const sel = r === currentRole ? ' selected' : '';
+    return '<option value="'+r+'"'+sel+'>'+d.icon+' '+d.label+' — '+d.desc+'</option>';
+  }).join('');
+
+  const permRows = ALL_PAGES.map(p => {
+    const allowed = currentRole === 'admin' ? true : !!(currentPerms && currentPerms[p.key]);
+    return '<div class="perm-row" style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'
+      + '<span class="perm-row-label" style="font-size:13px">'+p.emoji+' '+p.name+'</span>'
+      + '<label class="toggle"><input type="checkbox" id="aue-perm-'+p.key+'" '+(allowed?'checked':'')+'><span class="toggle-slider"></span></label>'
+      + '</div>';
+  }).join('');
+
+  const html = '<div class="modal-title"><span>✏️ تعديل — '+escB(u.email||'')+'</span>'
+    + '<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    + '<input type="hidden" id="aue-id" value="'+escB(u.id)+'">'
+    + '<div class="form-grid" style="gap:12px">'
+      + '<div class="form-full"><label class="field-lbl">الاسم</label><input class="field-inp" id="aue-nom" value="'+escB(u.nom||'')+'"></div>'
+      + '<div class="form-full"><label class="field-lbl">الدور</label>'
+        + '<select class="field-inp" id="aue-role" onchange="_aueOnRoleChange()">'+roleOptions+'</select>'
+      + '</div>'
+      + '<div class="form-full"><label class="field-lbl">كلمة سر جديدة <span style="color:var(--text3);font-weight:400">(اختياري — 6+ حروف)</span></label><input class="field-inp" id="aue-password" type="password" dir="ltr" placeholder="خليها فاضية باش ما تتبدلش"></div>'
+    + '</div>'
+    + '<div id="aue-perms-wrap" style="margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)'+(currentRole==='admin'?';opacity:0.5;pointer-events:none':'')+'">'
+      + '<div style="font-size:13px;font-weight:700;margin-bottom:8px">🔑 الصفحات المسموح بها</div>'
+      + '<div id="aue-perms-list">'+permRows+'</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:10px;padding-top:8px;border-top:1px solid var(--border)" id="aue-perms-note">'
+        + (currentRole==='admin' ? '⚠️ المدير يشوف كلشي — الصلاحيات بلا تأثير' : '✏️ تتبدل تلقائياً حسب الدور — تقدر تعدلها يدويا')
+      + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;margin-top:18px">'
+      + '<button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveAdminUserEdit()">💾 حفظ</button>'
+      + '<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
+    + '</div>'
+    + '<div id="aue-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+function _aueOnRoleChange(){
+  const role = (document.getElementById('aue-role')||{value:'admin'}).value;
+  const isAdmin = role === 'admin';
+  const wrap = document.getElementById('aue-perms-wrap');
+  const note = document.getElementById('aue-perms-note');
+  if(wrap){
+    wrap.style.opacity = isAdmin ? '0.5' : '';
+    wrap.style.pointerEvents = isAdmin ? 'none' : '';
+  }
+  if(note){
+    note.textContent = isAdmin
+      ? '⚠️ المدير يشوف كلشي — الصلاحيات بلا تأثير'
+      : '✏️ تتبدل تلقائياً حسب الدور — تقدر تعدلها يدويا';
+  }
+  if(!isAdmin){
+    // Pre-fill toggles with role defaults so the admin sees the baseline.
+    const defaults = (typeof getRoleDefaults==='function') ? (getRoleDefaults(role) || {}) : {};
+    ALL_PAGES.forEach(p => {
+      const cb = document.getElementById('aue-perm-'+p.key);
+      if(cb) cb.checked = !!defaults[p.key];
+    });
+  }
+}
+
+async function saveAdminUserEdit(){
+  const id = (document.getElementById('aue-id')||{value:''}).value;
+  const nom = (document.getElementById('aue-nom')||{value:''}).value.trim();
+  const role = (document.getElementById('aue-role')||{value:'admin'}).value;
+  const password = (document.getElementById('aue-password')||{value:''}).value;
+  const msg = document.getElementById('aue-msg');
+  const setMsg = (t,c) => { if(msg){ msg.style.color=c||'var(--text2)'; msg.textContent=t||''; } };
+  if(!id){ setMsg('id مفقود','var(--red)'); return; }
+  if(password && password.length < 6){ setMsg('كلمة السر خاصها 6 حروف على الأقل','var(--red)'); return; }
+  let permissions = null;
+  if(role !== 'admin'){
+    permissions = {};
+    ALL_PAGES.forEach(p => {
+      const cb = document.getElementById('aue-perm-'+p.key);
+      if(cb && cb.checked) permissions[p.key] = true;
+    });
+  }
+  const body = { nom, role, permissions };
+  if(password) body.password = password;
+  setMsg('⏳ جاري الحفظ...');
+  try{
+    const r = await fetch(ADMIN_USERS_FN+'?id='+encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: await _adminUsersAuthHeader(),
+      body: JSON.stringify(body),
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || ('HTTP '+r.status));
+    setMsg('✅ تم الحفظ','var(--green)');
+    setTimeout(() => {
+      document.getElementById('modal-main').classList.remove('open');
+      loadAdminUsers();
+    }, 800);
+  }catch(e){
+    console.error('saveAdminUserEdit failed:', e);
     setMsg('❌ '+(e.message||e),'var(--red)');
   }
 }

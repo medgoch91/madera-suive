@@ -23,7 +23,7 @@ const admin = createClient(SB_URL, SB_SERVICE_KEY, {
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
@@ -69,15 +69,20 @@ Deno.serve(async (req: Request) => {
     if (req.method === 'GET') {
       const { data, error } = await admin.auth.admin.listUsers({ perPage: 200 });
       if (error) return json({ error: error.message }, 500);
-      const users = (data.users || []).map(u => ({
-        id: u.id,
-        email: u.email,
-        nom: (u.user_metadata && (u.user_metadata.nom || u.user_metadata.name)) || null,
-        created_at: u.created_at,
-        last_sign_in_at: u.last_sign_in_at,
-        confirmed: !!u.email_confirmed_at,
-        is_self: u.id === callerId,
-      }));
+      const users = (data.users || []).map(u => {
+        const meta = u.user_metadata || {};
+        return {
+          id: u.id,
+          email: u.email,
+          nom: meta.nom || meta.name || null,
+          role: meta.role || 'admin',           // legacy users default to admin
+          permissions: meta.permissions || null,
+          created_at: u.created_at,
+          last_sign_in_at: u.last_sign_in_at,
+          confirmed: !!u.email_confirmed_at,
+          is_self: u.id === callerId,
+        };
+      });
       return json({ users });
     }
 
@@ -96,6 +101,28 @@ Deno.serve(async (req: Request) => {
       });
       if (error) return json({ error: error.message }, 400);
       return json({ ok: true, id: data.user?.id, email: data.user?.email });
+    }
+
+    if (req.method === 'PATCH') {
+      const id = url.searchParams.get('id');
+      if (!id) return json({ error: 'missing ?id=' }, 400);
+      const body = await req.json().catch(() => ({}));
+      const updates: { user_metadata?: Record<string, unknown>; password?: string; email?: string } = {};
+      // Read current metadata so we patch instead of overwrite.
+      const { data: cur, error: getErr } = await admin.auth.admin.getUserById(id);
+      if (getErr) return json({ error: getErr.message }, 400);
+      const meta: Record<string, unknown> = { ...((cur && cur.user && cur.user.user_metadata) || {}) };
+      let touched = false;
+      if (typeof body.nom === 'string') { meta.nom = body.nom.trim(); touched = true; }
+      if (typeof body.role === 'string') { meta.role = body.role; touched = true; }
+      if ('permissions' in body) { meta.permissions = body.permissions; touched = true; }
+      if (touched) updates.user_metadata = meta;
+      if (typeof body.password === 'string' && body.password.length >= 6) updates.password = body.password;
+      if (typeof body.email === 'string' && body.email.trim()) updates.email = body.email.trim();
+      if (Object.keys(updates).length === 0) return json({ error: 'no fields to update' }, 400);
+      const { error } = await admin.auth.admin.updateUserById(id, updates);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true });
     }
 
     if (req.method === 'DELETE') {

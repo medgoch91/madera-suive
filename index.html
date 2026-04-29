@@ -1436,10 +1436,9 @@ function setupTelegramChatId(){
   }
 }
 
-async function sendTelegramNotif(bon, opts){
-  // Collect chat IDs from BOTH sources so the notif fires reliably:
-  //   1. localStorage 'tg_chat_id' (legacy: set once via the cheque-share flow)
-  //   2. bot_subscribers table (every chat that ran /subscribe in the Telegram bot)
+// Send arbitrary text to every reachable Telegram chat (localStorage + bot_subscribers).
+// Used by both the bon-save notif and the per-worker pointage notif.
+async function sendTelegramBroadcast(text){
   const chatIds = new Set();
   const local = localStorage.getItem('tg_chat_id');
   if(local) chatIds.add(String(local).trim());
@@ -1448,16 +1447,6 @@ async function sendTelegramNotif(bon, opts){
     if(Array.isArray(subs)) subs.forEach(s => { if(s && s.chat_id!=null) chatIds.add(String(s.chat_id)); });
   }catch(e){ console.warn('bot_subscribers fetch for notif failed:', e); }
   if(!chatIds.size) return;
-
-  const edited = !!(opts && opts.edited);
-  const heading = edited ? `✏️ تعديل بون — ${bon.fournisseur}` : `📦 بون جديد — ${bon.fournisseur}`;
-  const lines = (bon.lignes||[]).map(l=>`  • ${l.nom} × ${l.qte} = ${Number(l.qte*l.prix).toFixed(2)} DH`).join('\n');
-  const text = `${heading}\n`
-    + `🔢 رقم: ${bon.num}\n`
-    + `📅 التاريخ: ${bon.date}\n`
-    + `\n${lines}\n`
-    + `\n💰 المجموع: ${Number(bon.total).toFixed(2)} DH TTC`;
-
   await Promise.allSettled([...chatIds].map(chatId =>
     fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{
       method:'POST',
@@ -1466,6 +1455,73 @@ async function sendTelegramNotif(bon, opts){
     }).then(r => { if(!r.ok) console.warn('TG notif failed', chatId, r.status); })
       .catch(e => console.warn('TG notif failed for', chatId, e))
   ));
+}
+
+async function sendTelegramNotif(bon, opts){
+  const edited = !!(opts && opts.edited);
+  const heading = edited ? `✏️ تعديل بون — ${bon.fournisseur}` : `📦 بون جديد — ${bon.fournisseur}`;
+  const lines = (bon.lignes||[]).map(l=>`  • ${l.nom} × ${l.qte} = ${Number(l.qte*l.prix).toFixed(2)} DH`).join('\n');
+  const text = `${heading}\n`
+    + `🔢 رقم: ${bon.num}\n`
+    + `📅 التاريخ: ${bon.date}\n`
+    + `\n${lines}\n`
+    + `\n💰 المجموع: ${Number(bon.total).toFixed(2)} DH TTC`;
+  await sendTelegramBroadcast(text);
+}
+
+// ── Real-time pointage (attendance) notifications ─────────────────
+// Fires a Telegram message after every salarie or PC presence update.
+// Debounced 3s per worker so rapid edits (status → +hsup → taux) coalesce
+// into a single message reflecting the final state.
+const _POINTAGE_STATUS = {
+  present: { icon:'✅', lbl:'حاضر' },
+  absent:  { icon:'🔴', lbl:'غائب' },
+  conge:   { icon:'🟡', lbl:'عطلة' },
+  demi:    { icon:'🟠', lbl:'نص نهار' },
+};
+const _pointageDebounce = {};
+
+function notifyPointageChange(kind, workerId){
+  const key = kind + ':' + workerId;
+  if(_pointageDebounce[key]) clearTimeout(_pointageDebounce[key]);
+  _pointageDebounce[key] = setTimeout(function(){
+    delete _pointageDebounce[key];
+    try{ _doPointageNotif(kind, workerId); }catch(e){ console.warn('pointage notif failed', e); }
+  }, 3000);
+}
+
+function _doPointageNotif(kind, workerId){
+  const today = new Date().toISOString().slice(0,10);
+  if(kind === 'sal'){
+    const sal = (typeof salariesData !== 'undefined' ? salariesData : []).find(x => Number(x.id) === Number(workerId));
+    const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => p.salarie_id === Number(workerId) && p.date === today);
+    if(!sal || !pres) return;
+    const name = (String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('#'+workerId);
+    const st = _POINTAGE_STATUS[pres.statut] || { icon:'·', lbl:String(pres.statut||'?') };
+    const hsup = Number(pres.heures_supp || 0);
+    const taux = Number(pres.taux_horaire || 0);
+    const cost = hsup * taux;
+    let text = `👤 ${name}\n${st.icon} ${st.lbl} — ${fmtDate(today)}`;
+    if(hsup > 0){
+      text += `\n⏱️ +${hsup}h`;
+      if(taux > 0) text += ` × ${fmtN(taux)} = ${fmt(cost)}`;
+    }
+    sendTelegramBroadcast(text);
+  } else if(kind === 'pc'){
+    const ouv = (typeof ouvriersPc !== 'undefined' ? ouvriersPc : []).find(o => Number(o.id) === Number(workerId));
+    if(!ouv) return;
+    const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => r.ouvrier_id === Number(workerId) && r.date === today && Number(r.qte||0) > 0);
+    if(!records.length) return;
+    let text = `👷 ${ouv.nom} — ${fmtDate(today)}\n`;
+    let total = 0;
+    records.forEach(r => {
+      const c = Number(r.qte||0) * Number(r.prix||0);
+      total += c;
+      text += `🧱 ${r.pc_nom} · ${r.qte} × ${fmtN(r.prix)} = ${fmt(c)}\n`;
+    });
+    text += `\n📦 المجموع: ${fmt(total)}`;
+    sendTelegramBroadcast(text);
+  }
 }
 
 // ── Offline write queue ──────────────────────────────────────────
@@ -10833,6 +10889,7 @@ async function salToggleJourStatut(date,statut){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
   // Update UI live
   const row=document.getElementById('sal-row-'+date.replace(/-/g,''));
   if(row){
@@ -10871,6 +10928,7 @@ async function salSetHsup(date,field,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
 }
 
 // ═══ Per-cell heures supp setter for the Week Grid ═══
@@ -10892,6 +10950,7 @@ async function salQuickSetHsup(salId,date,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
   // Live cell restyle
   if(typeof event!=='undefined' && event && event.target){
     const inp=event.target;
@@ -11718,6 +11777,7 @@ async function pcSavePresence(ouvrierId,date,pc_nom,prix,inputEl){
   if(idx>=0) pcPresences[idx].qte=qte;
   else pcPresences.push({ouvrier_id:ouvrierId,date,pc_nom,qte,prix});
   localStorage.setItem('ouvrier_pc_pres_v1',JSON.stringify(pcPresences));
+  if(date === new Date().toISOString().slice(0,10) && qte > 0) notifyPointageChange('pc', ouvrierId);
   // Refresh total cell without full re-render
   var row=inputEl.closest&&inputEl.closest('div[style*="grid"]');
   if(row){

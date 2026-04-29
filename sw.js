@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v48-revert-reports';
+const CACHE = 'suivi-v49-pointage-realtime-notif';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -5087,6 +5087,7 @@ function renderCheques(){
                   <button class="btn-ghost" onclick="chSt(${c.id},'معلق')" style="font-size:11px">معلق</button>
                   <button class="btn-ghost" onclick="openEditChequeModal(${c.id})" title="تعديل">✏️</button>
                   <button class="btn-ghost" onclick="printCheque(${c.id})" title="${isEspece?'إيصال نقد':'طباعة'}">🖨️</button>
+                  <button class="btn-ghost" onclick="chequeShareToTelegram(${c.id})" title="إرسال صورة للتليجرام" style="color:#06b6d4">📨</button>
                 </div>
               </td>
             </tr>`;
@@ -14808,6 +14809,7 @@ function renderFactSideBody(){
       +'</div>'
       +'<div style="display:flex;gap:4px;margin-top:8px">'
         +'<button onclick="factPrint('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-weight:700;cursor:pointer">🖨️ طبع</button>'
+        +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="padding:5px 8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:6px;color:#06b6d4;font-size:10px;font-weight:700;cursor:pointer">📨</button>'
         +'<button onclick="factDuplicate('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--accent);font-size:10px;font-weight:700;cursor:pointer">📋 نسخ</button>'
       +'</div>'
     +'</div>';
@@ -14995,6 +14997,7 @@ function buildFactTable(rows){
       +'<div style="flex-shrink:0;display:flex;gap:6px;align-items:center">'
         +'<button onclick="factEditNum('+f.id+')" title="تعديل رقم الفاتورة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(147,51,234,0.3);background:transparent;color:var(--accent);cursor:pointer;font-size:13px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(147,51,234,0.08)\'" onmouseout="this.style.background=\'transparent\'">✏️</button>'
         +'<button onclick="factPrint('+f.id+')" title="طباعة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;transition:all 0.15s" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">🖨</button>'
+        +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(6,182,212,0.3);background:rgba(6,182,212,0.08);color:#06b6d4;cursor:pointer;font-size:14px;transition:all 0.15s">📨</button>'
         +'<button onclick="factToggleStatut('+f.id+')" title="'+(isPaid?'تحويل لمعلقة':'تحويل لمدفوعة')+'" style="min-width:36px;height:36px;border-radius:9px;border:1px solid '+(isPaid?'rgba(245,158,11,0.3)':'rgba(34,197,94,0.3)')+';background:transparent;color:'+(isPaid?'var(--amber)':'var(--green)')+';cursor:pointer;font-size:15px;font-weight:700;transition:all 0.15s">'+(isPaid?'↩':'✓')+'</button>'
         +'<button onclick="factDelete('+f.id+')" title="حذف" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(239,68,68,0.2);background:transparent;color:var(--red);cursor:pointer;font-size:14px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(239,68,68,0.08)\'" onmouseout="this.style.background=\'transparent\'">🗑</button>'
       +'</div>'
@@ -15902,8 +15905,15 @@ async function factSaveSoc(){
 }
 
 function factPrint(id){
+  const html = _buildFactureHtml(id);
+  if(!html) return;
+  const win=window.open('','_blank','width=900,height=750');
+  if(win){win.document.write(html);win.document.close();}
+}
+
+function _buildFactureHtml(id){
   const f=factures.find(function(x){return x.id===id;});
-  if(!f)return;
+  if(!f)return null;
   const soc=factSociete||{nom:'',ice:'',if_num:'',rc:'',patente:'',ville:'',tel:'',fax:'',email:'',web:'',adresse:'',logo:'',cnss:'',banque:'',rib:'',swift:'',capital:'',signature:''};
   const numStr=(f.date?f.date.substring(0,4):new Date().getFullYear())+'-'+String(f.num||1).padStart(4,'0');
   const isHT=f.mode!=='ttc';
@@ -16126,8 +16136,112 @@ function factPrint(id){
   +'<script>window.onload=function(){window.print();};<\/script>'
   +'</body></html>';
 
-  const win=window.open('','_blank','width=900,height=750');
-  if(win){win.document.write(html);win.document.close();}
+  return html;
+}
+
+// ── Generic photo capture + Telegram broadcast helpers ───────────
+// Renders HTML in an offscreen iframe, captures to PNG via html2canvas,
+// then ships the blob to every reachable Telegram chat.
+async function _captureHtmlAsPngBlob(html, opts){
+  if (typeof html2canvas === 'undefined') throw new Error('html2canvas not loaded');
+  const width = (opts && opts.width) || 900;
+  return new Promise(function(resolve, reject){
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;left:-99999px;top:0;width:'+width+'px;height:1300px;border:0;visibility:hidden';
+    document.body.appendChild(iframe);
+    iframe.onload = async function(){
+      try {
+        await new Promise(r => setTimeout(r, 700)); // let webfonts + images settle
+        const body = iframe.contentDocument.body;
+        const canvas = await html2canvas(body, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          width: body.scrollWidth || width,
+          height: body.scrollHeight || 1300,
+        });
+        canvas.toBlob(function(blob){
+          iframe.remove();
+          if (blob) resolve(blob); else reject(new Error('Blob conversion returned null'));
+        }, 'image/png', 0.92);
+      } catch (e) {
+        iframe.remove();
+        reject(e);
+      }
+    };
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+  });
+}
+
+async function sendTelegramPhotoBroadcast(blob, filename, caption){
+  const chatIds = new Set();
+  const local = localStorage.getItem('tg_chat_id');
+  if (local) chatIds.add(String(local).trim());
+  try {
+    const subs = await sbFetch('bot_subscribers','GET',null,'select=chat_id');
+    if (Array.isArray(subs)) subs.forEach(s => { if (s && s.chat_id != null) chatIds.add(String(s.chat_id)); });
+  } catch (e) { /* ignore */ }
+  if (!chatIds.size) return 0;
+  const results = await Promise.allSettled([...chatIds].map(chatId => {
+    const fd = new FormData();
+    fd.append('chat_id', String(chatId));
+    fd.append('photo', blob, filename);
+    if (caption) fd.append('caption', caption);
+    return fetch('https://api.telegram.org/bot'+TG_TOKEN+'/sendPhoto', { method: 'POST', body: fd })
+      .then(r => r.ok ? true : Promise.reject(new Error('HTTP '+r.status)));
+  }));
+  return results.filter(r => r.status === 'fulfilled').length;
+}
+
+async function factShareToTelegram(id){
+  const f = factures.find(function(x){return x.id===id;});
+  if (!f) { try{ toast('الفاتورة غير موجودة','error'); }catch(_){} return; }
+  try{ toast('⏳ جاري إرسال صورة الفاتورة...','info'); }catch(_){}
+  try {
+    const html = _buildFactureHtml(id);
+    if (!html) throw new Error('build failed');
+    const blob = await _captureHtmlAsPngBlob(html, { width: 900 });
+    const caption = `🧾 فاتورة #${f.num} — ${f.client_nom || '?'}\n💰 ${Number(f.total_ttc||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} د.م. TTC`;
+    const sent = await sendTelegramPhotoBroadcast(blob, 'facture-'+f.num+'.png', caption);
+    try{ toast(sent > 0 ? `✅ ت-بعثات للتليجرام (${sent})` : '⚠️ ما لقيتش chat — سجل /subscribe ف البوت','success'); }catch(_){}
+  } catch (e) {
+    console.error('factShareToTelegram error:', e);
+    try{ toast('❌ فشل: '+(e.message||e),'error'); }catch(_){}
+  }
+}
+
+async function chequeShareToTelegram(id){
+  const c = cheques.find(function(x){return x.id===id;});
+  if (!c) { try{ toast('الشيك غير موجود','error'); }catch(_){} return; }
+  try{ toast('⏳ جاري إرسال صورة الشيك...','info'); }catch(_){}
+  try {
+    // Reuse existing print-cheque UI: navigate to that page, capture pc-cheque-wrap once it's rendered.
+    if (c.type === 'espece') {
+      // Cash receipt — no cheque-stub layout. Send a compact text card instead.
+      const text = `💵 *إيصال نقد* — ${c.fournisseur || '?'}\n🔢 ${c.num}\n📅 ${c.date}\n💰 ${Number(c.montant||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} د.م.`;
+      await sendTelegramBroadcast(text);
+      try{ toast('✅ تبعث (نقد بلا صورة)','success'); }catch(_){}
+      return;
+    }
+    printCheque(id); // navigates to print-cheque page + sets _pendingPrintData
+    // Wait for renderPrintCheque to commit innerHTML and the bg image to settle.
+    await new Promise(r => setTimeout(r, 900));
+    const wrap = document.getElementById('pc-cheque-wrap');
+    if (!wrap) throw new Error('pc-cheque-wrap لم تظهر');
+    const canvas = await html2canvas(wrap, { backgroundColor:'#ffffff', scale:2, useCORS:true, logging:false });
+    const blob = await new Promise(r => canvas.toBlob(b => r(b), 'image/png', 0.92));
+    if (!blob) throw new Error('Blob conversion failed');
+    const typeLbl = c.type === 'effet' ? '📜 ورقة' : '💳 شيك';
+    const caption = `${typeLbl} #${c.num} — ${c.fournisseur || '?'}\n💰 ${Number(c.montant||0).toLocaleString('fr-MA',{minimumFractionDigits:2})} د.م.\n📅 ${c.date}` + (c.echeance?` · استحقاق: ${c.echeance}`:'');
+    const sent = await sendTelegramPhotoBroadcast(blob, 'cheque-'+c.num+'.png', caption);
+    try{ toast(sent > 0 ? `✅ ت-بعثات للتليجرام (${sent})` : '⚠️ ما لقيتش chat','success'); }catch(_){}
+  } catch (e) {
+    console.error('chequeShareToTelegram error:', e);
+    try{ toast('❌ فشل: '+(e.message||e),'error'); }catch(_){}
+  }
 }
 
 // supplier_products cache

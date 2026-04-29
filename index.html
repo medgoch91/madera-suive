@@ -1459,29 +1459,37 @@ async function sendTelegramBroadcast(text){
 
 // Send a Telegram message after a new cheque/effet/espèce is saved.
 async function sendChequeNotif(c){
-  const typeLbl = c.type === 'effet' ? '📜 ورقة' : (c.type === 'espece' ? '💵 نقد' : '💳 شيك');
-  const lines = [
-    `${typeLbl} *جديد* — ${c.fournisseur || '?'}`,
-    `🔢 رقم: ${c.num}`,
-    `📅 ${c.date}` + (c.echeance ? ` · استحقاق: ${c.echeance}` : ''),
-    `💰 ${Number(c.montant || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.`,
-  ];
-  if (c.bonIds && c.bonIds.length) lines.push(`📋 ${c.bonIds.length} بون مربوط`);
-  if (c.status && c.status !== 'معلق') lines.push(`الحالة: ${c.status}`);
-  await sendTelegramBroadcast(lines.join('\n'));
+  try{
+    const typeLbl = c.type === 'effet' ? '📜 ورقة' : (c.type === 'espece' ? '💵 نقد' : '💳 شيك');
+    const lines = [
+      `${typeLbl} *جديد* — ${c.fournisseur || '?'}`,
+      `🔢 رقم: ${c.num}`,
+      `📅 ${c.date}` + (c.echeance ? ` · استحقاق: ${c.echeance}` : ''),
+      `💰 ${Number(c.montant || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م.`,
+    ];
+    if (c.bonIds && c.bonIds.length) lines.push(`📋 ${c.bonIds.length} بون مربوط`);
+    if (c.status && c.status !== 'معلق') lines.push(`الحالة: ${c.status}`);
+    console.log('[notif] sending cheque', c.num);
+    await sendTelegramBroadcast(lines.join('\n'));
+    console.log('[notif] cheque sent');
+  }catch(e){ console.error('[notif] cheque failed:', e); }
 }
 
 // Send a Telegram message after a new facture is saved.
 async function sendFactureNotif(f){
-  const lines = [
-    `🧾 *فاتورة جديدة* — ${f.client_nom || '?'}`,
-    `🔢 رقم: ${f.num}`,
-    `📅 ${f.date}` + (f.echeance ? ` · استحقاق: ${f.echeance}` : ''),
-    `💰 ${Number(f.total_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م. TTC`,
-  ];
-  if (f.client_ville) lines.push(`📍 ${f.client_ville}`);
-  if (f.statut && f.statut !== 'معلقة') lines.push(`الحالة: ${f.statut}`);
-  await sendTelegramBroadcast(lines.join('\n'));
+  try{
+    const lines = [
+      `🧾 *فاتورة جديدة* — ${f.client_nom || '?'}`,
+      `🔢 رقم: ${f.num}`,
+      `📅 ${f.date}` + (f.echeance ? ` · استحقاق: ${f.echeance}` : ''),
+      `💰 ${Number(f.total_ttc || 0).toLocaleString('fr-MA', { minimumFractionDigits: 2 })} د.م. TTC`,
+    ];
+    if (f.client_ville) lines.push(`📍 ${f.client_ville}`);
+    if (f.statut && f.statut !== 'معلقة') lines.push(`الحالة: ${f.statut}`);
+    console.log('[notif] sending facture', f.num);
+    await sendTelegramBroadcast(lines.join('\n'));
+    console.log('[notif] facture sent');
+  }catch(e){ console.error('[notif] facture failed:', e); }
 }
 
 async function sendTelegramNotif(bon, opts){

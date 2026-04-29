@@ -90,19 +90,91 @@ export async function jobChequesTodayPing(): Promise<Response> {
   }));
 }
 
-// ── workers_eod — 20h summary ───────────────────────────────────
+// ── workers_eod — 20h Casa daily attendance digest ─────────────
+// Per-worker breakdown: status icon + name + hours + computed pay.
+const _STATUS_LABELS: Record<string, { icon: string; lbl: string }> = {
+  present: { icon: '✅', lbl: 'حاضر' },
+  absent:  { icon: '🔴', lbl: 'غائب' },
+  conge:   { icon: '🟡', lbl: 'عطلة' },
+  demi:    { icon: '🟠', lbl: 'نصف نهار' },
+};
+
 export async function jobWorkersEod(): Promise<Response> {
   const today = todayCasa();
-  const { data: pres } = await sb.from('salarie_presences')
-    .select('id,salarie_id,statut,date').eq('date', today);
-  const { data: pcPres } = await sb.from('ouvrier_pc_presences')
-    .select('id,ouvrier_id,qte,prix').eq('date', today);
 
-  const total = (pres?.length ?? 0) + (pcPres?.length ?? 0);
-  const text = `🧑‍🔧 *خلاصة الخدامة — ${today}*\n\n• الأجراء: ${(pres ?? []).length} تسجيل\n• العمال بالقطعة: ${(pcPres ?? []).length} تسجيل`;
-  if (total === 0) return new Response(JSON.stringify({ ok: true, job: 'workers_eod', skipped: 'empty' }));
+  // Embedded FK select: salarie_presences.salarie_id → salaries
+  const { data: pres } = await sb.from('salarie_presences')
+    .select('statut,heures_supp,taux_horaire,salaries(nom,prenom)')
+    .eq('date', today);
+
+  // Embedded FK select: ouvrier_pc_presences.ouvrier_id → ouvriers_pc
+  const { data: pcPres } = await sb.from('ouvrier_pc_presences')
+    .select('qte,prix,pc_nom,ouvriers_pc(nom)')
+    .eq('date', today);
+
+  const presN = pres?.length ?? 0;
+  const pcN   = pcPres?.length ?? 0;
+  if (presN === 0 && pcN === 0) {
+    return new Response(JSON.stringify({ ok: true, job: 'workers_eod', skipped: 'empty' }));
+  }
+
+  let text = `🧑‍🔧 *خلاصة الخدامة — ${today}*\n`;
+
+  if (presN > 0) {
+    text += '\n*👥 الأجراء:*\n';
+    let totalHsup = 0, totalHsupCost = 0;
+    let presentCount = 0, absentCount = 0, congeCount = 0, demiCount = 0;
+    for (const p of pres!) {
+      const s   = _STATUS_LABELS[String(p.statut)] || { icon: '·', lbl: String(p.statut || '?') };
+      const sal = (p as { salaries?: { nom?: string; prenom?: string } }).salaries;
+      const nom = ((sal?.nom || '?') + (sal?.prenom ? ' ' + sal.prenom : '')).trim();
+      const hsup = Number(p.heures_supp || 0);
+      const taux = Number(p.taux_horaire || 0);
+      const cost = hsup * taux;
+      totalHsup += hsup;
+      totalHsupCost += cost;
+      if (p.statut === 'present') presentCount++;
+      else if (p.statut === 'absent') absentCount++;
+      else if (p.statut === 'conge') congeCount++;
+      else if (p.statut === 'demi') demiCount++;
+      let line = `${s.icon} ${nom} · ${s.lbl}`;
+      if (hsup > 0) {
+        line += ` · +${hsup}h`;
+        if (taux > 0) line += ` × ${fmtMoney(taux)} = *${fmtMoney(cost)} د.م.*`;
+      }
+      text += line + '\n';
+    }
+    const summary: string[] = [];
+    if (presentCount) summary.push(`${presentCount} حاضر`);
+    if (absentCount)  summary.push(`${absentCount} غائب`);
+    if (congeCount)   summary.push(`${congeCount} عطلة`);
+    if (demiCount)    summary.push(`${demiCount} نص نهار`);
+    if (summary.length) text += `\n📊 ${summary.join(' · ')}`;
+    if (totalHsup > 0) text += `\n⏱️ ساعات إضافية: ${totalHsup}h · *${fmtMoney(totalHsupCost)} د.م.*`;
+    text += '\n';
+  }
+
+  if (pcN > 0) {
+    text += '\n*👷 عمال PCs:*\n';
+    let totalQte = 0, totalCost = 0;
+    for (const r of pcPres!) {
+      const ouv = (r as { ouvriers_pc?: { nom?: string } }).ouvriers_pc;
+      const nom = ouv?.nom || '?';
+      const qte  = Number(r.qte || 0);
+      const prix = Number(r.prix || 0);
+      const cost = qte * prix;
+      totalQte += qte;
+      totalCost += cost;
+      text += `✅ ${nom} · ${r.pc_nom} · ${qte} × ${fmtMoney(prix)} = *${fmtMoney(cost)} د.م.*\n`;
+    }
+    text += `\n📦 المجموع: ${totalQte} قطعة · *${fmtMoney(totalCost)} د.م.*\n`;
+  }
+
   const sent = await broadcastTelegram(text);
-  return new Response(JSON.stringify({ ok: true, job: 'workers_eod', telegram: sent }));
+  return new Response(JSON.stringify({
+    ok: true, job: 'workers_eod', telegram: sent,
+    salaries: presN, pcs: pcN,
+  }));
 }
 
 // ── monthly_report — day 1 @ 09h ────────────────────────────────

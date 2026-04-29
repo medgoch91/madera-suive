@@ -2594,22 +2594,101 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'كل الفترة':'Toute la période',
   // Cheques actions
   'تخلص':'Régler', '✅ تخلص':'✅ Régler', 'ف الحساب:':'En compte :',
+  // Factures page
+  'العملاء':'Clients', 'المنتجات':'Produits', 'الشركة':'Société',
+  'فاتورة جديدة':'Nouvelle facture', 'فاتورة':'Facture', 'فواتير':'Factures',
+  'إجمالي الفوترة':'Total facturation', 'في الانتظار':'En attente',
+  'المبلغ TTC':'Montant TTC', 'TTC المبلغ':'Montant TTC',
+  'تحديد الكل':'Tout sélectionner', 'إلغاء تحديد الكل':'Tout désélectionner',
+  'بحث عن فاتورة أو عميل...':'Rechercher facture ou client...',
+  'بحث بالرقم، الفورنيسور، سلعة أو ملاحظة...':'Recherche par n°, fournisseur, article, note...',
+  'بحث بالرقم أو الفورنيسور...':'Recherche par n° ou fournisseur...',
+  'بحث باسم، تيليفون، مدينة...':'Recherche par nom, tél, ville...',
+  'بحث بالاسم أو المرجع...':'Recherche par nom ou réf...',
+  'رقم':'N°', 'رقم البون':'N° du bon', 'رقم الشيك':'N° du chèque', 'رقم الفاتورة':'N° de facture',
+  'معلقة':'En attente',
+  'مدفوعة':'Payée', 'مرتجعة':'Retournée',
+  'إجمالي':'Total', 'نهائي':'Net', 'المجموع TTC':'Total TTC', 'TTC':'TTC',
+  'TVA':'TVA', 'الضريبة':'Taxe', 'الخصم':'Remise',
+  'PAYÉE':'PAYÉE',
+  'الرصيد الحالي':'Solde actuel',
+  // Top bar / sidebar
+  'إدارة التسويات والبونات':'Gestion règlements & bons',
+  'سويفي':'Suivi',
+  'الإدارة':'Administration', 'الإدارة العامة':'Administration générale',
+  // Buttons / toolbar
+  'إضافة فورنيسور':'Ajouter fournisseur', '➕ إضافة فورنيسور':'➕ Ajouter fournisseur',
+  '＋ فاتورة جديدة':'＋ Nouvelle facture', '+ فاتورة جديدة':'+ Nouvelle facture',
+  '+ سلعة جديدة':'+ Nouvel article', '+ بون جديد':'+ Nouveau bon',
+  // Common form labels
+  'اسم الشركة أو الشخص':'Nom entreprise ou personne',
+  'أكادير، الدار البيضاء...':'Agadir, Casablanca...',
+  'الاسم *':'Nom *', 'الإيميل *':'Email *', 'كلمة السر *':'Mot de passe *',
+  'الإيميل':'Email', 'كلمة السر':'Mot de passe',
+  'كلمة السر جديدة':'Nouveau mot de passe',
+  // Misc
+  'ICE':'ICE', 'ICE:':'ICE :',
+  'تم الحفظ!':'Enregistré !', 'تم الإضافة!':'Ajouté !', '✅ تم':'✅ OK',
+  'ما كاينش':'Aucun', 'ما كاين حتى':'Aucun', 'لا يوجد سعر بعد':'Aucun prix défini',
+  'لا توجد بونات باقية':'Aucun bon en attente',
+  'الدور':'Rôle',
+  'الصلاحيات':'Autorisations', '🔑 الصلاحيات':'🔑 Autorisations',
+  'مؤكد':'Confirmé', 'غير مؤكد':'Non confirmé',
+  '📅 أنشئ':'📅 Créé', '🕐 آخر دخول':'🕐 Dernière connexion',
+  'ما دخل بعد':'Jamais connecté',
+  // Audit / activity
+  'سجل النشاط':'Journal d\'activité',
+  'تم':'Terminé', 'فشل':'Échec',
+  // Workers / pointage
+  '👥 الأجراء':'👥 Salariés', '👷 عمال PCs':'👷 Ouvriers PC',
+  '📅 الحضور':'📅 Présence', '💰 الأجور':'💰 Salaires', '📊 السجل':'📊 Historique',
+  '👤 إضافة أجير':'👤 Ajouter salarié',
+  // Cmd+K / common
+  'بدون رقم':'Sans numéro', 'بدون تصنيف':'Sans catégorie',
+  // Dashboard
+  'CA':'CA', 'مصاريف':'Dépenses', 'الهامش':'Marge',
+  // Misc UI common
+  'لا':'Non', 'نعم':'Oui',
+  'متبقي':'Restant', 'سعر':'Prix', 'كمية':'Qté',
+  'بحث':'Rechercher', 'فلترة':'Filtrer',
+  // Reports KPIs (kept i18n as-is)
 });
 
 // Translate the inner text of a single text node (preserves leading/trailing spaces).
+// Smart fallback: if the trimmed value doesn't match the dict directly, try
+// stripping a leading icon-token (emoji / symbol) so '🧾 الفواتير' resolves to
+// '🧾 ' + dict['الفواتير'] = '🧾 Factures'.
 function _i18nTextNode(node){
   if(CURRENT_LANG !== 'fr') return;
   const raw = node.nodeValue;
   if(!raw) return;
   const trimmed = raw.trim();
   if(!trimmed) return;
-  const tr = AR_FR_DICT[trimmed];
+  let tr = AR_FR_DICT[trimmed];
+  let prefix = '';
+  if(!tr){
+    // Try " ICON TEXT " — first whitespace-separated token is non-letter (emoji/symbol)
+    const m = trimmed.match(/^(\S+)\s+(.+)$/);
+    if(m && !/^[\p{L}\p{N}]+$/u.test(m[1])){
+      const sub = AR_FR_DICT[m[2]];
+      if(sub){ tr = sub; prefix = m[1] + ' '; }
+    }
+  }
+  if(!tr){
+    // Try "TEXT ICON" — last token is non-letter symbol
+    const m = trimmed.match(/^(.+?)\s+(\S+)$/);
+    if(m && !/^[\p{L}\p{N}]+$/u.test(m[2])){
+      const sub = AR_FR_DICT[m[1]];
+      if(sub){ tr = sub + ' ' + m[2]; }
+    }
+  }
   if(tr){
     const lead  = (raw.match(/^\s*/)||[''])[0];
     const trail = (raw.match(/\s*$/)||[''])[0];
-    node.nodeValue = lead + tr + trail;
-  } else if(/[؀-ۿ]/.test(trimmed)){
-    // Track misses so we can grow the dict iteratively.
+    node.nodeValue = lead + prefix + tr + trail;
+    return;
+  }
+  if(/[؀-ۿ]/.test(trimmed)){
     try{
       window._i18nMisses = window._i18nMisses || new Set();
       if(window._i18nMisses.size < 1000) window._i18nMisses.add(trimmed);
@@ -11293,7 +11372,7 @@ function _renderSalHeroTabsHTML(active){
 function renderSalaries(){
   const page=document.getElementById('page-salaries');
   if(!page)return;
-  page.style.direction='rtl';page.style.width='100%';page.style.height='auto';
+  page.style.direction=(typeof CURRENT_LANG!=='undefined' && CURRENT_LANG==='fr'?'ltr':'rtl');page.style.width='100%';page.style.height='auto';
   const heroTabs = _renderSalHeroTabsHTML(salTopGroup);
 
   if(salTopGroup === 'elec'){
@@ -11338,7 +11417,7 @@ function renderSalaries(){
 function renderElecDist(){
   const page=document.getElementById('page-elec-dist');
   if(page){
-    page.style.direction='rtl';page.style.width='100%';page.style.height='auto';
+    page.style.direction=(typeof CURRENT_LANG!=='undefined' && CURRENT_LANG==='fr'?'ltr':'rtl');page.style.width='100%';page.style.height='auto';
     page.innerHTML='<div style="max-width:1300px;margin:0 auto">'+renderSalElecDist()+'</div>';
   }
   if(typeof salTopGroup !== 'undefined' && salTopGroup === 'elec'
@@ -15146,7 +15225,7 @@ function renderFactures(){
     try{var sv=uiLoadFactSub(); if(sv) factSubPage=sv;}catch(e){}
     window._factSubRestored=true;
   }
-  page.style.direction='rtl';page.style.width='100%';
+  page.style.direction=(typeof CURRENT_LANG!=='undefined' && CURRENT_LANG==='fr'?'ltr':'rtl');page.style.width='100%';
   const tabs=[
     {k:'list',lbl:'الفواتير',icon:'🧾'},
     {k:'new',lbl:'فاتورة جديدة',icon:'＋'},

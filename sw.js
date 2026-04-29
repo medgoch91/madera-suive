@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v62-runtime-fr-translator';
+const CACHE = 'suivi-v63-fr-coverage-pass2';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

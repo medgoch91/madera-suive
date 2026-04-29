@@ -1492,35 +1492,49 @@ function notifyPointageChange(kind, workerId){
 
 function _doPointageNotif(kind, workerId){
   const today = new Date().toISOString().slice(0,10);
-  if(kind === 'sal'){
-    const sal = (typeof salariesData !== 'undefined' ? salariesData : []).find(x => Number(x.id) === Number(workerId));
-    const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => p.salarie_id === Number(workerId) && p.date === today);
-    if(!sal || !pres) return;
-    const name = (String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('#'+workerId);
-    const st = _POINTAGE_STATUS[pres.statut] || { icon:'·', lbl:String(pres.statut||'?') };
-    const hsup = Number(pres.heures_supp || 0);
-    const taux = Number(pres.taux_horaire || 0);
-    const cost = hsup * taux;
-    let text = `👤 ${name}\n${st.icon} ${st.lbl} — ${fmtDate(today)}`;
-    if(hsup > 0){
-      text += `\n⏱️ +${hsup}h`;
-      if(taux > 0) text += ` × ${fmtN(taux)} = ${fmt(cost)}`;
+  try{
+    if(kind === 'sal'){
+      const sal = (typeof salariesData !== 'undefined' ? salariesData : []).find(x => Number(x.id) === Number(workerId));
+      const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => Number(p.salarie_id) === Number(workerId) && p.date === today);
+      const name = sal
+        ? ((String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('#'+workerId))
+        : ('أجير #'+workerId);
+      if(!pres){
+        // Row was just saved — should be there. Fallback to a simple ping if cache missed.
+        sendTelegramBroadcast(`👤 ${name}\n📝 تحديث الحضور — ${fmtDate(today)}`);
+        return;
+      }
+      const st = _POINTAGE_STATUS[pres.statut] || { icon:'·', lbl:String(pres.statut||'?') };
+      const hsup = Number(pres.heures_supp || 0);
+      const taux = Number(pres.taux_horaire || 0);
+      const cost = hsup * taux;
+      let text = `👤 ${name}\n${st.icon} ${st.lbl} — ${fmtDate(today)}`;
+      if(hsup > 0){
+        text += `\n⏱️ +${hsup}h`;
+        if(taux > 0) text += ` × ${fmtN(taux)} = ${fmt(cost)}`;
+      }
+      sendTelegramBroadcast(text);
+    } else if(kind === 'pc'){
+      const ouv = (typeof ouvriersPc !== 'undefined' ? ouvriersPc : []).find(o => Number(o.id) === Number(workerId));
+      const name = ouv ? (ouv.nom || ('#'+workerId)) : ('عامل PC #'+workerId);
+      const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => Number(r.ouvrier_id) === Number(workerId) && r.date === today && Number(r.qte||0) > 0);
+      if(!records.length){
+        // No matching rows in cache (maybe qte just got cleared, or cache out-of-sync)
+        sendTelegramBroadcast(`👷 ${name}\n📝 تحديث PC — ${fmtDate(today)}`);
+        return;
+      }
+      let text = `👷 ${name} — ${fmtDate(today)}\n`;
+      let total = 0;
+      records.forEach(r => {
+        const c = Number(r.qte||0) * Number(r.prix||0);
+        total += c;
+        text += `🧱 ${r.pc_nom} · ${r.qte} × ${fmtN(r.prix)} = ${fmt(c)}\n`;
+      });
+      text += `\n📦 المجموع: ${fmt(total)}`;
+      sendTelegramBroadcast(text);
     }
-    sendTelegramBroadcast(text);
-  } else if(kind === 'pc'){
-    const ouv = (typeof ouvriersPc !== 'undefined' ? ouvriersPc : []).find(o => Number(o.id) === Number(workerId));
-    if(!ouv) return;
-    const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => r.ouvrier_id === Number(workerId) && r.date === today && Number(r.qte||0) > 0);
-    if(!records.length) return;
-    let text = `👷 ${ouv.nom} — ${fmtDate(today)}\n`;
-    let total = 0;
-    records.forEach(r => {
-      const c = Number(r.qte||0) * Number(r.prix||0);
-      total += c;
-      text += `🧱 ${r.pc_nom} · ${r.qte} × ${fmtN(r.prix)} = ${fmt(c)}\n`;
-    });
-    text += `\n📦 المجموع: ${fmt(total)}`;
-    sendTelegramBroadcast(text);
+  }catch(e){
+    console.error('pointage notif error:', e);
   }
 }
 

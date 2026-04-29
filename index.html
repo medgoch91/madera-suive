@@ -10982,6 +10982,7 @@ async function salSetPieceQty(date,catIdx,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
   // Update cell style live
   if(event&&event.target){
     const inp=event.target;
@@ -11023,6 +11024,7 @@ async function salQuickSetStatut(salId, date, statut){
     salariePresences = salariePresences.filter(p => !(p.salarie_id===id && p.date===date));
     salariePresences.push(res[0]);
   }
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
   renderSalaries();
 }
 
@@ -11034,6 +11036,14 @@ async function salQuickClear(salId, date){
     await sbFetch('salarie_presences?id=eq.'+existing.id, 'DELETE');
   }
   salariePresences = salariePresences.filter(p=>!(p.salarie_id===id&&p.date===date));
+  if(date === new Date().toISOString().slice(0,10)){
+    // Standalone notif — the row is now gone, so notifyPointageChange would no-op.
+    const sal = salariesData.find(x => x.id===id);
+    if(sal){
+      const name = (String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('#'+id);
+      sendTelegramBroadcast(`👤 ${name}\n🗑️ تم مسح الحضور — ${fmtDate(date)}`);
+    }
+  }
   renderSalaries();
 }
 
@@ -11059,6 +11069,14 @@ async function salMarkAllPresent(date){
     }
     hideLoader();
     toast('✅ تم تسجيل الحضور الجماعي','success');
+    if(date === new Date().toISOString().slice(0,10)){
+      // Single bulk notif — much better than N per-worker notifs in a tight loop.
+      const newlyMarked = actifs.filter(s => {
+        const p = salariePresences.find(p => p.salarie_id===s.id && p.date===date);
+        return p && p.statut === 'present';
+      });
+      sendTelegramBroadcast(`👥 *تسجيل جماعي — ${fmtDate(date)}*\n✅ ${newlyMarked.length} أجير تسجلو حاضرين`);
+    }
     renderSalaries();
   }catch(e){ hideLoader(); toast('فشل: '+(e&&e.message||''),'error'); }
 }

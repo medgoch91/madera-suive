@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v58-bons-in-catalog-tabs';
+const CACHE = 'suivi-v59-remove-sidebar-bons';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

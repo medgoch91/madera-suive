@@ -1091,10 +1091,8 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-section-label" data-i18n="sec.gestion">الإدارة</span>
       <span class="nav-section-line"></span>
     </div>
-    <button class="nav-btn" onclick="showPage('bons',this)" id="nav-bons">
-      <span class="nav-icon">📋</span> <span data-i18n="nav.bons">البونات</span>
-      <span class="nav-badge" id="badge-free" style="display:none">0</span>
-    </button>
+    <!-- البونات moved into the فورنيسور-و-السلعة catalog hub (3rd tab). The
+         badge-free count is rebuilt under the articles nav-btn instead. -->
     <button class="nav-btn" onclick="showPage('cheques',this)">
       <span class="nav-icon">🗒️</span> <span data-i18n="nav.cheques">التسويات</span>
     </button>
@@ -2599,9 +2597,12 @@ function closeSidebar(){
 
 function updateSidebar(){
   const free=bons.filter(b=>!b.chequeId).length;
+  // badge-free was on the (now removed) sidebar bons button. Skip if absent.
   const badge=document.getElementById('badge-free');
-  badge.style.display=free?'inline-block':'none';
-  badge.textContent=free;
+  if(badge){
+    badge.style.display=free?'inline-block':'none';
+    badge.textContent=free;
+  }
   const paid=cheques.filter(c=>c.status==='مدفوع').reduce((s,c)=>s+Number(c.montant),0);
   const pending=cheques.filter(c=>c.status==='معلق').reduce((s,c)=>s+Number(c.montant),0);
   document.getElementById('sidebar-stats').innerHTML=`
@@ -10733,7 +10734,9 @@ async function _saveBonImpl(){
     sendTelegramNotif(bon);
     updateSidebar();
     setTimeout(function(){
-      showPage('bons', document.querySelectorAll('.nav-btn')[1]);
+      // البونات moved into the catalog hub — highlight the articles nav-btn instead.
+      var hubBtn = document.querySelector('.nav-btn[onclick*="showPage(\'articles\'"]') || document.querySelectorAll('.nav-btn')[0];
+      showPage('bons', hubBtn);
     }, bonAlerts.length?2500:1200);
 
   }catch(e){

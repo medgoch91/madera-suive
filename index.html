@@ -2699,6 +2699,38 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'هل أنت متأكد؟':'Êtes-vous sûr(e) ?',
   // Misc UX
   'مزامنة':'Synchronisation', '🔄 مزامنة':'🔄 Synchronisation',
+  // Dashboard
+  'نظرة عامة':'Vue d\'ensemble', 'الداشبورد':'Tableau de bord',
+  'رقم المعاملات':'Chiffre d\'affaires', 'CA':'CA',
+  'المصاريف':'Dépenses', 'الهامش':'Marge', 'MARGE':'MARGE',
+  'ديون معلقة':'Dettes en attente', 'لي خاصهم يخلصوك':'À encaisser',
+  'متأخرات':'En retard', 'ما عندكش متأخرات':'Aucun retard',
+  '✅ ما عندكش متأخرات':'✅ Aucun retard',
+  'تطور المعاملات':'Évolution du CA', 'آخر 12 شهر':'12 derniers mois',
+  'فاتورة':'facture', 'فاتورات':'factures',
+  'مدفوعة':'payée(s)', 'معلقة':'en attente', 'مرتجعة':'retournée(s)',
+  'فاتورة غير مخلصة':'facture impayée', 'فواتير غير مخلصة':'factures impayées',
+  'شيك معلق':'chèque en attente', 'شيكات معلقة':'chèques en attente',
+  'شيك مدفوع':'chèque payé', 'شيكات مدفوعة':'chèques payés',
+  // Composite phrases (handled also via N TEXT fallback)
+  'فاتورة غير مخلصة':'facture impayée',
+  // Common single words
+  'شيك':'chèque', 'بون':'bon', 'سلعة':'article', 'فورنيسور':'fournisseur',
+  'فواتير':'factures', 'بونات':'bons', 'سلع':'articles',
+  // Echeancier
+  'متأخر':'En retard', 'كاين 1':'1 en retard',
+  // Misc dashboard chart labels
+  'avr':'avr', 'oct':'oct', 'mai':'mai', 'jan':'jan', 'fév':'fév',
+  // Activity / sidebar bottom
+  'في الانتظار':'En attente',
+  // Numbers / money
+  'د.م.':'DH', 'DH':'DH', 'دولار':'USD',
+  // Misc dashboard
+  'لاصق':'collé', 'شهر':'mois', 'سنة':'année',
+  'آخر تحديث':'Dernière mise à jour',
+  // Login
+  'تسجيل الدخول':'Connexion', 'دخول':'Connexion',
+  'مرحباً':'Bienvenue', 'كلمة سر':'Mot de passe',
 });
 
 // Translate the inner text of a single text node (preserves leading/trailing spaces).
@@ -2758,6 +2790,16 @@ function _i18nTextNode(node){
         const tailTr = AR_FR_DICT[tail];
         tr = sub + ' '+m[2]+' ' + (tailTr || tail);
       }
+    }
+  }
+  if(!tr){
+    // Number-led: 'N TEXT' → 'N <translated>'. Handles plurals like '2 فاتورة'.
+    const m = trimmed.match(/^([\d٠-٩][\d٠-٩.,\s]*?)\s+(.+)$/);
+    if(m){
+      const numPart = m[1].trim();
+      const rest = m[2].trim();
+      const sub = AR_FR_DICT[rest];
+      if(sub){ tr = numPart + ' ' + sub; }
     }
   }
   if(tr){

@@ -8438,126 +8438,44 @@ function renderAdmin(){
     document.getElementById('page-admin').innerHTML='<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">غير مصرح</div></div>';
     return;
   }
-  const users=getUsers();
-  const activeCount=users.filter(u=>u.active).length;
-  const adminCount=users.filter(u=>u.role==='admin').length;
-
   let html='';
 
-  // HERO BANNER
+  // HERO BANNER — count gets filled in by loadAdminUsers() once the
+  // Edge Function returns the real Auth user list.
   html+='<div class="admin-hero">'
     +'<div style="position:relative;z-index:1">'
       +'<div class="admin-hero-title">👥 إدارة المستخدمين</div>'
-      +'<div class="admin-hero-sub">تحكم كامل في الوصول والصلاحيات</div>'
+      +'<div class="admin-hero-sub">كل مستخدم هنا = حساب Supabase Auth حقيقي</div>'
     +'</div>'
     +'<div class="admin-stats">'
-      +'<div class="admin-stat"><div class="admin-stat-val">'+users.length+'</div><div class="admin-stat-lbl">المجموع</div></div>'
-      +'<div class="admin-stat"><div class="admin-stat-val">'+activeCount+'</div><div class="admin-stat-lbl">نشيط</div></div>'
-      +'<div class="admin-stat"><div class="admin-stat-val">'+adminCount+'</div><div class="admin-stat-lbl">مدير</div></div>'
+      +'<div class="admin-stat"><div class="admin-stat-val" id="au-stat-total">…</div><div class="admin-stat-lbl">المجموع</div></div>'
+      +'<div class="admin-stat"><div class="admin-stat-val" id="au-stat-confirmed">…</div><div class="admin-stat-lbl">مؤكد</div></div>'
     +'</div>'
   +'</div>';
 
   html+='<div style="display:grid;grid-template-columns:1fr 360px;gap:24px;align-items:start">';
 
-  // LEFT: user cards
-  html+='<div class="users-grid">';
-  html+=users.map(u=>{
-    const isSelf=u.id===currentUser.id;
-    const isAdmin=u.role==='admin';
-    const perms=isAdmin?null:(u.permissions||getRoleDefaults(u.role));
-    const initials=(u.nom||u.username).split(' ').map(w=>w[0]).join('').substring(0,2).toUpperCase();
-    const avatarClass='user-avatar-lg'+(isAdmin?' admin-av':'')+(!u.active?' inactive':'');
-    const rd=getRoleDef(u.role);
+  // LEFT: real Supabase Auth users — populated async by loadAdminUsers()
+  html+='<div class="users-grid" id="au-list">'
+    +'<div class="empty-state" style="grid-column:1/-1;padding:40px 20px;color:var(--text3)">⏳ جاري تحميل المستخدمين...</div>'
+  +'</div>';
 
-    const roleBadge='<span class="role-badge" style="background:'+rd.color+'22;color:'+rd.color+';border:1px solid '+rd.color+'44">'+rd.icon+' '+rd.label+'</span>';
-    const statBadge=u.active
-      ?'<span class="badge badge-linked">● نشيط</span>'
-      :'<span class="badge badge-free">○ موقوف</span>';
-
-    // Permission chips: show only allowed pages (avoids 11 chips)
-    let permChips='';
-    if(isAdmin){
-      permChips='<span class="perm-chip all">✦ كلشي مسموح</span>';
-    } else {
-      const allowedList=ALL_PAGES.filter(function(p){return perms && perms[p.key]===true;});
-      if(allowedList.length===0){
-        permChips='<span class="perm-chip blocked">⚠ بلا صلاحيات</span>';
-      } else {
-        allowedList.forEach(function(p){
-          permChips+='<span class="perm-chip">'+p.emoji+' '+p.name+'</span>';
-        });
-      }
-    }
-
-    return '<div class="user-card">'
-      // HEADER
-      +'<div class="user-card-header">'
-        +'<div class="'+avatarClass+'">'+initials+'</div>'
-        +'<div style="flex:1;min-width:0">'
-          +'<div class="user-card-name">'+u.nom+'</div>'
-          +'<div class="user-card-username">@'+u.username+'</div>'
-          +'<div class="user-badges">'+roleBadge+statBadge+(isSelf?'<span style="font-size:10px;color:var(--text3);padding:2px 8px;border-radius:20px;border:1px solid var(--border)">أنت</span>':'')+'</div>'
-        +'</div>'
-      +'</div>'
-      // BODY: permissions
-      +'<div class="user-card-body">'
-        +'<div class="perms-label">🔑 الصلاحيات</div>'
-        +'<div class="user-perms">'+permChips+'</div>'
-      +'</div>'
-      // FOOTER: actions
-      +'<div class="user-card-footer">'
-        +(isSelf
-          ?'<div class="self-note">🔒 لا تقدر تعدل حسابك من هنا</div>'
-          :'<button class="uca-btn primary" onclick="editUser('+u.id+')">✏️ تعديل</button>'
-          +'<button class="uca-btn warn" onclick="toggleUserActive('+u.id+')">'+(u.active?'⏸ إيقاف':'▶ تنشيط')+'</button>'
-          +'<button class="uca-btn danger" onclick="deleteUser('+u.id+')" title="حذف">🗑️</button>')
-      +'</div>'
-    +'</div>';
-  }).join('');
-  html+='</div>';
-
-  // RIGHT: form panel
+  // RIGHT: add-user form
   html+='<div class="admin-form-panel">'
     +'<div class="admin-form-header">'
-      +'<div class="admin-form-header-title" id="uform-title">➕ مستخدم جديد</div>'
-      +'<button class="btn btn-outline" style="padding:5px 12px;font-size:12px" onclick="resetUserForm()">↺</button>'
+      +'<div class="admin-form-header-title">➕ مستخدم جديد</div>'
     +'</div>'
     +'<div class="admin-form-body">'
-    +'<input type="hidden" id="uform-id">'
-    +'<div class="form-grid" style="gap:12px">'
-    +'<div class="form-full"><label class="field-lbl">الاسم الكامل *</label><input class="field-inp" id="uform-nom" placeholder="مثال: محمد أمين"></div>'
-    +'<div><label class="field-lbl">اسم المستخدم *</label><input class="field-inp" id="uform-username" placeholder="username" dir="ltr"></div>'
-    +'<div><label class="field-lbl">كلمة السر</label><input class="field-inp" id="uform-password" type="password" placeholder="••••••••" dir="ltr"></div>'
-    +'<div><label class="field-lbl">الدور</label>'
-      +'<select class="field-inp" id="uform-role" onchange="onRoleChange()">'
-        +Object.keys(ROLE_DEFINITIONS).map(function(r){
-          var d=ROLE_DEFINITIONS[r];
-          return '<option value="'+r+'">'+d.icon+' '+d.label+' — '+d.desc+'</option>';
-        }).join('')
-      +'</select>'
-    +'</div>'
-    +'<div><label class="field-lbl">الحالة</label>'
-      +'<select class="field-inp" id="uform-active">'
-        +'<option value="true">● نشيط</option>'
-        +'<option value="false">○ موقوف</option>'
-      +'</select>'
-    +'</div>'
-    +'</div>'
-    // PERMISSIONS SECTION
-    +'<div class="perms-section" id="perms-card">'
-    +'<div class="perms-section-title"><span>🔑</span> الصلاحيات <span style="font-size:11px;font-weight:400;color:var(--text3);margin-right:auto">(تتبدل أوتوماتيكياً حسب الدور، ويمكن تعديلها)</span></div>'
-    +ALL_PAGES.map(function(p){
-      return '<div class="perm-row">'
-        +'<span class="perm-row-label">'+p.emoji+' '+p.name+'</span>'
-        +'<label class="toggle"><input type="checkbox" id="perm-'+p.key+'" checked><span class="toggle-slider"></span></label>'
-      +'</div>';
-    }).join('')
-    +'<div style="font-size:11px;color:var(--text3);margin-top:12px;padding-top:10px;border-top:1px solid var(--border)">'
-    +'⚠️ المدير يشوف كلشي دايماً بغض النظر على الصلاحيات'
-    +'</div>'
-    +'</div>'
-    +'<button class="admin-save-btn" onclick="saveUser()">💾 حفظ</button>'
-    +'<div id="uform-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>'
+      +'<div class="form-grid" style="gap:12px">'
+        +'<div class="form-full"><label class="field-lbl">الاسم</label><input class="field-inp" id="au-nom" placeholder="مثال: محمد أمين"></div>'
+        +'<div class="form-full"><label class="field-lbl">الإيميل *</label><input class="field-inp" id="au-email" type="email" dir="ltr" placeholder="user@example.com"></div>'
+        +'<div class="form-full"><label class="field-lbl">كلمة السر * <span style="color:var(--text3);font-weight:400">(6 حروف على الأقل)</span></label><input class="field-inp" id="au-password" type="password" dir="ltr" placeholder="••••••••"></div>'
+      +'</div>'
+      +'<div style="font-size:11px;color:var(--text3);margin-top:14px;padding:10px 12px;background:rgba(147,51,234,0.06);border:1px solid rgba(147,51,234,0.18);border-radius:8px;line-height:1.6">'
+        +'ℹ️ كل مستخدم زدتيه = حساب Supabase Auth ك-يدخل بإيميلو + كلمة السر، و كاين <b>صلاحيات admin كاملة</b> أوتوماتيكياً (single-tenant). باش تحدد الصلاحيات الفردية، خاصنا role-based access f phase ثانية.'
+      +'</div>'
+      +'<button class="admin-save-btn" onclick="addAdminUser()" style="margin-top:14px">💾 إنشاء</button>'
+      +'<div id="au-form-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>'
     +'</div>'
   +'</div>';
 
@@ -8755,9 +8673,115 @@ function renderAdmin(){
     +'</div>';
 
   document.getElementById('page-admin').innerHTML=html;
+  try{ loadAdminUsers(); }catch(e){ /* admin-users edge function may not exist yet */ }
   try{ loadAuditLog(); }catch(e){ /* audit_log table may not exist yet */ }
   try{ loadTrash(); }catch(e){ /* deleted_at column may not exist yet */ }
   try{ pushRenderBtn(); }catch(e){ /* push api may be absent */ }
+}
+
+// ── Real Supabase Auth users (drives the إدارة المستخدمين page) ──
+const ADMIN_USERS_FN = SB_URL + '/functions/v1/admin-users';
+
+async function _adminUsersAuthHeader(){
+  const tok = (typeof window !== 'undefined' && window._sbAccessToken) || SB_KEY;
+  return { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' };
+}
+
+async function loadAdminUsers(){
+  const list = document.getElementById('au-list');
+  if(!list) return;
+  list.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:40px 20px;color:var(--text3)">⏳ جاري التحميل...</div>';
+  try{
+    const r = await fetch(ADMIN_USERS_FN, { headers: await _adminUsersAuthHeader() });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || ('HTTP '+r.status));
+    const users = data.users || [];
+    const totalEl = document.getElementById('au-stat-total');
+    const confEl  = document.getElementById('au-stat-confirmed');
+    if(totalEl) totalEl.textContent = users.length;
+    if(confEl)  confEl.textContent  = users.filter(u => u.confirmed).length;
+    if(!users.length){
+      list.innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-icon">👤</div><div class="empty-title">لا يوجد مستخدمون</div></div>';
+      return;
+    }
+    list.innerHTML = users.map(u => {
+      const initials = ((u.nom || u.email || '?').split(' ').map(w=>w[0]).join('').slice(0,2) || '?').toUpperCase();
+      const last = u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString('fr-MA') : 'ما دخل بعد';
+      const created = u.created_at ? new Date(u.created_at).toLocaleDateString('fr-MA') : '—';
+      return '<div class="user-card">'
+        + '<div class="user-card-header">'
+          + '<div class="user-avatar-lg admin-av">'+escB(initials)+'</div>'
+          + '<div style="flex:1;min-width:0">'
+            + '<div class="user-card-name">'+escB(u.nom || u.email.split('@')[0])+'</div>'
+            + '<div class="user-card-username" dir="ltr">'+escB(u.email||'')+'</div>'
+            + '<div class="user-badges">'
+              + '<span class="role-badge" style="background:rgba(147,51,234,0.18);color:var(--accent);border:1px solid rgba(147,51,234,0.4)">⚙️ مدير</span>'
+              + (u.confirmed ? '<span class="badge badge-linked">● مؤكد</span>' : '<span class="badge badge-free">⏳ غير مؤكد</span>')
+              + (u.is_self ? '<span style="font-size:10px;color:var(--text3);padding:2px 8px;border-radius:20px;border:1px solid var(--border)">أنت</span>' : '')
+            + '</div>'
+          + '</div>'
+        + '</div>'
+        + '<div class="user-card-body">'
+          + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2);padding:4px 0"><span>📅 أنشئ</span><span>'+escB(created)+'</span></div>'
+          + '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--text2);padding:4px 0"><span>🕐 آخر دخول</span><span>'+escB(last)+'</span></div>'
+        + '</div>'
+        + '<div class="user-card-footer">'
+          + (u.is_self
+              ? '<div class="self-note">🔒 ما تقدرش تحذف حسابك</div>'
+              : '<button class="uca-btn danger" onclick="deleteAdminUser('+JSON.stringify(u.id).replace(/"/g,'&quot;')+','+JSON.stringify(u.email||'').replace(/"/g,'&quot;')+')">🗑️ حذف</button>')
+        + '</div>'
+      + '</div>';
+    }).join('');
+  }catch(e){
+    console.error('loadAdminUsers failed:', e);
+    list.innerHTML = '<div class="empty-state" style="grid-column:1/-1;padding:30px 20px;color:var(--red)">❌ فشل التحميل: '+escB(String(e.message||e))+'</div>';
+  }
+}
+
+async function addAdminUser(){
+  const email = (document.getElementById('au-email')||{value:''}).value.trim();
+  const password = (document.getElementById('au-password')||{value:''}).value;
+  const nom = (document.getElementById('au-nom')||{value:''}).value.trim();
+  const msg = document.getElementById('au-form-msg');
+  const setMsg = (t,c) => { if(msg){ msg.style.color=c||'var(--text2)'; msg.textContent=t||''; } };
+  if(!email || !password){ setMsg('عبّي الإيميل و كلمة السر','var(--red)'); return; }
+  if(password.length < 6){ setMsg('كلمة السر خاصها 6 حروف على الأقل','var(--red)'); return; }
+  setMsg('⏳ جاري الإنشاء...');
+  try{
+    const r = await fetch(ADMIN_USERS_FN, {
+      method: 'POST',
+      headers: await _adminUsersAuthHeader(),
+      body: JSON.stringify({ email, password, nom }),
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || ('HTTP '+r.status));
+    setMsg('✅ تم إنشاء '+email,'var(--green)');
+    document.getElementById('au-email').value = '';
+    document.getElementById('au-password').value = '';
+    document.getElementById('au-nom').value = '';
+    setTimeout(() => setMsg(''), 3000);
+    loadAdminUsers();
+  }catch(e){
+    console.error('addAdminUser failed:', e);
+    setMsg('❌ '+(e.message||e),'var(--red)');
+  }
+}
+
+async function deleteAdminUser(id, email){
+  if(!confirm('حذف '+(email||id)+' بشكل نهائي من Supabase Auth؟')) return;
+  try{
+    const r = await fetch(ADMIN_USERS_FN+'?id='+encodeURIComponent(id), {
+      method: 'DELETE',
+      headers: await _adminUsersAuthHeader(),
+    });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data.error || ('HTTP '+r.status));
+    try{ toast('✅ تم الحذف','success'); }catch(_){}
+    loadAdminUsers();
+  }catch(e){
+    console.error('deleteAdminUser failed:', e);
+    try{ toast('❌ '+(e.message||e),'error'); }catch(_){}
+  }
 }
 
 // ════════════════════════════════════════════════════════════════

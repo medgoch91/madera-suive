@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v59-remove-sidebar-bons';
+const CACHE = 'suivi-v60-admin-real-auth-users';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -7,6 +7,7 @@ import { sendMessage, sendDocument, type TgInlineKeyboard } from '../_shared/tg.
 import { sendWebPush } from '../_shared/push.ts';
 import { buildTodayMessage } from './commands.ts';
 import { todayCasa, fmtMoney, safeNum } from '../_shared/util.ts';
+import { ftpUpload } from '../_shared/ftp.ts';
 
 async function broadcastTelegram(text: string, parseMode: 'Markdown' | 'HTML' = 'Markdown'): Promise<number> {
   const { data: subs } = await sb.from('bot_subscribers').select('chat_id');
@@ -306,12 +307,42 @@ export async function jobBackupGdrive(): Promise<Response> {
   }
 }
 
-// Combined: fire both destinations in one cron call. One side failing
-// must not block the other — we await each independently.
+export async function jobBackupFtp(): Promise<Response> {
+  const host = Deno.env.get('HOSTINGER_FTP_HOST');
+  const user = Deno.env.get('HOSTINGER_FTP_USER');
+  const pass = Deno.env.get('HOSTINGER_FTP_PASS');
+  if (!host || !user || !pass) {
+    return new Response(JSON.stringify({
+      ok: false, job: 'ftp_backup',
+      error: 'HOSTINGER_FTP_HOST/USER/PASS env not set',
+    }), { status: 200 });
+  }
+  const { today, json, totalRows, errors } = await buildBackupDump();
+  const filename = `backup-maderadeco-${today}.json`;
+  const remotePath = `backups/${filename}`;
+  try {
+    await ftpUpload({ host, user, pass, remotePath, content: json });
+    return new Response(JSON.stringify({
+      ok: true, job: 'ftp_backup', remote: remotePath,
+      rows: totalRows, errors,
+    }));
+  } catch (e) {
+    console.error('ftp backup failed', e);
+    return new Response(JSON.stringify({
+      ok: false, job: 'ftp_backup',
+      error: (e as Error).message || String(e),
+    }), { status: 200 });
+  }
+}
+
+// Combined: fire all configured destinations in one cron call. Each side runs
+// independently — one failing must not block the others.
 export async function jobBackupAll(): Promise<Response> {
   const tgRes = await jobBackupTelegram().catch((e) => new Response(JSON.stringify({ ok: false, error: String(e) })));
   const gdRes = await jobBackupGdrive().catch((e) => new Response(JSON.stringify({ ok: false, error: String(e) })));
-  const tg = await tgRes.json().catch(() => ({}));
-  const gd = await gdRes.json().catch(() => ({}));
-  return new Response(JSON.stringify({ ok: true, telegram: tg, gdrive: gd }));
+  const ftpRes = await jobBackupFtp().catch((e) => new Response(JSON.stringify({ ok: false, error: String(e) })));
+  const tg  = await tgRes.json().catch(() => ({}));
+  const gd  = await gdRes.json().catch(() => ({}));
+  const ftp = await ftpRes.json().catch(() => ({}));
+  return new Response(JSON.stringify({ ok: true, telegram: tg, gdrive: gd, ftp }));
 }

@@ -12,7 +12,7 @@ import { startNewBon, startCheque, handleConvMessage } from './conversations.ts'
 import {
   jobChequesDueMorning, jobChequesTodayPing,
   jobWorkersEod, jobMonthlyReport,
-  jobBackupTelegram, jobBackupGdrive, jobBackupAll,
+  jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
 } from './jobs.ts';
 import { handleChequeCallback } from './callbacks.ts';
 
@@ -31,9 +31,10 @@ Deno.serve(async (req: Request) => {
       case 'cheques_today_ping':  return await jobChequesTodayPing();
       case 'workers_eod':         return await jobWorkersEod();
       case 'monthly_report':      return await jobMonthlyReport();
-      case 'backup':              return await jobBackupAll();          // Telegram + Drive
+      case 'backup':              return await jobBackupAll();          // Telegram + Drive + FTP
       case 'backup_telegram':     return await jobBackupTelegram();     // for ad-hoc testing
       case 'backup_gdrive':       return await jobBackupGdrive();       // for ad-hoc testing
+      case 'backup_ftp':          return await jobBackupFtp();          // for ad-hoc testing
       default:
         return new Response(JSON.stringify({ error: 'unknown cron job', cronJob }), { status: 400 });
     }

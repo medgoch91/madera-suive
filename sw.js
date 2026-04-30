@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v68-effective-dated-salary-rates';
+const CACHE = 'suivi-v69-auto-taux-from-daily';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

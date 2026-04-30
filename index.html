@@ -14957,7 +14957,7 @@ function renderSalAjout(){
             +'<div><label class="field-lbl">التليفون</label><input class="field-inp" id="sal-edit-tel" value="'+escB(s.tel||'')+'" style="font-size:13px"></div>'
             +'<div><label class="field-lbl">الراتب الأسبوعي (DH)</label><input type="number" class="field-inp" id="sal-edit-weekly" value="'+((Number(s.salaire_base)||0)*6).toFixed(2)+'" min="0" step="0.01" oninput="salSyncFromWeekly(\'edit\')" style="font-size:13px"><div style="font-size:10px;color:var(--text3);margin-top:3px">÷ 6 أيام = يومي</div></div>'
             +'<div><label class="field-lbl">الراتب اليومي (DH) *</label><input type="number" class="field-inp" id="sal-edit-salaire" value="'+s.salaire_base+'" min="0" step="0.01" oninput="salSyncFromDaily(\'edit\')" style="font-size:13px"><div id="sal-edit-hourly-info" style="font-size:10px;color:var(--accent);margin-top:3px;font-weight:600">= '+((Number(s.salaire_base)||0)/8).toFixed(2)+' DH/س (÷ 8)</div></div>'
-            +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-edit-taux" value="'+(s.taux_hsup||0)+'" min="0" step="0.5" style="font-size:13px"></div>'
+            +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-edit-taux" value="'+(s.taux_hsup||0)+'" min="0" step="0.5" oninput="salTauxManual(\'edit\')" style="font-size:13px"><div style="font-size:10px;color:var(--text3);margin-top:3px">يتعمر تلقائيا = اليومي ÷ 8 (تقدر تعدلها)</div></div>'
           +'</div>'
           +'<div style="display:flex;gap:8px">'
             +'<button onclick="salSaveEdit('+s.id+')" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer">💾 حفظ</button>'
@@ -14997,7 +14997,7 @@ function renderSalAjout(){
         +'<div><label class="field-lbl">التليفون</label><input class="field-inp" id="sal-new-tel" placeholder="0600000000"></div>'
         +'<div><label class="field-lbl">الراتب الأسبوعي (DH)</label><input type="number" class="field-inp" id="sal-new-weekly" min="0" step="0.01" placeholder="900.00" oninput="salSyncFromWeekly(\'new\')"><div style="font-size:10px;color:var(--text3);margin-top:3px">÷ 6 أيام = يومي</div></div>'
         +'<div><label class="field-lbl">الراتب اليومي (DH) *</label><input type="number" class="field-inp" id="sal-new-salaire" min="0" step="0.01" placeholder="150.00" oninput="salSyncFromDaily(\'new\')"><div id="sal-new-hourly-info" style="font-size:10px;color:var(--accent);margin-top:3px;font-weight:600">= 0.00 DH/س (÷ 8)</div></div>'
-        +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-new-taux" min="0" step="0.5" placeholder="25.00"></div>'
+        +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-new-taux" min="0" step="0.5" placeholder="25.00" oninput="salTauxManual(\'new\')"><div style="font-size:10px;color:var(--text3);margin-top:3px">يتعمر تلقائيا = اليومي ÷ 8 (تقدر تعدلها)</div></div>'
       +'</div>'
     : '<div style="display:flex;gap:10px;align-items:flex-end">'
         +'<div style="flex:1"><label class="field-lbl">الاسم *</label><input class="field-inp" id="pc-new-nom" placeholder="اسم العامل..."></div>'
@@ -15041,6 +15041,20 @@ function renderSalAjout(){
   +(pcInactifs.length?'<div style="font-size:11px;font-weight:700;color:var(--text3);margin:12px 0 8px;text-transform:uppercase;letter-spacing:0.5px">👷 PCs — متوقفون</div>'+pcInactifs.map(renderPcRow).join(''):'');
 }
 
+// Auto-fill taux_hsup with the same daily/8 hourly value the preview shows,
+// unless the user has already typed something custom into the taux field
+// (data-manual=1 set by salTauxManual). Lets a "raise the weekly to 900" edit
+// also bump the overtime taux without forcing a second manual entry.
+function _salAutoFillTaux(mode, daily){
+  var tEl=document.getElementById('sal-'+mode+'-taux');
+  if(!tEl) return;
+  if(tEl.dataset.manual === '1') return;
+  tEl.value = daily ? (daily/8).toFixed(2) : '';
+}
+function salTauxManual(mode){
+  var tEl=document.getElementById('sal-'+mode+'-taux');
+  if(tEl) tEl.dataset.manual='1';
+}
 function salSyncFromWeekly(mode){
   var wEl=document.getElementById('sal-'+mode+'-weekly');
   var dEl=document.getElementById('sal-'+mode+'-salaire');
@@ -15051,6 +15065,7 @@ function salSyncFromWeekly(mode){
   var hourly=daily/8;
   dEl.value=daily?daily.toFixed(2):'';
   if(hInfo)hInfo.textContent='= '+hourly.toFixed(2)+' DH/س (÷ 8)';
+  _salAutoFillTaux(mode, daily);
 }
 function salSyncFromDaily(mode){
   var wEl=document.getElementById('sal-'+mode+'-weekly');
@@ -15060,6 +15075,7 @@ function salSyncFromDaily(mode){
   var d=parseFloat(dEl.value)||0;
   if(wEl)wEl.value=d?(d*6).toFixed(2):'';
   if(hInfo)hInfo.textContent='= '+(d/8).toFixed(2)+' DH/س (÷ 8)';
+  _salAutoFillTaux(mode, d);
 }
 
 function salStartEdit(id){

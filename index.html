@@ -4576,36 +4576,52 @@ async function deleteBon(id){
     }
   }
 
+  // skipStock: when true, we'll soft-delete the bon WITHOUT subtracting stock.
+  // Used when localStorage stock is out of sync after a data wipe — the user
+  // confirmed via a second prompt that the stock figures aren't reliable.
+  var skipStock = false;
+
   if(shortages.length){
     var lines=shortages.map(function(s){
-      return '• '+s.nom+' — طالبين نطرحو '+s.qte+' والمتوفر فالستوك غير '+s.available+' (ناقص '+s.missing+')';
+      return '• '+s.nom+' — كنحاولو نطرحو '+s.qte+' والمسجل فالستوك غير '+s.available+' (ناقص '+s.missing+')';
     }).join('\n');
-    alert(
-      '⛔ ما يمكنش تحذف البون '+b.num+'\n\n'+
-      'السلع التالية كتنقصها الكمية فالستوك (كاينة فـ dispatches أو خرجات أخرى):\n\n'+
+    var override = confirm(
+      '⚠️ الستوك ما كافيش لحذف البون '+b.num+' بطريقة عادية:\n\n'+
       lines+'\n\n'+
-      '✅ الحل: حذف الـdispatches (التوزيع الكهربائي) أو الخرجات اللي اعتمدت على هاد السلع أولاً، من بعد عاود حذف البون.'
+      '🤔 هاد الشي عادة كيوقع ملي:\n'+
+      '  • الستوك المحلي قديم (بعد wipe data)\n'+
+      '  • dispatches/خرجات مزال كاينين على هاد السلع\n\n'+
+      '✅ OK = حذف البون بدون تعديل الستوك (لا ينقص ولا يزيد)\n'+
+      '✕ Cancel = ما تحذفوش (وحاول حذف الـdispatches أولا)'
     );
-    return;
+    if(!override) return;
+    skipStock = true;
+  } else {
+    if(!confirm('تأكيد حذف البون '+b.num+'؟\n\nغادي يتم طرح السلع من الستوك أوتوماتيكياً.')) return;
   }
-
-  if(!confirm('تأكيد حذف البون '+b.num+'؟\n\nغادي يتم طرح السلع من الستوك أوتوماتيكياً.')) return;
 
   showLoader('جاري حذف البون...');
   try{
     // ── Step 2: Soft-delete from Supabase (row kept with deleted_at) ──
     var sbRes=await softDeleteRow('bons', id);
-    if(sbRes && sbRes.__sbError){ throw new Error(sbParseError(sbRes.msg)); }
+    if(sbRes && sbRes.__sbError){
+      // Verbose error so the user / dev can see exactly what blocked the PATCH
+      // (RLS, FK, missing column...). Was previously truncated to 80 chars.
+      console.error('[deleteBon] softDeleteRow failed:', sbRes);
+      throw new Error('PATCH bons.deleted_at — HTTP '+(sbRes.status||'?')+': '+String(sbRes.msg||'').slice(0,400));
+    }
 
     // ── Step 3: Subtract stock (best-effort — Supabase already consistent) ──
-    for(var j=0;j<lignes.length;j++){
-      var lj=lignes[j];
-      var aj=Number(lj.articleId||0);
-      var qj=Number(lj.qte||0);
-      if(!aj || qj<=0) continue;
-      var c=getArtStock(aj);
-      var cN=(c==null?0:Number(c));
-      setArtStock(aj, Math.max(0, cN - qj));
+    if(!skipStock){
+      for(var j=0;j<lignes.length;j++){
+        var lj=lignes[j];
+        var aj=Number(lj.articleId||0);
+        var qj=Number(lj.qte||0);
+        if(!aj || qj<=0) continue;
+        var c=getArtStock(aj);
+        var cN=(c==null?0:Number(c));
+        setArtStock(aj, Math.max(0, cN - qj));
+      }
     }
 
     // ── Step 4: Unlink from cheque ──
@@ -4620,10 +4636,10 @@ async function deleteBon(id){
     renderBons();
     updateSidebar();
     try{ renderArticles(); }catch(_){}
-    toast('✅ تحذف البون وتطرح من الستوك','success');
+    toast(skipStock ? '✅ تحذف البون (الستوك ما تبدلش)' : '✅ تحذف البون وتطرح من الستوك','success');
   }catch(e){
     var msg=(e&&e.message)?e.message:String(e);
-    alert('❌ فشل الحذف: '+msg+'\n\nالبون بقى كما هو. عاود حاول.');
+    alert('❌ فشل الحذف:\n\n'+msg+'\n\nالبون بقى كما هو. شوف Console (F12) للتفاصيل.');
   }finally{
     hideLoader();
   }

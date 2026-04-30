@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v69-auto-taux-from-daily';
+const CACHE = 'suivi-v70-bon-delete-stock-override';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

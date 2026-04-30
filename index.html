@@ -2495,6 +2495,8 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'الجدول الزمني':'Échéancier', '📅 الجدول الزمني':'📅 Échéancier',
   'الفورنيسورات':'Fournisseurs', 'السلع':'Articles', 'فورنيسور و السلعة':'Fournisseurs & Articles',
   'الأجراء':'Salariés', 'الفواتير':'Factures', 'إدارة المستخدمين':'Gestion utilisateurs',
+  '📊 تاريخ تغيير الأسعار':'📊 Historique des taux',
+  'تاريخ تغيير الأسعار':'Historique des taux',
   '⚙️ إدارة المستخدمين':'⚙️ Gestion utilisateurs', 'نشاط المستخدمين':'Activité utilisateurs',
   '⚡ électricité à distance':'⚡ Électricité à distance',
   'بون جديد':'Nouveau bon', 'تسوية جديدة':'Nouveau règlement', 'سلعة جديدة':'Nouvel article',
@@ -11509,6 +11511,104 @@ let salariePresences=[];
 let salarieAvances=[];
 let salTaswiyas=[];
 let salCatalogue=[];
+let salaryRates=[];   // [{id, salarie_id, effective_from, salaire_base, taux_hsup, note, created_at}]
+
+// Effective-dated lookup: returns {salaire_base, taux_hsup} that was in force
+// for `salarieId` on `isoDate` (YYYY-MM-DD). Falls back to the salaries master
+// (denormalised "current") if no rate row covers the date.
+function getRateAtDate(salarieId, isoDate){
+  const id = Number(salarieId);
+  const date = String(isoDate || new Date().toISOString().slice(0,10));
+  let best = null;
+  (salaryRates || []).forEach(function(r){
+    if(Number(r.salarie_id) !== id) return;
+    if(String(r.effective_from) > date) return;
+    if(!best || String(r.effective_from) > String(best.effective_from)
+       || (String(r.effective_from) === String(best.effective_from) && Number(r.id||0) > Number(best.id||0))){
+      best = r;
+    }
+  });
+  if(best) return { salaire_base: Number(best.salaire_base||0), taux_hsup: Number(best.taux_hsup||0), source:'rates' };
+  // Fallback to master record so workers created before the migration still
+  // resolve to their cached rate.
+  const sal = (salariesData||[]).find(function(s){ return Number(s.id) === id; });
+  return {
+    salaire_base: sal ? Number(sal.salaire_base||0) : 0,
+    taux_hsup:    sal ? Number(sal.taux_hsup||0)    : 0,
+    source:'master',
+  };
+}
+
+// Insert a new effective-dated rate row + refresh the salaries master cache.
+async function pushSalaryRate(salarieId, effectiveFrom, salaireBase, tauxHsup, note){
+  const payload = {
+    salarie_id: Number(salarieId),
+    effective_from: effectiveFrom,
+    salaire_base: Number(salaireBase||0),
+    taux_hsup: Number(tauxHsup||0),
+    note: String(note||''),
+  };
+  const res = await sbFetch('salary_rates','POST',payload);
+  if(res && Array.isArray(res) && res[0]){
+    salaryRates.push(res[0]);
+    return res[0];
+  }
+  return null;
+}
+
+async function deleteSalaryRate(rateId){
+  if(!rateId) return;
+  await sbFetch('salary_rates?id=eq.'+rateId,'DELETE');
+  salaryRates = salaryRates.filter(function(r){ return Number(r.id) !== Number(rateId); });
+}
+
+// Compact rate-history block shown inside the worker edit modal so the user
+// can see when each rate took effect and roll one back if it was a mistake.
+function _salRateHistoryHTML(salId){
+  const rows = (salaryRates||[])
+    .filter(function(r){ return Number(r.salarie_id) === Number(salId); })
+    .slice()
+    .sort(function(a,b){ return String(b.effective_from).localeCompare(String(a.effective_from)); });
+  if(!rows.length) return '';
+  return '<div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)">'
+    +'<div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">📊 تاريخ تغيير الأسعار</div>'
+    +'<div style="display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto">'
+    + rows.map(function(r){
+        const hsupChip = Number(r.taux_hsup||0)>0 ? ' <span style="color:var(--purple);font-weight:700">'+fmtN(r.taux_hsup)+' DH/س</span>' : '';
+        const noteChip = r.note ? ' <span style="color:var(--text3);flex:1;font-size:10px;font-style:italic">'+escB(r.note)+'</span>' : '<span style="flex:1"></span>';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg3);border-radius:var(--radius-sm);font-size:11px">'
+          +'<span style="color:var(--text3);font-weight:600;min-width:90px">'+fmtDate(r.effective_from)+'</span>'
+          +'<span style="color:var(--accent);font-weight:700">'+fmtN(r.salaire_base)+' DH/يوم</span>'
+          + hsupChip
+          + noteChip
+          +'<button onclick="salDeleteRate('+r.id+',\''+escB(String(r.effective_from))+'\')" style="padding:2px 8px;border:1px solid rgba(232,64,64,0.3);background:transparent;color:var(--red);border-radius:12px;font-size:10px;cursor:pointer">🗑️</button>'
+        +'</div>';
+      }).join('')
+    +'</div></div>';
+}
+
+async function salDeleteRate(rateId, label){
+  if(!confirm('حذف سعر '+label+' ؟ الحساب غادي يرجع للسعر الأقدم اللي قبله.')) return;
+  showLoader('🗑️');
+  await deleteSalaryRate(rateId);
+  localStorage.setItem('sal_rates_v1',JSON.stringify(salaryRates));
+  hideLoader();
+  renderSalaries();
+}
+
+// Sum of base-wage owed across `presList` using the date-effective rate at
+// each presence's date. Treats present=1 day, demi=0.5 day, anything else=0.
+function _sumDayWageBase(salId, presList){
+  let total = 0;
+  (presList || []).forEach(function(p){
+    let mult = 0;
+    if(p.statut === 'present') mult = 1;
+    else if(p.statut === 'demi') mult = 0.5;
+    if(!mult) return;
+    total += mult * getRateAtDate(salId, p.date).salaire_base;
+  });
+  return total;
+}
 let ouvriersPc=[];       // {id, nom, actif}
 let ouvrierPcAssigns=[]; // {id, ouvrier_id, pc_nom, prix}
 let pcTaswiyas=JSON.parse(localStorage.getItem('pc_taswiyas_v1')||'[]'); // {ouvrier_id, date_from, date_to, montant, date_paiement}
@@ -11549,10 +11649,11 @@ async function loadSalariesData(){
   ouvriersPc        = JSON.parse(localStorage.getItem('ouvriers_pc_v1')||'[]');
   ouvrierPcAssigns  = JSON.parse(localStorage.getItem('ouvrier_pc_assign_v1')||'[]');
   pcPresences       = JSON.parse(localStorage.getItem('ouvrier_pc_pres_v1')||'[]');
+  salaryRates       = JSON.parse(localStorage.getItem('sal_rates_v1')||'[]');
 
   // 2) Try Supabase — only replace if it returns a real array
   try{
-    const [sals,pres,avs,tasw,cat,ouvpcs,assigns,pcpres,pctasw]=await Promise.all([
+    const [sals,pres,avs,tasw,cat,ouvpcs,assigns,pcpres,pctasw,rates]=await Promise.all([
       sbFetch('salaries','GET',null,'select=*&order=nom'),
       sbFetch('salarie_presences','GET',null,'select=*&order=date.desc&limit=1000'),
       sbFetch('salarie_avances','GET',null,'select=*&order=date.desc&limit=500'),
@@ -11562,7 +11663,9 @@ async function loadSalariesData(){
       sbFetch('ouvrier_pc_assign','GET',null,'select=*'),
       sbFetch('ouvrier_pc_presences','GET',null,'select=*&order=date.desc&limit=2000'),
       sbFetch('pc_taswiyas','GET',null,'select=*&order=created_at.desc&limit=500'),
+      sbFetch('salary_rates','GET',null,'select=*&order=effective_from.desc&limit=2000'),
     ]);
+    if(Array.isArray(rates))    { salaryRates=rates; localStorage.setItem('sal_rates_v1',JSON.stringify(rates)); }
     if(Array.isArray(sals))     { salariesData=sals; localStorage.setItem('sal_v1',JSON.stringify(sals)); }
     if(Array.isArray(pres))     { salariePresences=pres; localStorage.setItem('sal_pres_v1',JSON.stringify(pres)); }
     if(Array.isArray(avs))      { salarieAvances=avs; localStorage.setItem('sal_av_v1',JSON.stringify(avs)); }
@@ -11749,8 +11852,7 @@ async function salToggleJourStatut(date,statut){
 async function salSetHsup(date,field,val){
   if(!salPointageSalId)return;
   const id=Number(salPointageSalId);
-  const sal=salariesData.find(function(x){return x.id===id;});
-  const defTaux=sal?Number(sal.taux_hsup||0):0;
+  const defTaux=getRateAtDate(id,date).taux_hsup;
   const idx=salariePresences.findIndex(function(p){return p.salarie_id===id&&p.date===date;});
   let payload;
   if(idx>=0){
@@ -11775,8 +11877,7 @@ async function salSetHsup(date,field,val){
 // ═══ Per-cell heures supp setter for the Week Grid ═══
 async function salQuickSetHsup(salId,date,val){
   const id=Number(salId);
-  const sal=salariesData.find(function(x){return x.id===id;});
-  const defTaux=sal?Number(sal.taux_hsup||0):0;
+  const defTaux=getRateAtDate(id,date).taux_hsup;
   const hsup=parseFloat(val)||0;
   const pres=salariePresences.find(function(p){return p.salarie_id===id&&p.date===date;});
   const payload={
@@ -11851,9 +11952,8 @@ function salPointageSelect(val){
 // ═══ Quick-tap status cycling for the daily "Today" view ═══
 async function salQuickSetStatut(salId, date, statut){
   const id = Number(salId);
-  const sal = salariesData.find(x=>x.id===id);
   const pres = salariePresences.find(p => p.salarie_id===id && p.date===date);
-  const defTaux = sal ? Number(sal.taux_hsup||0) : 0;
+  const defTaux = getRateAtDate(id, date).taux_hsup;
   const payload = {
     salarie_id: id, date, statut,
     heures_supp: pres ? Number(pres.heures_supp||0) : 0,
@@ -11897,7 +11997,7 @@ async function salMarkAllPresent(date){
     for(const s of actifs){
       const pres = salariePresences.find(p=>p.salarie_id===s.id&&p.date===date);
       if(pres && pres.statut) continue; // skip already-marked
-      const defTaux = Number(s.taux_hsup||0);
+      const defTaux = getRateAtDate(s.id, date).taux_hsup;
       const payload = {salarie_id:s.id, date, statut:'present',
         heures_supp: pres?Number(pres.heures_supp||0):0,
         taux_horaire: pres?Number(pres.taux_horaire||0):defTaux,
@@ -12147,8 +12247,11 @@ function renderSalPointageDetail(){
       if(!p.notes)return t;
       try{const ls=JSON.parse(p.notes);return t+ls.reduce(function(s,l){return s+Number(l.qte)*Number(l.prix);},0);}catch{return t;}
     },0);
-    const salJour=Number(s?s.salaire_base:0);
-    const net=(joursP+demiJ)*salJour+totalHsup+totalProdWeek;
+    // Day-by-day: each present day uses the rate that was effective on that
+    // date, not the worker's current rate. Keeps historical weeks immutable
+    // when the user updates a worker's pay later.
+    const totalBase=_sumDayWageBase(id, myPres);
+    const net=totalBase+totalHsup+totalProdWeek;
     weekSummary='<div style="display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:16px">'
       +'<div style="background:rgba(39,174,96,0.1);border:1px solid rgba(39,174,96,0.3);border-radius:var(--radius-sm);padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--green)">'+(joursP+demiJ)+'</div><div style="font-size:11px;color:var(--text3)">يوم عمل</div></div>'
       +'<div style="background:rgba(232,64,64,0.1);border:1px solid rgba(232,64,64,0.3);border-radius:var(--radius-sm);padding:10px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--red)">'+joursAbs+'</div><div style="font-size:11px;color:var(--text3)">غياب</div></div>'
@@ -12275,7 +12378,7 @@ function salConfirmRegistration(){
   const demi=myPres.filter(function(p){return p.statut==='demi';}).length;
   const absent=myPres.filter(function(p){return p.statut==='absent';}).length;
   const joursTotal=present+demi*0.5;
-  const totalJours=joursTotal*Number(s.salaire_base);
+  const totalJours=_sumDayWageBase(id, myPres);
   const myAvs=salarieAvances.filter(function(a){return a.salarie_id===id;});
   const avsTotal=myAvs.reduce(function(t,a){return t+(Number(a.montant)||0);},0);
   const toast=document.createElement('div');
@@ -14451,8 +14554,9 @@ function renderSalDashboard(){
     const joursP=myPres.filter(function(p){return p.statut==='present';}).length;
     const demiJ=myPres.filter(function(p){return p.statut==='demi';}).length*0.5;
     const joursTotal=joursP+demiJ;
-    const salJour=Number(s.salaire_base);
-    const totalJours=joursTotal*salJour;
+    // Per-day rate so a wage bump today doesn't retroactively inflate last
+    // month's totals. Hsup already stores its taux_horaire on each row.
+    const totalJours=_sumDayWageBase(s.id, myPres);
     const totalHsup=myPres.reduce(function(t,p){return t+(Number(p.heures_supp||0)*Number(p.taux_horaire||0));},0);
     const totalProd=myPres.reduce(function(t,p){
       if(!p.notes)return t;
@@ -14860,6 +14964,7 @@ function renderSalAjout(){
             +'<button onclick="salEditId=null;renderSalaries()" style="padding:9px 14px;background:transparent;border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text2);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">إلغاء</button>'
           +'</div>'
           +'<div id="sal-edit-msg" style="font-size:12px;margin-top:6px;min-height:14px"></div>'
+          +_salRateHistoryHTML(s.id)
         +'</div>'
       :
         '<div style="display:flex;align-items:center;gap:12px">'
@@ -14971,11 +15076,30 @@ async function salSaveEdit(id){
   const taux=parseFloat((document.getElementById('sal-edit-taux')||{value:'0'}).value)||0;
   const msg=document.getElementById('sal-edit-msg');
   if(!nom){if(msg){msg.style.color='var(--red)';msg.textContent='الاسم مطلوب';}return;}
+  const sCur=salariesData.find(function(x){return x.id===id;});
+  const oldSal=sCur?Number(sCur.salaire_base||0):0;
+  const oldTaux=sCur?Number(sCur.taux_hsup||0):0;
+  const rateChanged=(Math.abs(salaire-oldSal)>0.001)||(Math.abs(taux-oldTaux)>0.001);
+  let effFrom=null;
+  if(rateChanged){
+    const today=new Date().toISOString().slice(0,10);
+    const ans=prompt('تاريخ سريان السعر الجديد (YYYY-MM-DD)؟\nالسعر الجديد كيتحسب ابتداء من هاد التاريخ. الأيام السابقة كتبقى بالسعر القديم.', today);
+    if(ans===null) return; // user cancelled
+    effFrom=String(ans||'').trim()||today;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(effFrom)){
+      if(msg){msg.style.color='var(--red)';msg.textContent='⚠️ تاريخ غير صالح (YYYY-MM-DD)';}
+      return;
+    }
+  }
   showLoader('💾');
-  const res=await sbFetch('salaries?id=eq.'+id,'PATCH',{nom,prenom,poste,tel,salaire_base:salaire,taux_hsup:taux});
+  await sbFetch('salaries?id=eq.'+id,'PATCH',{nom,prenom,poste,tel,salaire_base:salaire,taux_hsup:taux});
+  if(rateChanged){
+    await pushSalaryRate(id, effFrom, salaire, taux, 'تعديل من بطاقة الأجير');
+    localStorage.setItem('sal_rates_v1',JSON.stringify(salaryRates));
+  }
   hideLoader();
-  const s=salariesData.find(function(x){return x.id===id;});
-  if(s){s.nom=nom;s.prenom=prenom;s.poste=poste;s.tel=tel;s.salaire_base=salaire;s.taux_hsup=taux;}
+  if(sCur){sCur.nom=nom;sCur.prenom=prenom;sCur.poste=poste;sCur.tel=tel;sCur.salaire_base=salaire;sCur.taux_hsup=taux;
+    localStorage.setItem('sal_v1',JSON.stringify(salariesData));}
   salEditId=null;
   renderSalaries();
 }
@@ -15002,6 +15126,12 @@ async function salSaveNouvelAjir(){
   const saved=Array.isArray(res)?res[0]:(res&&res.id?res:null);
   if(saved&&saved.id){
     salariesData.push(saved);
+    localStorage.setItem('sal_v1',JSON.stringify(salariesData));
+    // Seed an initial salary_rates row so future rate changes have a baseline
+    // and historical day calculations resolve to this rate from day one.
+    const today=new Date().toISOString().slice(0,10);
+    await pushSalaryRate(saved.id, today, salaire, taux, 'سعر مبدئي عند إنشاء الأجير');
+    localStorage.setItem('sal_rates_v1',JSON.stringify(salaryRates));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم إضافة '+nom+'!';}
     setTimeout(function(){renderSalaries();},700);
   } else {

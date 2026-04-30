@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v67-fr-comprehensive-batch';
+const CACHE = 'suivi-v68-effective-dated-salary-rates';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

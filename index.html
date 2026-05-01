@@ -9385,11 +9385,15 @@ function openAdminUserEdit(id){
         + (currentRole==='admin' ? '⚠️ المدير يشوف كلشي — الصلاحيات بلا تأثير' : '✏️ تتبدل تلقائياً حسب الدور — تقدر تعدلها يدويا')
       + '</div>'
     + '</div>'
-    + '<div style="display:flex;gap:10px;margin-top:18px">'
-      + '<button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveAdminUserEdit()">💾 حفظ</button>'
-      + '<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
-    + '</div>'
-    + '<div id="aue-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>';
+    // Sticky action bar so the Save button stays visible no matter how tall
+    // the permissions list grows / how far the user scrolls inside the modal.
+    + '<div style="position:sticky;bottom:0;background:var(--bg2);padding:12px 0 4px;margin-top:18px;border-top:1px solid var(--border);z-index:2">'
+      + '<div style="display:flex;gap:10px">'
+        + '<button class="btn btn-accent" style="flex:1;padding:12px;font-size:14px;font-weight:800" onclick="saveAdminUserEdit()">💾 حفظ التعديلات</button>'
+        + '<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
+      + '</div>'
+      + '<div id="aue-msg" style="text-align:center;font-size:12px;margin-top:8px;min-height:16px"></div>'
+    + '</div>';
   document.getElementById('modal-main-c').innerHTML = html;
   document.getElementById('modal-main').classList.add('open');
 }

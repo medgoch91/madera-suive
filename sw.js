@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v70-bon-delete-stock-override';
+const CACHE = 'suivi-v71-admin-perms-sticky-save';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

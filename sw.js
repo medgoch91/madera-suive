@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v106-wages-card-redesign';
+const CACHE = 'suivi-v107-loader-stuck-guard';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

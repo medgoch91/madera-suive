@@ -2094,6 +2094,14 @@ async function loadAllData(){
     }catch(_){}
     showLoader('⏳ جاري تحميل البيانات...');
   }
+  // Safety net: even if any await below throws AND the catch handler also
+  // throws, ensure the "🔄 جاري تحديث البيانات..." overlay disappears so the
+  // user is never stuck on a stale loader. 25s is well past any normal
+  // Supabase timeout — only fires on a true hang.
+  const _stuckLoaderGuard = setTimeout(function(){
+    try{ hideLoader(); }catch(_){}
+    console.warn('[loadAllData] safety hideLoader fired — load took >25s');
+  }, 25000);
   try{
     // Fetch with soft-delete filter; fall back without filter if column not yet migrated
     const _sbFetchSoft=async (tbl, params)=>{
@@ -2203,6 +2211,9 @@ async function loadAllData(){
     renderDashboard();
     updateSidebar();
     try{uiRestorePageAfterLoad();}catch(_){}
+  } finally {
+    clearTimeout(_stuckLoaderGuard);
+    try{ hideLoader(); }catch(_){}
   }
 }
 

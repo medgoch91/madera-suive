@@ -12974,7 +12974,9 @@ function renderSalPcPointage(){
 
   // ── Avance section for PC worker ──
   if(oId){
-    var pcAvs=salarieAvances.filter(function(a){return a.salarie_id===(-oId);});
+    // Read from the dedicated pc_avances table (was using legacy
+    // salarie_avances + negative ouvrier_id workaround). Pending only.
+    var pcAvs=(pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===Number(oId) && !a.rembourse;});
     var pcAvsTotal=pcAvs.reduce(function(s,a){return s+(Number(a.montant)||0);},0);
     html+='<div class="card" style="margin-top:12px">'
       +'<div class="card-title" style="font-size:13px;margin-bottom:10px">💳 سلفة (اختياري)</div>'
@@ -13001,12 +13003,23 @@ async function pcSaveAvance(ouvrierId){
   var notes=(document.getElementById('pc-av-notes')||{value:''}).value.trim();
   var msg=document.getElementById('pc-av-msg');
   if(!montant){if(msg){msg.style.color='var(--red)';msg.textContent='المبلغ مطلوب';}return;}
+  var o = (ouvriersPc||[]).find(function(x){return Number(x.id)===Number(ouvrierId);});
+  if(!o){if(msg){msg.style.color='var(--red)';msg.textContent='⚠️ عامل PC غير صحيح';}return;}
   showLoader('💾 جاري الحفظ...');
-  // Use negative ouvrier_id to distinguish from nharat salaries (no schema change needed)
-  var res=await sbFetch('salarie_avances','POST',{salarie_id:-ouvrierId,montant,date,notes:'[PC] '+notes,rembourse:false});
+  // Now uses the dedicated pc_avances table (was posting to salarie_avances
+  // with salarie_id=-ouvrierId — that workaround FK-fails since the schema
+  // got proper FK constraints). Mirror to caisse + Telegram for parity with
+  // pcSaveQuickAvance.
+  var av = await pushPcAvance(ouvrierId, date, montant, notes);
   hideLoader();
-  if(res&&res[0]){
-    salarieAvances.push(res[0]);
+  if(av && av.id){
+    await pushCaisseMovement(date, 'out', montant, 'سلفة PC — '+o.nom, 'pc_avance', av.id, notes);
+    sendTelegramBroadcast([
+      '💳 *سلفة PC جديدة*',
+      '👷 العامل: '+o.nom,
+      '📅 التاريخ: '+fmtDate(date),
+      '💵 المبلغ: '+fmtN(montant)+' DH',
+    ].concat(notes?['📝 '+notes]:[]).join('\n'));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم تسجيل السلفة!';}
     setTimeout(function(){renderSalaries();},700);
   } else {
@@ -13031,7 +13044,7 @@ function pcConfirmRegistration(ouvrierId){
       return row&&row.qte>0;
     });
   }).length;
-  var pcAvs=salarieAvances.filter(function(a){return a.salarie_id===(-ouvrierId);});
+  var pcAvs=(pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===Number(ouvrierId) && !a.rembourse;});
   var avsTotal=pcAvs.reduce(function(s,a){return s+(Number(a.montant)||0);},0);
   // Toast
   var toast=document.createElement('div');

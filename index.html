@@ -1107,7 +1107,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
     <button class="nav-btn" onclick="showPage('caisse',this)" id="nav-caisse">
-      <span class="nav-icon">💵</span> <span data-i18n="nav.caisse">صندوق</span>
+      <span class="nav-icon">💵</span> <span data-i18n="nav.caisse">سندوق</span>
       <span class="nav-badge" id="badge-caisse" style="display:none">0</span>
     </button>
     <!-- elec-dist merged into الأجراء as a tab -->
@@ -2519,7 +2519,7 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'الأجراء':'Salariés', 'الفواتير':'Factures', 'إدارة المستخدمين':'Gestion utilisateurs',
   '📊 تاريخ تغيير الأسعار':'📊 Historique des taux',
   'تاريخ تغيير الأسعار':'Historique des taux',
-  '💵 صندوق':'💵 Caisse', 'صندوق':'Caisse',
+  '💵 سندوق':'💵 Caisse', 'سندوق':'Caisse',
   '➕ دخول':'➕ Entrée', '➖ خرج':'➖ Sortie',
   '➕ دخول جديد':'➕ Nouvelle entrée', '➖ خرج جديد':'➖ Nouvelle sortie',
   '➕ تسجيل دخول':'➕ Enregistrer entrée', '➖ تسجيل خرج':'➖ Enregistrer sortie',
@@ -8714,7 +8714,7 @@ const ALL_PAGES = [
   {key:'fournisseurs', label:'🏢 الفورنيسورات',    emoji:'🏢', name:'الفورنيسورات'},
   {key:'articles',     label:'📦 السلع',           emoji:'📦', name:'السلع'},
   {key:'salaries',     label:'👥 الأجراء',         emoji:'👥', name:'الأجراء'},
-  {key:'caisse',       label:'💵 صندوق',            emoji:'💵', name:'صندوق'},
+  {key:'caisse',       label:'💵 سندوق',            emoji:'💵', name:'سندوق'},
   {key:'elec-dist',    label:'⚡ التوزيع الكهربائي', emoji:'⚡', name:'التوزيع الكهربائي'},
   {key:'factures',     label:'🧾 الفواتير',        emoji:'🧾', name:'الفواتير'},
 ];
@@ -15012,7 +15012,7 @@ function renderCaisse(){
 
   let html = '<div class="page-title" style="display:flex;align-items:center;gap:10px;margin-bottom:18px">'
     +'<span style="font-size:22px">💵</span>'
-    +'<span>صندوق</span>'
+    +'<span>سندوق</span>'
     +'<span style="font-size:11px;color:var(--text3);font-weight:400;margin-inline-start:auto">إجمالي كل الوقت: <b style="color:'+(allTime.solde>=0?'var(--green)':'var(--red)')+'">'+fmtN(allTime.solde)+' DH</b></span>'
   +'</div>';
 

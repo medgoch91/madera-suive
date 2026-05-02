@@ -307,6 +307,35 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--radius);border:1px solid var(--border);}
 .table-wrap .data-table{border:none;}
 
+/* ═══════════════ WORKER CARDS — wages dashboard ═══════════════ */
+.worker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:14px;}
+.worker-card{background:linear-gradient(135deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01));border:1px solid var(--border);border-radius:14px;padding:14px 16px;transition:var(--transition);position:relative;overflow:hidden;}
+.worker-card::before{content:'';position:absolute;top:0;inset-inline-end:0;width:60px;height:60px;border-radius:0 0 0 60px;opacity:0;transition:opacity 0.2s;}
+.worker-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:var(--shadow);}
+.worker-card:hover::before{opacity:0.08;}
+.worker-card.paid{background:linear-gradient(135deg,rgba(46,204,122,0.07),rgba(46,204,122,0.02));border-color:rgba(46,204,122,0.32);}
+.worker-card.warn{border-color:rgba(245,166,35,0.45);}
+.worker-card[data-kind=sal]::before{background:#4f8ef7;}
+.worker-card[data-kind=pc]::before{background:#10b981;}
+.worker-card[data-kind=tech]::before{background:#fbbf24;}
+.wc-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.wc-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;font-weight:700;}
+.wc-id{flex:1;min-width:0;}
+.wc-name{font-size:14px;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;letter-spacing:-0.2px;}
+.wc-role{font-size:11px;color:var(--text3);margin-top:2px;}
+.wc-detail{font-size:11px;color:var(--text2);padding:6px 10px;background:var(--bg3);border-radius:8px;margin-bottom:10px;line-height:1.45;border:1px solid var(--border);max-height:60px;overflow:auto;}
+.wc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;padding:10px 0;border-top:1px dashed var(--border);border-bottom:1px dashed var(--border);margin-bottom:12px;}
+.wc-stat{display:flex;align-items:center;justify-content:space-between;}
+.wc-stat-lbl{color:var(--text3);font-weight:600;font-size:11px;}
+.wc-stat-val{font-weight:800;font-size:12.5px;}
+.wc-action{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.wc-net{font-size:20px;font-weight:900;letter-spacing:-0.5px;line-height:1;}
+.wc-net-sub{font-size:11px;color:var(--text3);font-weight:600;margin-top:3px;}
+.wc-section-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;padding:14px 16px;background:linear-gradient(135deg,rgba(255,255,255,0.025),transparent);border:1px solid var(--border);border-radius:12px;margin-bottom:18px;}
+.wc-summary-cell{display:flex;flex-direction:column;gap:3px;}
+.wc-summary-lbl{font-size:10px;color:var(--text3);font-weight:700;letter-spacing:0.4px;text-transform:uppercase;}
+.wc-summary-val{font-size:16px;font-weight:800;letter-spacing:-0.3px;}
+
 /* ═══════════════ BADGES — vibrant, semi-transparent ═══════════════ */
 .badge{display:inline-flex;align-items:center;padding:4px 12px;border-radius:20px;font-size:11.5px;font-weight:700;letter-spacing:0.2px;}
 .badge-linked{background:rgba(34,197,94,0.14);color:var(--green);border:1px solid rgba(34,197,94,0.28);}
@@ -15226,45 +15255,48 @@ function renderSalDashboard(){
     html+='<div style="text-align:center;padding:18px;color:var(--text3);background:var(--bg3);border-radius:var(--radius);margin-bottom:14px;font-size:12px">📅 ما كاين شي أجير بالنهار خدم ف هاد الفترة</div>';
   }
 
-  // ── Nharat table (skipped entirely when empty — the thin notice above
-  //     already tells the user, no need to render an empty table shell) ──
+  // ── الأجراء بالنهار — card grid ──
   if(rows.length){
-  html+=_dashSectionHeader('📅', 'الأجراء بالنهار', '#4f8ef7', rows.length+' أجير');
-  html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
-    +'<thead><tr><th>الأجير</th><th>الأيام</th><th>أجر الأيام</th><th>الإنتاج</th><th>السلف</th><th>الصافي / الحالة</th></tr></thead><tbody>';
-  rows.forEach(function(r,i){
-    const taswiya=salTaswiyas.find(function(t){return t.salarie_id===r.s.id&&t.date_from===salDashFrom&&t.date_to===salDashTo;});
-    html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
-      +'<td><div style="font-weight:700">'+escB(r.s.nom)+(r.s.prenom?' '+escB(r.s.prenom):'')+'</div><div style="font-size:11px;color:var(--text3)">'+(r.s.poste||'أجير')+'</div></td>'
-      +'<td style="text-align:center;font-weight:600">'+r.joursTotal+'</td>'
-      +'<td style="text-align:center;color:var(--accent);font-weight:600">'+fmtN(r.totalJours)+'</td>'
-      +'<td style="text-align:center;color:var(--green);font-weight:600">'+(r.totalProd>0?'+'+fmtN(r.totalProd):'—')+'</td>'
-      +'<td style="text-align:center;color:var(--red);font-weight:600">'+(r.totalAvs>0?'-'+fmtN(r.totalAvs):'—')+'</td>'
-      +'<td style="min-width:130px">'
-        +(taswiya
-          ?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-            +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(taswiya.montant)+' DH</span>'
+    html+=_dashSectionHeader('📅', 'الأجراء بالنهار', '#4f8ef7', rows.length+' أجير');
+    html+='<div class="worker-grid">';
+    rows.forEach(function(r){
+      const t=salTaswiyas.find(function(x){return x.salarie_id===r.s.id&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
+      const isPaid=!!t;
+      const fullName=escB(r.s.nom)+(r.s.prenom?' '+escB(r.s.prenom):'');
+      const stats=[
+        '<div class="wc-stat"><span class="wc-stat-lbl">📅 أيام</span><span class="wc-stat-val">'+r.joursTotal+'</span></div>',
+        '<div class="wc-stat"><span class="wc-stat-lbl">💵 أجر</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.totalJours)+'</span></div>',
+        (r.totalProd>0?'<div class="wc-stat"><span class="wc-stat-lbl">🔧 إنتاج</span><span class="wc-stat-val" style="color:var(--green)">+'+fmtN(r.totalProd)+'</span></div>':''),
+        (r.totalAvs>0?'<div class="wc-stat"><span class="wc-stat-lbl">💳 سلف</span><span class="wc-stat-val" style="color:var(--amber)">−'+fmtN(r.totalAvs)+'</span></div>':''),
+      ].filter(Boolean).join('');
+      const action = isPaid
+        ? '<div><span class="wc-net" style="color:var(--green)">'+fmtN(t.montant)+' DH</span></div>'
+          +'<div style="display:flex;gap:6px;align-items:center">'
             +_dashPaidBadge()
-            +(taswiya.id?'<button onclick="printTaswiyaRow('+taswiya.id+')" title="طبع الشيك" style="padding:3px 8px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
-            +'<button onclick="salAnnulerTasw('+r.s.id+')" title="إلغاء" style="padding:3px 8px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
+            +(t.id?'<button onclick="printTaswiyaRow('+t.id+')" title="طبع" style="padding:4px 9px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
+            +'<button onclick="salAnnulerTasw('+r.s.id+')" title="إلغاء" style="padding:4px 9px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
           +'</div>'
-          :'<div style="display:flex;align-items:center;gap:6px">'
-            +'<span style="font-size:14px;font-weight:800;color:var(--accent)">'+fmtN(r.net)+' DH</span>'
-            +_dashKhallasBtn('salKhallas('+r.s.id+')')
-          +'</div>'
-        )
-      +'</td>'
-    +'</tr>';
-  });
-  if(rows.length) html+='<tr style="background:rgba(79,142,247,0.08);font-weight:700">'
-    +'<td>المجموع</td><td style="text-align:center">'+rows.reduce(function(t,r){return t+r.joursTotal;},0)+'</td>'
-    +'<td style="text-align:center;color:var(--accent)">'+fmtN(rows.reduce(function(t,r){return t+r.totalJours;},0))+'</td>'
-    +'<td style="text-align:center;color:var(--green)">'+fmtN(rows.reduce(function(t,r){return t+r.totalProd;},0))+'</td>'
-    +'<td style="text-align:center;color:var(--red)">'+fmtN(rows.reduce(function(t,r){return t+r.totalAvs;},0))+'</td>'
-    +'<td><span style="font-size:16px;font-weight:800;color:var(--accent)">'+fmtN(grandTotal)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
-  +'</tr>';
-  html+='</tbody></table></div></div>';
-  } // end if(rows.length) — Nharat table
+        : '<div><span class="wc-net" style="color:'+(r.net<0?'var(--red)':'var(--accent)')+'">'+fmtN(r.net)+' DH</span></div>'
+          +_dashKhallasBtn('salKhallas('+r.s.id+')');
+      html+='<div class="worker-card'+(isPaid?' paid':'')+'" data-kind="sal">'
+        +'<div class="wc-head">'
+          +'<div class="wc-avatar" style="background:rgba(79,142,247,0.15);color:#4f8ef7">'+escB(r.s.nom.charAt(0))+'</div>'
+          +'<div class="wc-id"><div class="wc-name">'+fullName+'</div><div class="wc-role">'+(escB(r.s.poste||'أجير'))+'</div></div>'
+        +'</div>'
+        +'<div class="wc-stats" style="grid-template-columns:1fr 1fr">'+stats+'</div>'
+        +'<div class="wc-action">'+action+'</div>'
+      +'</div>';
+    });
+    html+='</div>'; // worker-grid
+    // Summary band
+    html+='<div class="wc-section-summary" style="border-color:rgba(79,142,247,0.25)">'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">📅 الأجراء</span><span class="wc-summary-val" style="color:#4f8ef7">'+rows.length+'</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💵 إجمالي الأجر</span><span class="wc-summary-val" style="color:var(--accent)">'+fmtN(rows.reduce(function(t,r){return t+r.totalJours;},0))+' DH</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">🔧 الإنتاج</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(rows.reduce(function(t,r){return t+r.totalProd;},0))+' DH</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💳 السلف</span><span class="wc-summary-val" style="color:var(--amber)">'+fmtN(rows.reduce(function(t,r){return t+r.totalAvs;},0))+' DH</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💰 الصافي</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(grandTotal)+' DH</span></div>'
+    +'</div>';
+  } // end if(rows.length) — Nharat cards
 
   // ── Par PCs table ──
   const pcActifsD=ouvriersPc.filter(function(o){return o.actif!==false;});
@@ -15288,57 +15320,47 @@ function renderSalDashboard(){
   const pcGrandAvs  =pcRows.reduce(function(t,r){return t+r.avsTotal;},0);
   const pcGrandNet  =pcRows.reduce(function(t,r){return t+r.net;},0);
   html+=_dashSectionHeader('👷', 'Par PCs', '#10b981', pcRows.length?(pcRows.length+' عامل'):'');
-  html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
-    +'<thead><tr><th>الأجير</th><th>التفاصيل</th><th style="white-space:nowrap">💳 السلف</th><th>الإجمالي / الحالة</th></tr></thead><tbody>';
   if(!pcRows.length){
-    html+='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px">لا توجد بيانات في هاد الفترة</td></tr>';
+    html+='<div style="text-align:center;padding:20px;color:var(--text3);background:var(--bg3);border-radius:12px;font-size:12px;margin-bottom:14px">ما كاين شي إنتاج PC ف هاد الفترة</div>';
   } else {
-    pcRows.forEach(function(r,i){
+    html+='<div class="worker-grid">';
+    pcRows.forEach(function(r){
       const tasw=pcTaswiyas.find(function(t){return t.ouvrier_id===r.o.id&&t.date_from===salDashFrom&&t.date_to===salDashTo;});
-      html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
-        +'<td style="font-weight:700">👷 '+escB(r.o.nom)+'</td>'
-        +'<td style="font-size:12px;color:var(--text2)">'+( r.detail||'—')+'</td>'
-        +'<td style="white-space:nowrap">'
-          +(r.avsTotal>0
-            ? '<span style="font-size:13px;font-weight:800;color:var(--amber)">−'+fmtN(r.avsTotal)+' DH</span>'
-            : '<span style="font-size:11px;color:var(--text3)">—</span>')
-        +'</td>'
-        +'<td style="min-width:200px">'
-          +(tasw
-            ?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-              +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(tasw.montant)+' DH</span>'
-              +_dashPaidBadge()
-              +(tasw.id?'<button onclick="printPcTaswiyaRow('+tasw.id+')" title="طبع الشيك" style="padding:3px 8px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
-              +'<button onclick="pcAnnulerTasw('+r.o.id+')" title="إلغاء" style="padding:3px 8px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
-            +'</div>'
-            :'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-              +(r.avsTotal>0
-                ? '<div style="font-size:11px;color:var(--text3);line-height:1.3">'
-                    +'<span style="color:var(--accent)">'+fmtN(r.total)+'</span>'
-                    +' − '
-                    +'<span style="color:var(--amber)">'+fmtN(r.avsTotal)+'</span>'
-                    +' = '
-                    +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(r.net)+' DH</span>'
-                  +'</div>'
-                : '<span style="font-size:14px;font-weight:800;color:var(--accent)">'+fmtN(r.total)+' DH</span>')
-              +_dashKhallasBtn('pcKhallas('+r.o.id+')')
-            +'</div>'
-          )
-        +'</td>'
-      +'</tr>';
+      const isPaid=!!tasw;
+      const detailText = r.detail||'—';
+      const action = isPaid
+        ? '<div><span class="wc-net" style="color:var(--green)">'+fmtN(tasw.montant)+' DH</span></div>'
+          +'<div style="display:flex;gap:6px;align-items:center">'
+            +_dashPaidBadge()
+            +(tasw.id?'<button onclick="printPcTaswiyaRow('+tasw.id+')" title="طبع" style="padding:4px 9px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
+            +'<button onclick="pcAnnulerTasw('+r.o.id+')" title="إلغاء" style="padding:4px 9px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
+          +'</div>'
+        : '<div>'
+            +'<span class="wc-net" style="color:'+(r.net<0?'var(--red)':'var(--green)')+'">'+fmtN(r.net)+' DH</span>'
+            +(r.avsTotal>0?'<div class="wc-net-sub">'+fmtN(r.total)+' − '+fmtN(r.avsTotal)+'</div>':'')
+          +'</div>'
+          +_dashKhallasBtn('pcKhallas('+r.o.id+')');
+      html+='<div class="worker-card'+(isPaid?' paid':(r.net<0?' warn':''))+'" data-kind="pc">'
+        +'<div class="wc-head">'
+          +'<div class="wc-avatar" style="background:rgba(16,185,129,0.15);color:#10b981">'+escB(r.o.nom.charAt(0))+'</div>'
+          +'<div class="wc-id"><div class="wc-name">'+escB(r.o.nom)+'</div><div class="wc-role">عامل القطعة</div></div>'
+        +'</div>'
+        +'<div class="wc-detail">'+detailText+'</div>'
+        +'<div class="wc-stats">'
+          +'<div class="wc-stat"><span class="wc-stat-lbl">🔧 إجمالي</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.total)+'</span></div>'
+          +'<div class="wc-stat"><span class="wc-stat-lbl">💳 سلف</span><span class="wc-stat-val" style="color:'+(r.avsTotal>0?'var(--amber)':'var(--text3)')+'">'+(r.avsTotal>0?'−'+fmtN(r.avsTotal):'—')+'</span></div>'
+        +'</div>'
+        +'<div class="wc-action">'+action+'</div>'
+      +'</div>';
     });
-    html+='<tr style="background:rgba(46,204,122,0.06);font-weight:700">'
-      +'<td colspan="2">المجموع Par PCs</td>'
-      +'<td>'+(pcGrandAvs>0?'<span style="color:var(--amber);font-weight:800">−'+fmtN(pcGrandAvs)+'</span>':'<span style="color:var(--text3)">—</span>')+'</td>'
-      +'<td>'
-        +(pcGrandAvs>0
-          ? '<span style="font-size:11px;color:var(--text3)">'+fmtN(pcGrandTotal)+' − '+fmtN(pcGrandAvs)+' = </span>'
-          : '')
-        +'<span style="font-size:16px;font-weight:800;color:var(--green)">'+fmtN(pcGrandNet)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span>'
-      +'</td>'
-    +'</tr>';
+    html+='</div>'; // worker-grid
+    html+='<div class="wc-section-summary" style="border-color:rgba(16,185,129,0.25)">'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">👷 العمال</span><span class="wc-summary-val" style="color:#10b981">'+pcRows.length+'</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">🔧 الإجمالي</span><span class="wc-summary-val" style="color:var(--accent)">'+fmtN(pcGrandTotal)+' DH</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💳 السلف</span><span class="wc-summary-val" style="color:var(--amber)">'+(pcGrandAvs>0?'−'+fmtN(pcGrandAvs):'0')+' DH</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💰 الصافي</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(pcGrandNet)+' DH</span></div>'
+    +'</div>';
   }
-  html+='</tbody></table></div></div>';
 
   // ── Techniciens (électricité à distance) table ──
   // Mirrors the salariés / PCs pattern so the user can settle ed_techs from
@@ -15357,36 +15379,36 @@ function renderSalDashboard(){
     const edPaid   = edTechRows.reduce(function(t,r){return t+r.paid;}, 0);
     const edDue    = edEarned - edPaid;
     html+=_dashSectionHeader('🛠️', 'التقنيون', '#fbbf24', 'électricité à distance · '+(edTechRows.length?edTechRows.length+' تقني':''));
-    html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
-      +'<thead><tr><th>التقني</th><th style="text-align:end">المستحق</th><th style="text-align:end">تخلص</th><th>الباقي / الحالة</th></tr></thead><tbody>';
     if(!edTechRows.length){
-      html+='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:18px;font-size:12px">ما كاين شي تقني — زيد تقني من tabular ⚡ électricité à distance</td></tr>';
+      html+='<div style="text-align:center;padding:20px;color:var(--text3);background:var(--bg3);border-radius:12px;font-size:12px;margin-bottom:14px">ما كاين شي تقني — زيد تقني من ⚡ électricité à distance</div>';
+    } else {
+      html+='<div class="worker-grid">';
+      edTechRows.forEach(function(r){
+        const isPaid = r.due <= 0.01;
+        const action = isPaid
+          ? '<div><span class="wc-net" style="color:var(--green)">'+fmtN(r.paid)+' DH</span></div>'+_dashPaidBadge()
+          : '<div><span class="wc-net" style="color:#fbbf24">'+fmtN(r.due)+' DH</span></div>'
+            +_dashKhallasBtn('edDashKhallasTech(\''+escB(r.name).replace(/\x27/g,"\\\x27")+'\')');
+        html+='<div class="worker-card'+(isPaid?' paid':'')+'" data-kind="tech">'
+          +'<div class="wc-head">'
+            +'<div class="wc-avatar" style="background:rgba(251,191,36,0.18);color:#fbbf24">'+escB(r.name.charAt(0))+'</div>'
+            +'<div class="wc-id"><div class="wc-name">'+escB(r.name)+'</div><div class="wc-role">électricité à distance</div></div>'
+          +'</div>'
+          +'<div class="wc-stats">'
+            +'<div class="wc-stat"><span class="wc-stat-lbl">💵 المستحق</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.earned)+'</span></div>'
+            +'<div class="wc-stat"><span class="wc-stat-lbl">✓ تخلص</span><span class="wc-stat-val" style="color:var(--text3)">'+fmtN(r.paid)+'</span></div>'
+          +'</div>'
+          +'<div class="wc-action">'+action+'</div>'
+        +'</div>';
+      });
+      html+='</div>'; // worker-grid
+      html+='<div class="wc-section-summary" style="border-color:rgba(251,191,36,0.3)">'
+        +'<div class="wc-summary-cell"><span class="wc-summary-lbl">🛠️ التقنيون</span><span class="wc-summary-val" style="color:#fbbf24">'+edTechRows.length+'</span></div>'
+        +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💵 المستحق</span><span class="wc-summary-val" style="color:var(--accent)">'+fmtN(edEarned)+' DH</span></div>'
+        +'<div class="wc-summary-cell"><span class="wc-summary-lbl">✓ تخلص</span><span class="wc-summary-val" style="color:var(--text3)">'+fmtN(edPaid)+' DH</span></div>'
+        +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💰 الباقي</span><span class="wc-summary-val" style="color:#fbbf24">'+fmtN(edDue)+' DH</span></div>'
+      +'</div>';
     }
-    edTechRows.forEach(function(r,i){
-      html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
-        +'<td style="font-weight:700">🛠️ '+escB(r.name)+'</td>'
-        +'<td style="text-align:end;color:var(--accent);font-weight:700">'+fmtN(r.earned)+' DH</td>'
-        +'<td style="text-align:end;color:var(--text3)">'+fmtN(r.paid)+' DH</td>'
-        +'<td style="min-width:200px">'
-          +(r.due > 0.01
-            ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
-                +'<span style="font-size:14px;font-weight:800;color:#fbbf24">'+fmtN(r.due)+' DH</span>'
-                +_dashKhallasBtn('edDashKhallasTech(\''+escB(r.name).replace(/\x27/g,"\\\x27")+'\')')
-              +'</div>'
-            : _dashPaidBadge()
-          )
-        +'</td>'
-      +'</tr>';
-    });
-    if(edTechRows.length){
-      html+='<tr style="background:rgba(251,191,36,0.06);font-weight:700">'
-        +'<td>المجموع</td>'
-        +'<td style="text-align:end;color:var(--accent)">'+fmtN(edEarned)+' DH</td>'
-        +'<td style="text-align:end;color:var(--text3)">'+fmtN(edPaid)+' DH</td>'
-        +'<td><span style="font-size:16px;font-weight:800;color:#fbbf24">'+fmtN(edDue)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
-      +'</tr>';
-    }
-    html+='</tbody></table></div></div>';
   }
   return html;
 }

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v105-dashboard-design-unified';
+const CACHE = 'suivi-v106-wages-card-redesign';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v102-tech-kpi-in-wages';
+const CACHE = 'suivi-v103-tech-section-always-shows';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

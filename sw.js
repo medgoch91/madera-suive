@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v96-avance-notif-balance';
+const CACHE = 'suivi-v97-pc-week-print-pdf';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -13008,10 +13008,11 @@ function renderSalPcPointage(){
     +'<div><label class="field-lbl">عامل PCs</label>'
       +'<select class="field-inp" onchange="salPointageSelect(this.value)">'+selOpts2+'</select>'
     +'</div>'
-    +'<div style="display:flex;align-items:center;gap:6px;padding-bottom:2px">'
+    +'<div style="display:flex;align-items:center;gap:6px;padding-bottom:2px;flex-wrap:wrap">'
       +'<button onclick="salPcSetSemaine(-1)" style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:var(--radius-sm);font-size:14px;cursor:pointer">‹</button>'
       +'<span style="font-size:12px;font-weight:600;color:var(--text2);white-space:nowrap">'+weekLabel+'</span>'
       +'<button onclick="salPcSetSemaine(1)" style="padding:6px 12px;border:1px solid var(--border);background:transparent;color:var(--text2);border-radius:var(--radius-sm);font-size:14px;cursor:pointer">›</button>'
+      +(oId?'<button onclick="pcPrintWeekTable()" title="طباعة / PDF" style="padding:6px 14px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">🖨️ طباعة / PDF</button>':'')
     +'</div>'
   +'</div>';
 
@@ -13216,6 +13217,99 @@ async function pcSavePresence(ouvrierId,date,pc_nom,prix,inputEl){
       totalCell.innerHTML=dayTotal>0?fmtN(dayTotal)+' <span style="font-size:10px">DH</span>':'—';
     }
   }
+}
+
+// Open a print-friendly popup with the current PC worker's weekly grid as a
+// clean table. The popup auto-triggers window.print() so the user can pick
+// "Save as PDF" from the browser dialog or send to a physical printer.
+function pcPrintWeekTable(){
+  const oId = Number(salPcPointageId);
+  const o = (ouvriersPc||[]).find(function(x){return Number(x.id)===oId;});
+  if(!o){ try{toast('اختر عامل أولاً','warning');}catch(_){} return; }
+  const days = getSemaineDays(salPcSemFrom);
+  const dayNames = ['الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
+  const assigns = (ouvrierPcAssigns||[]).filter(function(a){return Number(a.ouvrier_id)===oId;});
+  if(!assigns.length){ try{toast('هاد العامل ما عندوش PCs','warning');}catch(_){} return; }
+  const d0=new Date(salPcSemFrom);
+  const d6=new Date(salPcSemFrom); d6.setDate(d6.getDate()+6);
+  const pad=function(n){return String(n).padStart(2,'0');};
+  const weekLabel = pad(d0.getDate())+'/'+pad(d0.getMonth()+1)+'/'+d0.getFullYear()+' → '+pad(d6.getDate())+'/'+pad(d6.getMonth()+1)+'/'+d6.getFullYear();
+
+  let weekTotal = 0;
+  let bodyRows = '';
+  days.forEach(function(date,i){
+    const dayTotal = assigns.reduce(function(s,a){
+      const row = (pcPresences||[]).find(function(r){return Number(r.ouvrier_id)===oId && r.date===date && r.pc_nom===a.pc_nom;});
+      return s + (row ? row.qte * row.prix : 0);
+    }, 0);
+    weekTotal += dayTotal;
+    const dd=date.split('-')[2], mm=date.split('-')[1];
+    const isWeekend = i>=5;
+    bodyRows += '<tr'+(isWeekend?' style="opacity:0.6"':'')+'>'
+      + '<td><b>'+dayNames[i]+'</b><br><small style="color:#666">'+dd+'/'+mm+'</small></td>'
+      + assigns.map(function(a){
+          const row = (pcPresences||[]).find(function(r){return Number(r.ouvrier_id)===oId && r.date===date && r.pc_nom===a.pc_nom;});
+          const qty = row ? row.qte : 0;
+          return '<td style="text-align:center">'+(qty||'—')+'</td>';
+        }).join('')
+      + '<td style="text-align:end"><b>'+(dayTotal>0 ? fmtN(dayTotal)+' DH' : '—')+'</b></td>'
+    + '</tr>';
+  });
+
+  const colsAssigns = assigns.map(function(a){
+    return '<th>'+escB(a.pc_nom)+'<br><small style="font-weight:400;color:#666">'+fmtN(a.prix)+' DH</small></th>';
+  }).join('');
+
+  const html = '<!DOCTYPE html><html dir="rtl" lang="ar"><head>'
+    +'<meta charset="utf-8">'
+    +'<title>إنتاج '+escB(o.nom)+' — '+weekLabel+'</title>'
+    +'<link rel="preconnect" href="https://fonts.googleapis.com">'
+    +'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    +'<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">'
+    +'<style>'
+      +'@page { size: A4 landscape; margin: 12mm; }'
+      +'body { font-family: \'Cairo\', Arial, sans-serif; padding: 0; color: #111; direction: rtl; margin: 16px; }'
+      +'h1 { font-size: 20px; margin: 0 0 4px; }'
+      +'.sub { color: #555; font-size: 13px; margin-bottom: 16px; }'
+      +'.meta { display: flex; justify-content: space-between; margin-bottom: 14px; font-size: 11px; color: #666; }'
+      +'table { width: 100%; border-collapse: collapse; }'
+      +'th, td { border: 1px solid #ccc; padding: 9px 8px; font-size: 13px; }'
+      +'th { background: #f2f2f2; font-weight: 700; text-align: center; }'
+      +'.total { background: #e8f5e9; font-weight: 800; }'
+      +'.total td { font-size: 15px; padding: 11px 8px; }'
+      +'.actions { margin: 18px 0; text-align: center; }'
+      +'.actions button { padding: 10px 22px; font-size: 14px; cursor: pointer; font-family: \'Cairo\', sans-serif; border-radius: 8px; border: 1px solid #4f8ef7; background: #4f8ef7; color: #fff; font-weight: 700; margin: 0 4px; }'
+      +'.actions button.sec { background: #fff; color: #555; border-color: #ccc; }'
+      +'@media print { .actions { display: none; } body { margin: 0; } }'
+    +'</style></head><body>'
+    +'<h1>👷 إنتاج PCs — '+escB(o.nom)+'</h1>'
+    +'<div class="sub">📅 الأسبوع: '+weekLabel+'</div>'
+    +'<div class="meta">'
+      +'<span>📅 تاريخ الطباعة: '+new Date().toLocaleDateString('fr-MA')+'</span>'
+      +'<span>سويفي · maderadeco.app</span>'
+    +'</div>'
+    +'<table>'
+      +'<thead><tr><th>اليوم</th>'+colsAssigns+'<th>المجموع</th></tr></thead>'
+      +'<tbody>'+bodyRows
+        +'<tr class="total">'
+          +'<td>المجموع الأسبوعي</td>'
+          +'<td colspan="'+assigns.length+'" style="text-align:end">'+fmtN(weekTotal)+' DH</td>'
+          +'<td style="text-align:end">'+fmtN(weekTotal)+' DH</td>'
+        +'</tr>'
+      +'</tbody>'
+    +'</table>'
+    +'<div class="actions">'
+      +'<button onclick="window.print()">🖨️ طباعة / حفظ PDF</button>'
+      +'<button class="sec" onclick="window.close()">✕ إغلاق</button>'
+    +'</div>'
+    +'<script>setTimeout(function(){window.print();}, 600);<\/script>'
+    +'</body></html>';
+
+  const w = window.open('', '_blank', 'width=1100,height=750');
+  if(!w){ alert('⚠️ المتصفح بلوكا النافذة — اسمح بـ popups من إعدادات الصفحة و عاود.'); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
 }
 
 // ─── ÉLECTRICITÉ À DISTANCE ──────────────────────────────────

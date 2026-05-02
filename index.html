@@ -1443,23 +1443,59 @@ function setupTelegramChatId(){
 
 // Send arbitrary text to every reachable Telegram chat (localStorage + bot_subscribers).
 // Used by both the bon-save notif and the per-worker pointage notif.
+let _tgNoSubsWarned = false; // throttle the no-subs toast to once per session
 async function sendTelegramBroadcast(text){
   const chatIds = new Set();
   const local = localStorage.getItem('tg_chat_id');
   if(local) chatIds.add(String(local).trim());
+  let subsCount = 0;
   try{
     const subs = await sbFetch('bot_subscribers','GET',null,'select=chat_id');
-    if(Array.isArray(subs)) subs.forEach(s => { if(s && s.chat_id!=null) chatIds.add(String(s.chat_id)); });
-  }catch(e){ console.warn('bot_subscribers fetch for notif failed:', e); }
-  if(!chatIds.size) return;
-  await Promise.allSettled([...chatIds].map(chatId =>
+    if(Array.isArray(subs)){
+      subsCount = subs.length;
+      subs.forEach(s => { if(s && s.chat_id!=null) chatIds.add(String(s.chat_id)); });
+    }
+  }catch(e){ console.warn('[notif] bot_subscribers fetch failed:', e); }
+  console.log('[notif] sendTelegramBroadcast — chats:', chatIds.size, '(local:', !!local, '· subs:', subsCount+')', '· preview:', String(text).slice(0,60));
+  if(!chatIds.size){
+    if(!_tgNoSubsWarned){
+      _tgNoSubsWarned = true;
+      try{ toast('⚠️ ما كاين شي مشترك ف Telegram — notification ما تسيفطاتش. /start عل البوت أو سيفط /id من Telegram.', 'warning'); }catch(_){}
+    }
+    return;
+  }
+  const results = await Promise.allSettled([...chatIds].map(chatId =>
     fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({chat_id:chatId,text})
-    }).then(r => { if(!r.ok) console.warn('TG notif failed', chatId, r.status); })
-      .catch(e => console.warn('TG notif failed for', chatId, e))
+    }).then(r => {
+      if(!r.ok){ console.warn('[notif] TG send failed', chatId, r.status); return r.text().then(t => { console.warn('  body:', t.slice(0,200)); throw new Error('http '+r.status); }); }
+      return true;
+    })
   ));
+  const ok = results.filter(r => r.status === 'fulfilled').length;
+  console.log('[notif] sent', ok, '/', chatIds.size);
+}
+
+// Quick "is Telegram wired up?" probe — sends a sample message and reports.
+// Useful right after a wipe / cache clear when the user wants to verify.
+async function tgTest(){
+  try{
+    const local = localStorage.getItem('tg_chat_id');
+    let subs = [];
+    try{ subs = await sbFetch('bot_subscribers','GET',null,'select=chat_id') || []; }catch(_){}
+    const total = (local?1:0) + (Array.isArray(subs)?subs.length:0);
+    if(!total){
+      alert('⚠️ ما كاين شي chat مشترك.\n\n• محلي (localStorage tg_chat_id): '+(local?'✓ '+local:'فارغ')+'\n• bot_subscribers: '+(Array.isArray(subs)?subs.length:'?')+' مشترك\n\n📲 الحل: سيفط /start ل البوت من Telegram، رجع للتطبيق و عاود.');
+      return;
+    }
+    const t = '🩺 *Test Telegram*\nالوقت: '+new Date().toLocaleString('ar-MA')+'\nالمشتركين: '+total;
+    await sendTelegramBroadcast(t);
+    try{ toast('📨 Test sent — شوف Telegram','success'); }catch(_){}
+  }catch(e){
+    alert('❌ Test فشل: '+(e&&e.message||e));
+  }
 }
 
 // Send a Telegram message after a new cheque/effet/espèce is saved.
@@ -9123,6 +9159,10 @@ function renderAdmin(){
     +'<div style="background:linear-gradient(135deg,rgba(124,58,237,0.06),rgba(79,142,247,0.03));border:1px solid rgba(124,58,237,0.22);border-radius:var(--radius);padding:18px 20px;margin-bottom:20px">'
       +'<div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6">إشعارات المتصفح — كيوصلوك نفس اللي كيسيفطو ف Telegram (شيكات، كهرباء، الخدامة، ping 16h/18h). بديل لـ Telegram أو فوقه.</div>'
       +'<div id="push-admin-section"></div>'
+      +'<div style="margin-top:14px;padding-top:14px;border-top:1px dashed rgba(124,58,237,0.2);display:flex;gap:10px;align-items:center;flex-wrap:wrap">'
+        +'<button onclick="tgTest()" style="padding:9px 18px;background:rgba(79,142,247,0.1);border:1px solid var(--accent);color:var(--accent);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">🩺 Test Telegram</button>'
+        +'<span style="font-size:11px;color:var(--text3)">سيفط رسالة تجريبية لكل المشتركين باش تتأكد أن notifications خدامة.</span>'
+      +'</div>'
     +'</div>'
 
     // ── BACKUP & RESTORE ──

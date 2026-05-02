@@ -15793,10 +15793,17 @@ function renderSalHistorique(){
   const presF=salariePresences.filter(function(p){return p.date>=salHistFrom&&p.date<=salHistTo&&(!salHistSalId||p.salarie_id===Number(salHistSalId));}).sort(function(a,b){return b.date.localeCompare(a.date);});
   const avsF=salarieAvances.filter(function(a){return a.date>=salHistFrom&&a.date<=salHistTo&&(!salHistSalId||a.salarie_id===Number(salHistSalId));}).sort(function(a,b){return b.date.localeCompare(a.date);});
   const taswF=salTaswiyas.filter(function(t){return (!salHistSalId||t.salarie_id===Number(salHistSalId));}).sort(function(a,b){return (b.date_paiement||'').localeCompare(a.date_paiement||'');});
+  // PC counterparts — shown only when no specific salarié is selected (the
+  // dropdown filter targets salariés). Each row carries its source so the
+  // merged tables can render the right ✏️/🗑️/🖨️ actions per kind.
+  const pcPresF = salHistSalId ? [] : (pcPresences||[]).filter(function(r){return r.date>=salHistFrom&&r.date<=salHistTo;}).sort(function(a,b){return String(b.date).localeCompare(String(a.date));});
+  const pcAvsF  = salHistSalId ? [] : (pcAvances||[]).filter(function(a){return a.date>=salHistFrom&&a.date<=salHistTo;}).sort(function(a,b){return String(b.date).localeCompare(String(a.date));});
+  const pcTaswF = salHistSalId ? [] : (pcTaswiyas||[]).slice().sort(function(a,b){return String(b.date_paiement||'').localeCompare(String(a.date_paiement||''));});
   const getSalNom=function(id){const s=salariesData.find(function(x){return x.id===id;});return s?s.nom+(s.prenom?' '+s.prenom:''):'#'+id;};
+  const getPcNom=function(id){const o=(ouvriersPc||[]).find(function(x){return Number(x.id)===Number(id);});return o?o.nom:'PC #'+id;};
   const jrsP = presF.filter(function(p){return p.statut==='present';}).length + presF.filter(function(p){return p.statut==='demi';}).length*0.5;
-  const totalAvs=avsF.reduce(function(t,a){return t+Number(a.montant);},0);
-  const totalTasw=taswF.reduce(function(t,x){return t+Number(x.montant);},0);
+  const totalAvs=avsF.reduce(function(t,a){return t+Number(a.montant);},0) + pcAvsF.reduce(function(t,a){return t+Number(a.montant||0);},0);
+  const totalTasw=taswF.reduce(function(t,x){return t+Number(x.montant);},0) + pcTaswF.reduce(function(t,x){return t+Number(x.montant||0);},0);
   const actPreset=salHistActivePreset();
 
   const presets=[
@@ -15852,9 +15859,9 @@ function renderSalHistorique(){
 
   // ═══ TAB CHIPS ═══
   const tabs=[
-    {k:'presences',emoji:'📅',lbl:'الحضور',count:presF.length},
-    {k:'avances',  emoji:'💸',lbl:'السلف',  count:avsF.length},
-    {k:'taswiyas', emoji:'✅',lbl:'الخلاص', count:taswF.length}
+    {k:'presences',emoji:'📅',lbl:'الحضور',count:presF.length + pcPresF.length},
+    {k:'avances',  emoji:'💸',lbl:'السلف',  count:avsF.length + pcAvsF.length},
+    {k:'taswiyas', emoji:'✅',lbl:'الخلاص', count:taswF.length + pcTaswF.length}
   ];
   html+='<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'
     + tabs.map(function(t){
@@ -15871,8 +15878,10 @@ function renderSalHistorique(){
   const emptyBlock=function(ic,msg){return '<div style="text-align:center;padding:48px 20px;color:var(--text3);background:var(--bg2);border:1px dashed var(--border);border-radius:var(--radius)"><div style="font-size:40px;margin-bottom:10px;opacity:0.5">'+ic+'</div><div style="font-size:13px;font-weight:600">'+msg+'</div></div>';};
 
   if(salHistTab==='presences'){
-    if(!presF.length) return html + emptyBlock('📅','ما كاين حتى حضور f had الفترة');
-    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الحالة</th><th>h+</th><th>الإنتاج</th></tr></thead><tbody>';
+    if(!presF.length && !pcPresF.length) return html + emptyBlock('📅','ما كاين حتى حضور f had الفترة');
+    if(presF.length){
+    html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👤 الأجراء بالنهار</div>';
+    html+='<div class="dash-panel" style="margin-bottom:14px"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الحالة</th><th>h+</th><th>الإنتاج</th></tr></thead><tbody>';
     presF.forEach(function(p,i){
       let prodInfo='—';
       if(p.notes){try{const ls=JSON.parse(p.notes);const tot=ls.reduce(function(t,l){return t+Number(l.qte)*Number(l.prix);},0);if(ls.length)prodInfo=ls.length+' قطعة · \u2066'+fmtN(tot)+' DH\u2069';}catch{}}
@@ -15886,10 +15895,29 @@ function renderSalHistorique(){
       +'</tr>';
     });
     html+='</tbody></table></div></div>';
+    } // end if(presF.length)
+    if(pcPresF.length){
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👷 PCs (إنتاج يومي)</div>';
+      html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>العامل</th><th>PC</th><th style="text-align:center">الكمية</th><th style="text-align:end">الثمن</th><th style="text-align:end">المجموع</th></tr></thead><tbody>';
+      pcPresF.forEach(function(r,i){
+        const sub = Number(r.qte||0) * Number(r.prix||0);
+        html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+          +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(r.date)+'</td>'
+          +'<td style="font-weight:700">👷 '+escB(getPcNom(r.ouvrier_id))+'</td>'
+          +'<td style="color:var(--text2)">'+escB(r.pc_nom||'')+'</td>'
+          +'<td style="text-align:center;font-weight:700">'+fmtN(r.qte)+'</td>'
+          +'<td style="text-align:end;color:var(--text2)">'+fmtN(r.prix)+'</td>'
+          +'<td style="text-align:end;font-weight:800;color:var(--green)">'+fmtN(sub)+'</td>'
+        +'</tr>';
+      });
+      html+='</tbody></table></div></div>';
+    }
   } else if(salHistTab==='avances'){
-    if(!avsF.length) return html + emptyBlock('💸','ما كاين حتى سلف f had الفترة');
-    html+='<div style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:8px 12px;background:var(--bg3);border-radius:6px;border-right:3px solid var(--amber)">💡 ✏️ تنقص أو تزيد المبلغ · 🗑️ تحذف السلفة كاملة. الصندوق كيتعدل أوتوماتيك.</div>'
-      +'<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>المبلغ</th><th>الحالة</th><th style="width:90px;text-align:center">🛠️</th></tr></thead><tbody>';
+    if(!avsF.length && !pcAvsF.length) return html + emptyBlock('💸','ما كاين حتى سلف f had الفترة');
+    html+='<div style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:8px 12px;background:var(--bg3);border-radius:6px;border-right:3px solid var(--amber)">💡 ✏️ تنقص أو تزيد المبلغ · 🗑️ تحذف السلفة كاملة. الصندوق كيتعدل أوتوماتيك.</div>';
+    if(avsF.length){
+    html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👤 سلف الأجراء بالنهار</div>';
+    html+='<div class="dash-panel" style="margin-bottom:14px"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>المبلغ</th><th>الحالة</th><th style="width:90px;text-align:center">🛠️</th></tr></thead><tbody>';
     avsF.forEach(function(a,i){
       html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
         +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(a.date)+'</td>'
@@ -15903,9 +15931,29 @@ function renderSalHistorique(){
       +'</tr>';
     });
     html+='</tbody></table></div></div>';
+    } // end if(avsF.length)
+    if(pcAvsF.length){
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👷 سلف PCs</div>';
+      html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>العامل</th><th>المبلغ</th><th>الحالة</th><th style="width:90px;text-align:center">🛠️</th></tr></thead><tbody>';
+      pcAvsF.forEach(function(a,i){
+        html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+          +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(a.date)+'</td>'
+          +'<td style="font-weight:700">👷 '+escB(getPcNom(a.ouvrier_id))+'</td>'
+          +'<td style="font-weight:800;color:var(--amber);font-size:14px">'+fmtN(a.montant)+' <span style="font-size:10px;color:var(--text3);font-weight:600">DH</span></td>'
+          +'<td><span class="badge '+(a.rembourse?'badge-linked':'badge-free')+'">'+(a.rembourse?'✓ محسوم':'⏳ جاري')+'</span></td>'
+          +'<td style="text-align:center;white-space:nowrap">'
+            +'<button onclick="pcEditAvance('+a.id+')" title="تعديل المبلغ" style="padding:3px 8px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;margin-inline-end:4px">✏️</button>'
+            +'<button onclick="pcDeleteAvance('+a.id+')" title="حذف السلفة" style="padding:3px 8px;border:1px solid rgba(232,64,64,0.35);background:rgba(232,64,64,0.07);color:var(--red);border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">🗑️</button>'
+          +'</td>'
+        +'</tr>';
+      });
+      html+='</tbody></table></div></div>';
+    }
   } else {
-    if(!taswF.length) return html + emptyBlock('✅','ما كاين حتى تسوية');
-    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
+    if(!taswF.length && !pcTaswF.length) return html + emptyBlock('✅','ما كاين حتى تسوية');
+    if(taswF.length){
+    html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👤 تسويات الأجراء بالنهار</div>';
+    html+='<div class="dash-panel" style="margin-bottom:14px"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
     taswF.forEach(function(t,i){
       html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
         +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(t.date_paiement||t.created_at)+'</td>'
@@ -15916,6 +15964,21 @@ function renderSalHistorique(){
       +'</tr>';
     });
     html+='</tbody></table></div></div>';
+    } // end if(taswF.length)
+    if(pcTaswF.length){
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👷 تسويات PCs</div>';
+      html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>العامل</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
+      pcTaswF.forEach(function(t,i){
+        html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+          +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(t.date_paiement||t.created_at||'')+'</td>'
+          +'<td style="font-weight:700">👷 '+escB(getPcNom(t.ouvrier_id))+'</td>'
+          +'<td style="font-size:12px;color:var(--text2)">'+fmtDate(t.date_from)+' → '+fmtDate(t.date_to)+'</td>'
+          +'<td><span style="font-weight:800;color:var(--green);font-size:15px">'+fmtN(t.montant)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
+          +'<td>'+(t.id?'<button onclick="printPcTaswiyaRow('+t.id+')" title="طبع الشيك" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
+        +'</tr>';
+      });
+      html+='</tbody></table></div></div>';
+    }
   }
   return html;
 }

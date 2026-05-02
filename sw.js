@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v94-dashboard-pc-only-render';
+const CACHE = 'suivi-v95-historique-includes-pcs';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

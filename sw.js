@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v100-no-weekend-dim';
+const CACHE = 'suivi-v101-tech-in-dashboard-caisse';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

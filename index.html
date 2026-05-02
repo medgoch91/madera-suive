@@ -14972,10 +14972,21 @@ async function edPaySubmit(){
       note:note
     },'');
     if(ins && ins.__sbError){try{toast('❌ '+ins.msg,'error');}catch(e){}return;}
-    if(Array.isArray(ins) && ins[0]) edPayments.unshift(ins[0]);
+    var savedRow = (Array.isArray(ins) && ins[0]) ? ins[0] : null;
+    if(savedRow) edPayments.unshift(savedRow);
     else { // fallback: refresh
       var pay=await sbFetch('technician_payments','GET',null,'select=*&order=pay_date.desc&limit=500');
       edPayments=Array.isArray(pay)?pay:edPayments;
+    }
+    // Mirror to caisse (real cash out for the technician's labor) + Telegram.
+    if(savedRow && savedRow.id){
+      try{ await pushCaisseMovement(payDate, 'out', amount, '🛠️ تقني — '+edPayTech, 'tech_payment', savedRow.id, note); }catch(e){}
+      try{ sendTelegramBroadcast([
+        '💰 *خلاص تقني*',
+        '🛠️ التقني: '+edPayTech,
+        '📅 التاريخ: '+fmtDate(payDate),
+        '💵 المبلغ: '+fmtN(amount)+' DH',
+      ].concat(note?['📝 '+note]:[]).join('\n')); }catch(e){}
     }
     try{toast('✅ تسجل خلاص '+fmtN(amount)+' DH لـ '+edPayTech,'success');}catch(e){}
     renderElecDist();
@@ -14990,6 +15001,8 @@ async function edPayDelete(id){
   var res=await sbFetch('technician_payments?id=eq.'+id,'DELETE');
   if(res && res.__sbError){try{toast('❌ '+res.msg,'error');}catch(e){}return;}
   edPayments=edPayments.filter(function(p){return Number(p.id)!==Number(id);});
+  // Cascade: drop the mirrored caisse movement so the cash-box stays in sync.
+  try{ await unlinkCaisseMovement('tech_payment', id); }catch(e){}
   try{toast('🗑️ تم الحذف','info');}catch(e){}
   renderElecDist();
 }
@@ -15288,7 +15301,84 @@ function renderSalDashboard(){
     +'</tr>';
   }
   html+='</tbody></table></div></div>';
+
+  // ── Techniciens (électricité à distance) table ──
+  // Mirrors the salariés / PCs pattern so the user can settle ed_techs from
+  // the same dashboard, with caisse integration. Earned = sum(orders.qty *
+  // labor_cost). Paid = sum(technician_payments.amount). Due = earned − paid.
+  const edTechRows = (typeof edGetTechList === 'function' ? edGetTechList() : []).map(function(name){
+    const earned = (typeof edComputeTechRevenue === 'function') ? edComputeTechRevenue(name) : 0;
+    const paid   = (typeof edComputeTechPaid    === 'function') ? edComputeTechPaid(name)    : 0;
+    return { name: name, earned: earned, paid: paid, due: earned - paid };
+  }).filter(function(r){ return r.earned > 0 || r.paid > 0; });
+  if(edTechRows.length){
+    const edEarned = edTechRows.reduce(function(t,r){return t+r.earned;}, 0);
+    const edPaid   = edTechRows.reduce(function(t,r){return t+r.paid;}, 0);
+    const edDue    = edEarned - edPaid;
+    html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.5px">🛠️ التقنيون (électricité à distance)</div>';
+    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table">'
+      +'<thead><tr><th>التقني</th><th style="text-align:end">المستحق</th><th style="text-align:end">تخلص</th><th>الباقي / الحالة</th></tr></thead><tbody>';
+    edTechRows.forEach(function(r,i){
+      html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+        +'<td style="font-weight:700">🛠️ '+escB(r.name)+'</td>'
+        +'<td style="text-align:end;color:var(--accent);font-weight:700">'+fmtN(r.earned)+' DH</td>'
+        +'<td style="text-align:end;color:var(--text3)">'+fmtN(r.paid)+' DH</td>'
+        +'<td style="min-width:200px">'
+          +(r.due > 0.01
+            ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
+                +'<span style="font-size:14px;font-weight:800;color:#fbbf24">'+fmtN(r.due)+' DH</span>'
+                +'<button onclick="edDashKhallasTech(\''+escB(r.name).replace(/\x27/g,"\\\x27")+'\')" style="padding:5px 12px;border:none;border-radius:var(--radius-sm);background:#fbbf24;color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">💰 خلاص</button>'
+              +'</div>'
+            : '<span style="font-size:12px;color:var(--green);font-weight:700">✓ كاع تخلص</span>'
+          )
+        +'</td>'
+      +'</tr>';
+    });
+    html+='<tr style="background:rgba(251,191,36,0.06);font-weight:700">'
+      +'<td>المجموع</td>'
+      +'<td style="text-align:end;color:var(--accent)">'+fmtN(edEarned)+' DH</td>'
+      +'<td style="text-align:end;color:var(--text3)">'+fmtN(edPaid)+' DH</td>'
+      +'<td><span style="font-size:16px;font-weight:800;color:#fbbf24">'+fmtN(edDue)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
+    +'</tr>';
+    html+='</tbody></table></div></div>';
+  }
   return html;
+}
+
+// Settle a technician's outstanding balance from the salary dashboard.
+// Wraps edPaySubmit so the caisse mirror + Telegram notif flow that the
+// EQ page provides also runs from this entry point.
+async function edDashKhallasTech(name){
+  const earned = (typeof edComputeTechRevenue === 'function') ? edComputeTechRevenue(name) : 0;
+  const paid   = (typeof edComputeTechPaid    === 'function') ? edComputeTechPaid(name)    : 0;
+  const due = Math.round((earned - paid) * 100) / 100;
+  if(due <= 0.01){ try{toast('✓ هاد التقني كاع تخلص','info');}catch(_){} return; }
+  if(!confirm('تأكيد خلاص '+name+' — '+fmtN(due)+' DH ؟')) return;
+  showLoader('💾 جاري الحفظ...');
+  const today = new Date().toISOString().slice(0,10);
+  const ins = await sbFetch('technician_payments','POST',{
+    technician_name: name,
+    amount: due,
+    pay_date: today,
+    note: '',
+  },'');
+  hideLoader();
+  if(ins && ins.__sbError){ try{toast('❌ '+ins.msg,'error');}catch(_){} return; }
+  const savedRow = (Array.isArray(ins) && ins[0]) ? ins[0] : null;
+  if(savedRow){
+    edPayments.unshift(savedRow);
+    if(savedRow.id){
+      await pushCaisseMovement(today,'out',due,'🛠️ تقني — '+name,'tech_payment',savedRow.id,'');
+      sendTelegramBroadcast([
+        '💰 *خلاص تقني*',
+        '🛠️ التقني: '+name,
+        '📅 التاريخ: '+fmtDate(today),
+        '💵 المبلغ: '+fmtN(due)+' DH',
+      ].join('\n'));
+    }
+  }
+  try{toast('✅ تخلص '+name,'success');}catch(_){}
+  renderSalaries();
 }
 
 // ── Print cheque prefilled from a taswiya (salary settlement) ──
@@ -15742,10 +15832,11 @@ function caisseSetPreset(preset){
 
 function _caisseLinkBadge(m){
   const map = {
-    'avance':      {icon:'💳', color:'var(--amber)',  label:'سلفة'},
-    'pc_avance':   {icon:'💳', color:'var(--amber)',  label:'سلفة PC'},
-    'sal_payment': {icon:'👤', color:'var(--accent)', label:'تسوية'},
-    'pc_payment':  {icon:'👷', color:'var(--green)',  label:'تسوية PC'},
+    'avance':       {icon:'💳', color:'var(--amber)',  label:'سلفة'},
+    'pc_avance':    {icon:'💳', color:'var(--amber)',  label:'سلفة PC'},
+    'sal_payment':  {icon:'👤', color:'var(--accent)', label:'تسوية'},
+    'pc_payment':   {icon:'👷', color:'var(--green)',  label:'تسوية PC'},
+    'tech_payment': {icon:'🛠️', color:'#fbbf24',       label:'تقني'},
   };
   if(!m.linked_kind) return '<span style="color:var(--text3);font-size:10px">يدوي</span>';
   const d = map[m.linked_kind];

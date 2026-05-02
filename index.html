@@ -1557,27 +1557,33 @@ const _POINTAGE_STATUS = {
 };
 const _pointageDebounce = {};
 
-function notifyPointageChange(kind, workerId){
+function notifyPointageChange(kind, workerId, date){
   const key = kind + ':' + workerId;
   if(_pointageDebounce[key]) clearTimeout(_pointageDebounce[key]);
+  // Capture the date this edit was for. If multiple edits land within the
+  // 3s window we keep the latest date — the user can fire another notif by
+  // editing again in the next window if they need a separate date logged.
+  const targetDate = date || new Date().toISOString().slice(0,10);
   _pointageDebounce[key] = setTimeout(function(){
     delete _pointageDebounce[key];
-    try{ _doPointageNotif(kind, workerId); }catch(e){ console.warn('pointage notif failed', e); }
+    try{ _doPointageNotif(kind, workerId, targetDate); }catch(e){ console.warn('pointage notif failed', e); }
   }, 3000);
 }
 
-function _doPointageNotif(kind, workerId){
+function _doPointageNotif(kind, workerId, targetDate){
   const today = new Date().toISOString().slice(0,10);
+  const dateUsed = targetDate || today;
+  const isToday = dateUsed === today;
   try{
     if(kind === 'sal'){
       const sal = (typeof salariesData !== 'undefined' ? salariesData : []).find(x => Number(x.id) === Number(workerId));
-      const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => Number(p.salarie_id) === Number(workerId) && p.date === today);
+      const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => Number(p.salarie_id) === Number(workerId) && p.date === dateUsed);
       const name = sal
         ? ((String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('أجير #'+workerId))
         : ('أجير #'+workerId);
       if(!pres){
         // Row was just saved — should be there. Fallback to a simple ping if cache missed.
-        sendTelegramBroadcast(`👤 ${name}\n📝 تحديث الحضور — ${fmtDate(today)}`);
+        sendTelegramBroadcast(`👤 ${name}\n📝 تحديث الحضور — ${fmtDate(dateUsed)}`+(isToday?'':' (متأخر)'));
         return;
       }
       const hsup = Number(pres.heures_supp || 0);
@@ -1599,7 +1605,7 @@ function _doPointageNotif(kind, workerId){
         console.warn('[notif] unknown statut:', pres.statut, 'on worker', workerId);
         stIcon = '📝'; stLbl = String(pres.statut);
       }
-      let text = `👤 ${name}\n${stIcon} ${stLbl} — ${fmtDate(today)}`;
+      let text = `👤 ${name}\n${stIcon} ${stLbl} — ${fmtDate(dateUsed)}`+(isToday?'':' (متأخر)');
       if(hsup > 0){
         text += `\n⏱️ +${hsup}h`;
         if(taux > 0) text += ` × ${fmtN(taux)} = ${fmt(cost)}`;
@@ -1608,13 +1614,16 @@ function _doPointageNotif(kind, workerId){
     } else if(kind === 'pc'){
       const ouv = (typeof ouvriersPc !== 'undefined' ? ouvriersPc : []).find(o => Number(o.id) === Number(workerId));
       const name = ouv ? (ouv.nom || ('#'+workerId)) : ('عامل PC #'+workerId);
-      const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => Number(r.ouvrier_id) === Number(workerId) && r.date === today && Number(r.qte||0) > 0);
+      // Records for the date being notified about (not always today). Filter
+      // to qte>0 so the breakdown lists only meaningful rows; an empty list
+      // means the day was just cleared, which we report as a wipe message.
+      const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => Number(r.ouvrier_id) === Number(workerId) && r.date === dateUsed && Number(r.qte||0) > 0);
+      const dateLbl = fmtDate(dateUsed) + (isToday?'':' 📅 (متأخر)');
       if(!records.length){
-        // No matching rows in cache (maybe qte just got cleared, or cache out-of-sync)
-        sendTelegramBroadcast(`👷 ${name}\n📝 تحديث PC — ${fmtDate(today)}`);
+        sendTelegramBroadcast(`👷 ${name} — ${dateLbl}\n🗑️ ما كاين شي إنتاج (تمسح)`);
         return;
       }
-      let text = `👷 ${name} — ${fmtDate(today)}\n`;
+      let text = `👷 ${name} — ${dateLbl}\n`;
       let total = 0;
       records.forEach(r => {
         const c = Number(r.qte||0) * Number(r.prix||0);
@@ -12005,7 +12014,7 @@ async function salToggleJourStatut(date,statut){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
-  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id, date);
   // Update UI live
   const row=document.getElementById('sal-row-'+date.replace(/-/g,''));
   if(row){
@@ -12043,7 +12052,7 @@ async function salSetHsup(date,field,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
-  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id, date);
 }
 
 // ═══ Per-cell heures supp setter for the Week Grid ═══
@@ -12064,7 +12073,7 @@ async function salQuickSetHsup(salId,date,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
-  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id, date);
   // Live cell restyle
   if(typeof event!=='undefined' && event && event.target){
     const inp=event.target;
@@ -12096,7 +12105,7 @@ async function salSetPieceQty(date,catIdx,val){
     salariePresences=salariePresences.filter(function(p){return !(p.salarie_id===id&&p.date===date);});
     salariePresences.push(res[0]);
   }
-  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id, date);
   // Update cell style live
   if(event&&event.target){
     const inp=event.target;
@@ -12137,7 +12146,7 @@ async function salQuickSetStatut(salId, date, statut){
     salariePresences = salariePresences.filter(p => !(p.salarie_id===id && p.date===date));
     salariePresences.push(res[0]);
   }
-  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id);
+  if(date === new Date().toISOString().slice(0,10)) notifyPointageChange('sal', id, date);
   renderSalaries();
 }
 
@@ -12915,7 +12924,10 @@ async function pcSavePresence(ouvrierId,date,pc_nom,prix,inputEl){
   if(idx>=0) pcPresences[idx].qte=qte;
   else pcPresences.push({ouvrier_id:ouvrierId,date,pc_nom,qte,prix});
   localStorage.setItem('ouvrier_pc_pres_v1',JSON.stringify(pcPresences));
-  if(date === new Date().toISOString().slice(0,10) && qte > 0) notifyPointageChange('pc', ouvrierId);
+  // Always notify — any qte change (incl. clearing to 0) for any date. The
+  // notif builder reports "(متأخر)" for non-today edits and "ما كاين شي إنتاج"
+  // when all cells of the day are empty.
+  notifyPointageChange('pc', ouvrierId, date);
   // Refresh total cell without full re-render
   var row=inputEl.closest&&inputEl.closest('div[style*="grid"]');
   if(row){

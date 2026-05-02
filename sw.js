@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v82-tg-diagnostics';
+const CACHE = 'suivi-v83-pc-notif-anydate-clear';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

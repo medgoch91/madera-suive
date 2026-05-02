@@ -12652,6 +12652,15 @@ async function salSaveWeekAvance(){
     const sal = salariesData.find(function(x){return x.id===id;});
     const nm  = sal ? ((String(sal.nom||'')+(sal.prenom?' '+sal.prenom:'')).trim() || ('#'+id)) : ('#'+id);
     pushCaisseMovement(date, 'out', montant, 'سلفة — '+nm, 'avance', res[0].id, notes);
+    // Telegram: name + date + amount + optional note.
+    var avLines = [
+      '💳 *سلفة جديدة*',
+      '👤 العامل: '+nm,
+      '📅 التاريخ: '+fmtDate(date),
+      '💵 المبلغ: '+fmtN(montant)+' DH',
+    ];
+    if(notes) avLines.push('📝 '+notes);
+    sendTelegramBroadcast(avLines.join('\n'));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم تسجيل السلفة!';}
     setTimeout(function(){renderSalaries();},700);
   } else {
@@ -15176,11 +15185,12 @@ async function salEditAvance(id){
   const a = salarieAvances.find(function(x){return Number(x.id)===Number(id);});
   if(!a) return;
   const nm = (typeof getSalNom==='function') ? getSalNom(a.salarie_id) : ('#'+a.salarie_id);
-  const newStr = prompt('💳 سلفة — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(Number(a.montant)||0));
+  const oldAmt = Number(a.montant||0);
+  const newStr = prompt('💳 سلفة — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(oldAmt));
   if(newStr === null) return;
   const newAmt = parseFloat(newStr);
   if(isNaN(newAmt) || newAmt < 0){ try{toast('المبلغ خاص يكون رقم موجب','warning');}catch(_){ } return; }
-  if(Math.abs(newAmt - Number(a.montant||0)) < 0.01) return;
+  if(Math.abs(newAmt - oldAmt) < 0.01) return;
   showLoader('💾');
   const r1 = await sbFetch('salarie_avances?id=eq.'+id, 'PATCH', {montant: newAmt});
   if(!r1 || r1.__sbError){
@@ -15208,6 +15218,12 @@ async function salEditAvance(id){
     await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة — '+nm, 'avance', id, a.notes||'');
   }
   hideLoader();
+  sendTelegramBroadcast([
+    '✏️ *تعديل سلفة*',
+    '👤 العامل: '+nm,
+    '📅 التاريخ: '+fmtDate(a.date),
+    '💵 '+fmtN(oldAmt)+' DH → '+fmtN(newAmt)+' DH',
+  ].join('\n'));
   try{toast('✅ تم التحديث','success');}catch(_){}
   renderSalaries();
 }
@@ -15223,6 +15239,12 @@ async function salDeleteAvance(id){
   localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
   await unlinkCaisseMovement('avance', id);
   hideLoader();
+  sendTelegramBroadcast([
+    '🗑️ *تحذف سلفة*',
+    '👤 العامل: '+nm,
+    '📅 التاريخ: '+fmtDate(a.date),
+    '💵 المبلغ: '+fmtN(a.montant)+' DH',
+  ].join('\n'));
   try{toast('✅ تم الحذف','success');}catch(_){}
   renderSalaries();
 }
@@ -15233,11 +15255,12 @@ async function pcEditAvance(id){
   if(!a) return;
   const o = ouvriersPc.find(function(x){return x.id===a.ouvrier_id;});
   const nm = o ? o.nom : ('PC #'+a.ouvrier_id);
-  const newStr = prompt('💳 سلفة PC — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(Number(a.montant)||0));
+  const oldAmt = Number(a.montant||0);
+  const newStr = prompt('💳 سلفة PC — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(oldAmt));
   if(newStr === null) return;
   const newAmt = parseFloat(newStr);
   if(isNaN(newAmt) || newAmt < 0){ try{toast('المبلغ خاص يكون رقم موجب','warning');}catch(_){ } return; }
-  if(Math.abs(newAmt - Number(a.montant||0)) < 0.01) return;
+  if(Math.abs(newAmt - oldAmt) < 0.01) return;
   showLoader('💾');
   const r1 = await sbFetch('pc_avances?id=eq.'+id, 'PATCH', {montant: newAmt});
   if(!r1 || r1.__sbError){
@@ -15262,6 +15285,12 @@ async function pcEditAvance(id){
     await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة PC — '+nm, 'pc_avance', id, a.notes||'');
   }
   hideLoader();
+  sendTelegramBroadcast([
+    '✏️ *تعديل سلفة PC*',
+    '👷 العامل: '+nm,
+    '📅 التاريخ: '+fmtDate(a.date),
+    '💵 '+fmtN(oldAmt)+' DH → '+fmtN(newAmt)+' DH',
+  ].join('\n'));
   try{toast('✅ تم التحديث','success');}catch(_){}
   renderSalaries();
 }
@@ -15278,6 +15307,12 @@ async function pcDeleteAvance(id){
   localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
   await unlinkCaisseMovement('pc_avance', id);
   hideLoader();
+  sendTelegramBroadcast([
+    '🗑️ *تحذف سلفة PC*',
+    '👷 العامل: '+nm,
+    '📅 التاريخ: '+fmtDate(a.date),
+    '💵 المبلغ: '+fmtN(a.montant)+' DH',
+  ].join('\n'));
   try{toast('✅ تم الحذف','success');}catch(_){}
   renderSalaries();
 }
@@ -15299,6 +15334,12 @@ async function pcSaveQuickAvance(ouvrierId){
   const av = await pushPcAvance(ouvrierId, d, m, '');
   if(av && av.id){
     await pushCaisseMovement(d, 'out', m, 'سلفة PC — '+o.nom, 'pc_avance', av.id, '');
+    sendTelegramBroadcast([
+      '💳 *سلفة PC جديدة*',
+      '👷 العامل: '+o.nom,
+      '📅 التاريخ: '+fmtDate(d),
+      '💵 المبلغ: '+fmtN(m)+' DH',
+    ].join('\n'));
     try{toast('✅ سلفة مسجلة','success');}catch(_){}
     renderSalaries();
   } else {

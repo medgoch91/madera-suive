@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v87-avance-fk-preflight';
+const CACHE = 'suivi-v88-avance-telegram-notif';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

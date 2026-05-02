@@ -1106,6 +1106,10 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
+    <button class="nav-btn" onclick="showPage('caisse',this)" id="nav-caisse">
+      <span class="nav-icon">💵</span> <span data-i18n="nav.caisse">الصندوق</span>
+      <span class="nav-badge" id="badge-caisse" style="display:none">0</span>
+    </button>
     <!-- elec-dist merged into الأجراء as a tab -->
     <button class="nav-btn" onclick="showPage('factures',this)" id="nav-factures">
       <span class="nav-icon">🧾</span> <span data-i18n="nav.factures">الفواتير</span>
@@ -1384,6 +1388,9 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- SALARIES PAGE -->
     <div class="page" id="page-salaries"></div>
+
+    <!-- CAISSE PAGE -->
+    <div class="page" id="page-caisse"></div>
 
     <!-- ÉLECTRICITÉ À DISTANCE PAGE -->
     <div class="page" id="page-elec-dist"></div>
@@ -2512,6 +2519,15 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'الأجراء':'Salariés', 'الفواتير':'Factures', 'إدارة المستخدمين':'Gestion utilisateurs',
   '📊 تاريخ تغيير الأسعار':'📊 Historique des taux',
   'تاريخ تغيير الأسعار':'Historique des taux',
+  '💵 الصندوق':'💵 Caisse', 'الصندوق':'Caisse',
+  '➕ دخول (المعلم جاب فلوس)':'➕ Entrée (cash apporté)',
+  '➖ خرج (transport, scotch...)':'➖ Sortie (libre)',
+  '➕ دخول جديد':'➕ Nouvelle entrée', '➖ خرج جديد':'➖ Nouvelle sortie',
+  '➕ تسجيل دخول':'➕ Enregistrer entrée', '➖ تسجيل خرج':'➖ Enregistrer sortie',
+  'دخل':'Entrées', 'خرج':'Sorties', 'الباقي ف الفترة':'Solde période',
+  'حركات':'Mouvements', '➕ دخول فقط':'➕ Entrées seul.', '➖ خروج فقط':'➖ Sorties seul.',
+  'البيان':'Désignation', 'يدوي':'Manuel', 'سلفة':'Avance', 'سلفة PC':'Avance PC',
+  'تسوية':'Règlement', 'تسوية PC':'Règlement PC',
   '⚙️ إدارة المستخدمين':'⚙️ Gestion utilisateurs', 'نشاط المستخدمين':'Activité utilisateurs',
   '⚡ électricité à distance':'⚡ Électricité à distance',
   'بون جديد':'Nouveau bon', 'تسوية جديدة':'Nouveau règlement', 'سلعة جديدة':'Nouvel article',
@@ -3107,7 +3123,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,caisse:renderCaisse,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -8699,6 +8715,7 @@ const ALL_PAGES = [
   {key:'fournisseurs', label:'🏢 الفورنيسورات',    emoji:'🏢', name:'الفورنيسورات'},
   {key:'articles',     label:'📦 السلع',           emoji:'📦', name:'السلع'},
   {key:'salaries',     label:'👥 الأجراء',         emoji:'👥', name:'الأجراء'},
+  {key:'caisse',       label:'💵 الصندوق',          emoji:'💵', name:'الصندوق'},
   {key:'elec-dist',    label:'⚡ التوزيع الكهربائي', emoji:'⚡', name:'التوزيع الكهربائي'},
   {key:'factures',     label:'🧾 الفواتير',        emoji:'🧾', name:'الفواتير'},
 ];
@@ -8720,7 +8737,7 @@ const ROLE_DEFAULTS = {
   comptable: {
     dashboard:true, bons:true, 'new-bon':true,
     cheques:true, echeancier:true, 'new-cheque':true, 'print-cheque':true,
-    factures:true, fournisseurs:true, articles:true
+    factures:true, fournisseurs:true, articles:true, caisse:true
   },
   magasinier: {
     dashboard:true, bons:true, 'new-bon':true,
@@ -11597,6 +11614,83 @@ async function deleteSalaryRate(rateId){
   salaryRates = salaryRates.filter(function(r){ return Number(r.id) !== Number(rateId); });
 }
 
+// ── CAISSE (cash-box) ledger ─────────────────────────────────────────
+// caisseMovements rows: {id, date, type:'in'|'out', amount, designation,
+// linked_kind, linked_id, notes, created_at}. Mirrors avances + tasweyas.
+let caisseMovements = JSON.parse(localStorage.getItem('caisse_v1')||'[]');
+let pcAvances       = JSON.parse(localStorage.getItem('pc_av_v1')||'[]');
+
+// Insert a caisse movement and return the saved row (or null on failure).
+// All callers that mirror an existing source row should pass linkedKind +
+// linkedId so the unique partial index in Postgres prevents duplicates.
+async function pushCaisseMovement(date, type, amount, designation, linkedKind, linkedId, notes){
+  const payload = {
+    date: String(date || new Date().toISOString().slice(0,10)),
+    type: type === 'in' ? 'in' : 'out',
+    amount: Number(amount||0),
+    designation: String(designation||''),
+    linked_kind: linkedKind || null,
+    linked_id: linkedId ? Number(linkedId) : null,
+    notes: String(notes||''),
+  };
+  const res = await sbFetch('caisse_movements','POST',payload);
+  if(res && Array.isArray(res) && res[0]){
+    caisseMovements.push(res[0]);
+    localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+    return res[0];
+  }
+  // The unique index can reject a duplicate insert (linked_kind+linked_id
+  // already mirrored). Treat as no-op rather than an error toast.
+  if(res && res.__sbError && /duplicate|caisse_movements_link_uniq/i.test(res.msg||'')){
+    console.info('[caisse] mirror already exists for', linkedKind, linkedId);
+    return null;
+  }
+  return null;
+}
+
+// Hard-delete the caisse movement that mirrors a given source row, if any.
+// Used by the cancel/delete paths on avances + tasweyas so the ledger stays
+// consistent with the source-of-truth tables.
+async function unlinkCaisseMovement(linkedKind, linkedId){
+  if(!linkedKind || !linkedId) return;
+  const params = 'linked_kind=eq.'+encodeURIComponent(linkedKind)
+               + '&linked_id=eq.'+encodeURIComponent(linkedId);
+  await sbFetch('caisse_movements?'+params, 'DELETE');
+  caisseMovements = caisseMovements.filter(function(m){
+    return !(String(m.linked_kind) === String(linkedKind) && Number(m.linked_id) === Number(linkedId));
+  });
+  localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+}
+
+// Solde over a date range (inclusive). Empty range = all-time.
+function getCaisseSolde(fromIso, toIso){
+  let inSum = 0, outSum = 0;
+  (caisseMovements || []).forEach(function(m){
+    if(fromIso && m.date < fromIso) return;
+    if(toIso   && m.date > toIso  ) return;
+    if(m.type === 'in')  inSum  += Number(m.amount||0);
+    if(m.type === 'out') outSum += Number(m.amount||0);
+  });
+  return { in:inSum, out:outSum, solde: inSum - outSum };
+}
+
+async function pushPcAvance(ouvrierId, date, montant, notes){
+  const payload = {
+    ouvrier_id: Number(ouvrierId),
+    date: String(date || new Date().toISOString().slice(0,10)),
+    montant: Number(montant||0),
+    notes: String(notes||''),
+    rembourse: false,
+  };
+  const res = await sbFetch('pc_avances','POST',payload);
+  if(res && Array.isArray(res) && res[0]){
+    pcAvances.push(res[0]);
+    localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+    return res[0];
+  }
+  return null;
+}
+
 // Compact rate-history block shown inside the worker edit modal so the user
 // can see when each rate took effect and roll one back if it was a mistake.
 function _salRateHistoryHTML(salId){
@@ -11688,7 +11782,7 @@ async function loadSalariesData(){
 
   // 2) Try Supabase — only replace if it returns a real array
   try{
-    const [sals,pres,avs,tasw,cat,ouvpcs,assigns,pcpres,pctasw,rates]=await Promise.all([
+    const [sals,pres,avs,tasw,cat,ouvpcs,assigns,pcpres,pctasw,rates,pcav,caisse]=await Promise.all([
       sbFetch('salaries','GET',null,'select=*&order=nom'),
       sbFetch('salarie_presences','GET',null,'select=*&order=date.desc&limit=1000'),
       sbFetch('salarie_avances','GET',null,'select=*&order=date.desc&limit=500'),
@@ -11699,7 +11793,11 @@ async function loadSalariesData(){
       sbFetch('ouvrier_pc_presences','GET',null,'select=*&order=date.desc&limit=2000'),
       sbFetch('pc_taswiyas','GET',null,'select=*&order=created_at.desc&limit=500'),
       sbFetch('salary_rates','GET',null,'select=*&order=effective_from.desc&limit=2000'),
+      sbFetch('pc_avances','GET',null,'select=*&order=date.desc&limit=500'),
+      sbFetch('caisse_movements','GET',null,'select=*&deleted_at=is.null&order=date.desc,id.desc&limit=2000'),
     ]);
+    if(Array.isArray(pcav))     { pcAvances=pcav; localStorage.setItem('pc_av_v1',JSON.stringify(pcav)); }
+    if(Array.isArray(caisse))   { caisseMovements=caisse; localStorage.setItem('caisse_v1',JSON.stringify(caisse)); }
     if(Array.isArray(rates))    { salaryRates=rates; localStorage.setItem('sal_rates_v1',JSON.stringify(rates)); }
     if(Array.isArray(sals))     { salariesData=sals; localStorage.setItem('sal_v1',JSON.stringify(sals)); }
     if(Array.isArray(pres))     { salariePresences=pres; localStorage.setItem('sal_pres_v1',JSON.stringify(pres)); }
@@ -12396,6 +12494,10 @@ async function salSaveWeekAvance(){
   hideLoader();
   if(res&&res[0]){
     salarieAvances.push(res[0]);
+    // Mirror to caisse: avance is real cash leaving the box on `date`.
+    const sal = salariesData.find(function(x){return x.id===id;});
+    const nm  = sal ? ((String(sal.nom||'')+(sal.prenom?' '+sal.prenom:'')).trim() || ('#'+id)) : ('#'+id);
+    pushCaisseMovement(date, 'out', montant, 'سلفة — '+nm, 'avance', res[0].id, notes);
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم تسجيل السلفة!';}
     setTimeout(function(){renderSalaries();},700);
   } else {
@@ -14762,13 +14864,18 @@ async function salKhallas(salId){
   const s=r.s;
   if(!confirm('تأكيد خلاص '+s.nom+' — '+fmtN(r.net)+' DH ؟'))return;
   showLoader('💾 جاري الحفظ...');
+  const today=new Date().toISOString().split('T')[0];
+  const nomSal=s.nom+(s.prenom?' '+s.prenom:'');
   const payload={salarie_id:salId,montant:r.net,date_from:salDashFrom,date_to:salDashTo,
-    date_paiement:new Date().toISOString().split('T')[0],nom_salarie:s.nom+(s.prenom?' '+s.prenom:'')};
+    date_paiement:today,nom_salarie:nomSal};
   const res=await sbFetch('salarie_taswiyas','POST',payload);
   hideLoader();
   if(res&&res[0]){
     salTaswiyas=salTaswiyas.filter(function(t){return !(t.salarie_id===salId&&t.date_from===salDashFrom&&t.date_to===salDashTo);});
     salTaswiyas.push(res[0]);
+    // Mirror net cash payout to caisse OUT. Avances of the same period were
+    // already mirrored when each was saved → no double-count here.
+    pushCaisseMovement(today,'out',r.net,'تسوية — '+nomSal,'sal_payment',res[0].id,'');
     renderSalaries();
   }
 }
@@ -14778,6 +14885,7 @@ async function salAnnulerTasw(salId){
   const t=salTaswiyas.find(function(x){return x.salarie_id===salId&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
   if(t&&t.id){
     await sbFetch('salarie_taswiyas?id=eq.'+t.id,'DELETE');
+    await unlinkCaisseMovement('sal_payment', t.id);
   }
   salTaswiyas=salTaswiyas.filter(function(x){return !(x.salarie_id===salId&&x.date_from===salDashFrom&&x.date_to===salDashTo);});
   renderSalaries();
@@ -14799,8 +14907,15 @@ async function pcKhallas(ouvrierId){
   };
   const res=await sbUpsert('pc_taswiyas',payload,'ouvrier_id,date_from,date_to');
   pcTaswiyas=pcTaswiyas.filter(function(t){return !(t.ouvrier_id===ouvrierId&&t.date_from===salDashFrom&&t.date_to===salDashTo);});
-  if(res&&res[0]) pcTaswiyas.push({id:res[0].id,ouvrier_id:res[0].ouvrier_id,date_from:res[0].date_from,date_to:res[0].date_to,montant:parseFloat(res[0].montant)||0,date_paiement:res[0].date_paiement});
-  else            pcTaswiyas.push(payload); // offline fallback
+  if(res&&res[0]){
+    pcTaswiyas.push({id:res[0].id,ouvrier_id:res[0].ouvrier_id,date_from:res[0].date_from,date_to:res[0].date_to,montant:parseFloat(res[0].montant)||0,date_paiement:res[0].date_paiement});
+    // Mirror to caisse OUT. PC avances (when used) were already mirrored
+    // at avance-save time, so this row is the net hand-out only.
+    pushCaisseMovement(res[0].date_paiement, 'out', Number(res[0].montant)||0,
+      'تسوية PC — '+(o?o.nom:''), 'pc_payment', res[0].id, '');
+  } else {
+    pcTaswiyas.push(payload); // offline fallback
+  }
   localStorage.setItem('pc_taswiyas_v1',JSON.stringify(pcTaswiyas));
   renderSalaries();
 }
@@ -14810,10 +14925,230 @@ async function pcAnnulerTasw(ouvrierId){
   const t=pcTaswiyas.find(function(x){return x.ouvrier_id===ouvrierId&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
   if(t&&t.id){
     try{ await sbFetch('pc_taswiyas?id=eq.'+t.id,'DELETE'); }catch(e){ console.warn('pc_taswiyas delete failed:',e); }
+    await unlinkCaisseMovement('pc_payment', t.id);
   }
   pcTaswiyas=pcTaswiyas.filter(function(x){return !(x.ouvrier_id===ouvrierId&&x.date_from===salDashFrom&&x.date_to===salDashTo);});
   localStorage.setItem('pc_taswiyas_v1',JSON.stringify(pcTaswiyas));
   renderSalaries();
+}
+
+// Quick PC avance: prompt for amount + date, save, mirror to caisse.
+async function pcSaveQuickAvance(ouvrierId){
+  const o = ouvriersPc.find(function(x){return x.id===ouvrierId;});
+  if(!o) return;
+  const today = new Date().toISOString().slice(0,10);
+  const mStr = prompt('💳 سلفة ل '+o.nom+'\n\nالمبلغ (DH):', '');
+  if(mStr === null) return;
+  const m = parseFloat(mStr)||0;
+  if(!m){ try{toast('المبلغ مطلوب','warning');}catch(_){ } return; }
+  const dStr = prompt('التاريخ (YYYY-MM-DD):', today);
+  if(dStr === null) return;
+  const d = (dStr || today).trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(d)){ try{toast('تاريخ غير صالح','error');}catch(_){ } return; }
+  showLoader('💾');
+  const av = await pushPcAvance(ouvrierId, d, m, '');
+  if(av && av.id){
+    await pushCaisseMovement(d, 'out', m, 'سلفة PC — '+o.nom, 'pc_avance', av.id, '');
+    try{toast('✅ سلفة مسجلة','success');}catch(_){}
+    renderSalaries();
+  } else {
+    try{toast('❌ فشل الحفظ','error');}catch(_){}
+  }
+  hideLoader();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CAISSE PAGE — cash-box ledger + manual in/out + KPIs
+// ═══════════════════════════════════════════════════════════════════
+let caisseFrom = (function(){const d=new Date();d.setDate(1);return d.toISOString().slice(0,10);})();
+let caisseTo   = new Date().toISOString().slice(0,10);
+let caisseTypeFilter = 'all'; // 'all' | 'in' | 'out'
+
+function caisseSetPreset(preset){
+  const today=new Date().toISOString().slice(0,10);
+  if(preset==='today'){ caisseFrom=today; caisseTo=today; }
+  else if(preset==='week'){ const d=new Date(); d.setDate(d.getDate()-6); caisseFrom=d.toISOString().slice(0,10); caisseTo=today; }
+  else if(preset==='month'){ const d=new Date(); d.setDate(1); caisseFrom=d.toISOString().slice(0,10); caisseTo=today; }
+  else if(preset==='all'){ caisseFrom=''; caisseTo=''; }
+  renderCaisse();
+}
+
+function _caisseLinkBadge(m){
+  const map = {
+    'avance':      {icon:'💳', color:'var(--amber)',  label:'سلفة'},
+    'pc_avance':   {icon:'💳', color:'var(--amber)',  label:'سلفة PC'},
+    'sal_payment': {icon:'👤', color:'var(--accent)', label:'تسوية'},
+    'pc_payment':  {icon:'👷', color:'var(--green)',  label:'تسوية PC'},
+  };
+  if(!m.linked_kind) return '<span style="color:var(--text3);font-size:10px">يدوي</span>';
+  const d = map[m.linked_kind];
+  if(!d) return '<span style="color:var(--text3);font-size:10px">'+escB(m.linked_kind)+'</span>';
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;background:rgba(0,0,0,0.05);border:1px solid '+d.color+';color:'+d.color+';border-radius:12px;font-size:10px;font-weight:700">'+d.icon+' '+d.label+'</span>';
+}
+
+function renderCaisse(){
+  const stats = getCaisseSolde(caisseFrom||null, caisseTo||null);
+  const allTime = getCaisseSolde();
+  const filter = (caisseMovements||[]).filter(function(m){
+    if(caisseFrom && m.date < caisseFrom) return false;
+    if(caisseTo   && m.date > caisseTo  ) return false;
+    if(caisseTypeFilter !== 'all' && m.type !== caisseTypeFilter) return false;
+    return true;
+  }).slice().sort(function(a,b){
+    // Chronological asc so we can compute running solde top→bottom
+    const c = String(a.date).localeCompare(String(b.date));
+    if(c !== 0) return c;
+    return Number(a.id||0) - Number(b.id||0);
+  });
+
+  // Running solde, starting from "before this range" balance
+  let priorSolde = 0;
+  if(caisseFrom){
+    (caisseMovements||[]).forEach(function(m){
+      if(m.date < caisseFrom){
+        priorSolde += (m.type==='in' ? Number(m.amount||0) : -Number(m.amount||0));
+      }
+    });
+  }
+
+  let html = '<div class="page-title" style="display:flex;align-items:center;gap:10px;margin-bottom:18px">'
+    +'<span style="font-size:22px">💵</span>'
+    +'<span>الصندوق</span>'
+    +'<span style="font-size:11px;color:var(--text3);font-weight:400;margin-inline-start:auto">إجمالي كل الوقت: <b style="color:'+(allTime.solde>=0?'var(--green)':'var(--red)')+'">'+fmtN(allTime.solde)+' DH</b></span>'
+  +'</div>';
+
+  // Date filter
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'
+    +'<div><label class="field-lbl">من</label><input type="date" class="field-inp" value="'+(caisseFrom||'')+'" onchange="caisseFrom=this.value;renderCaisse()"></div>'
+    +'<div><label class="field-lbl">إلى</label><input type="date" class="field-inp" value="'+(caisseTo||'')+'" onchange="caisseTo=this.value;renderCaisse()"></div>'
+  +'</div>'
+  +'<div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<button onclick="caisseSetPreset(\'today\')" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">اليوم</button>'
+    +'<button onclick="caisseSetPreset(\'week\')" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الأسبوع</button>'
+    +'<button onclick="caisseSetPreset(\'month\')" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الشهر</button>'
+    +'<button onclick="caisseSetPreset(\'all\')" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">الكل</button>'
+  +'</div>';
+
+  // KPIs
+  html += '<div class="dash-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
+    +'<div class="kpi green"><div class="kpi-icon">➕</div><div class="kpi-val" style="color:var(--green)">'+fmtN(stats.in)+'</div><div class="kpi-lbl">دخل</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi" style="border-color:rgba(232,64,64,0.3)"><div class="kpi-icon">➖</div><div class="kpi-val" style="color:var(--red)">'+fmtN(stats.out)+'</div><div class="kpi-lbl">خرج</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi blue"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:'+(stats.solde>=0?'var(--accent)':'var(--red)')+'">'+fmtN(stats.solde)+'</div><div class="kpi-lbl">الباقي ف الفترة</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi"><div class="kpi-icon">📊</div><div class="kpi-val" style="color:var(--purple)">'+filter.length+'</div><div class="kpi-lbl">حركات</div><div class="kpi-sub">'+(caisseTypeFilter==='all'?'كاملة':caisseTypeFilter==='in'?'دخول':'خروج')+'</div></div>'
+  +'</div>';
+
+  // Action buttons
+  html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<button onclick="caisseOpenAddIn()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(46,204,122,0.3)">➕ دخول (المعلم جاب فلوس)</button>'
+    +'<button onclick="caisseOpenAddOut()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(232,64,64,0.3)">➖ خرج (transport, scotch...)</button>'
+  +'</div>'
+  +'<div style="display:flex;gap:6px;margin-bottom:10px">'
+    +'<button onclick="caisseTypeFilter=\'all\';renderCaisse()" style="flex:1;padding:7px;border:1px solid var(--border);background:'+(caisseTypeFilter==='all'?'var(--accent)':'transparent')+';color:'+(caisseTypeFilter==='all'?'#fff':'var(--text2)')+';border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">الكل</button>'
+    +'<button onclick="caisseTypeFilter=\'in\';renderCaisse()" style="flex:1;padding:7px;border:1px solid var(--border);background:'+(caisseTypeFilter==='in'?'var(--green)':'transparent')+';color:'+(caisseTypeFilter==='in'?'#fff':'var(--text2)')+';border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">➕ دخول فقط</button>'
+    +'<button onclick="caisseTypeFilter=\'out\';renderCaisse()" style="flex:1;padding:7px;border:1px solid var(--border);background:'+(caisseTypeFilter==='out'?'var(--red)':'transparent')+';color:'+(caisseTypeFilter==='out'?'#fff':'var(--text2)')+';border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">➖ خروج فقط</button>'
+  +'</div>';
+
+  // Ledger table
+  if(!filter.length){
+    html += '<div style="text-align:center;padding:50px 20px;color:var(--text3);background:var(--bg3);border-radius:var(--radius)">'
+      +'<div style="font-size:42px;margin-bottom:10px">💵</div>'
+      +'<div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:4px">ما كاين حتى حركة فهاد الفترة</div>'
+      +'<div style="font-size:12px">جرب تبدل التواريخ ولا تزيد دخول/خرج جديد فوق</div>'
+    +'</div>';
+    document.getElementById('page-caisse').innerHTML = html;
+    return;
+  }
+
+  // Reverse for display (newest first) but keep priorSolde computed forward
+  let runSolde = priorSolde;
+  const rows = filter.map(function(m){
+    runSolde += (m.type==='in' ? Number(m.amount||0) : -Number(m.amount||0));
+    return Object.assign({}, m, {_run: runSolde});
+  });
+  rows.reverse();
+
+  html += '<div class="dash-panel" style="padding:0;overflow:hidden">'
+    +'<div style="overflow-x:auto"><table class="data-table" style="margin:0">'
+    +'<thead><tr><th style="white-space:nowrap">التاريخ</th><th>البيان</th><th style="text-align:center">النوع</th><th style="text-align:end;color:var(--green)">دخل</th><th style="text-align:end;color:var(--red)">خرج</th><th style="text-align:end">الباقي</th><th style="width:48px"></th></tr></thead>'
+    +'<tbody>';
+  rows.forEach(function(m,i){
+    const inAmt  = m.type==='in'  ? fmtN(m.amount) : '—';
+    const outAmt = m.type==='out' ? fmtN(m.amount) : '—';
+    const canDel = !m.linked_kind; // free entries only
+    html += '<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+      +'<td style="white-space:nowrap;font-size:12px;font-weight:600;color:var(--text2)">'+fmtDate(m.date)+'</td>'
+      +'<td style="font-weight:600">'+escB(m.designation||'—')+(m.notes?'<div style="font-size:10px;color:var(--text3);font-weight:400;margin-top:2px">'+escB(m.notes)+'</div>':'')+'</td>'
+      +'<td style="text-align:center">'+_caisseLinkBadge(m)+'</td>'
+      +'<td style="text-align:end;font-weight:700;color:var(--green)">'+inAmt+'</td>'
+      +'<td style="text-align:end;font-weight:700;color:var(--red)">'+outAmt+'</td>'
+      +'<td style="text-align:end;font-weight:800;color:'+(m._run>=0?'var(--accent)':'var(--red)')+'">'+fmtN(m._run)+'</td>'
+      +'<td style="text-align:center">'+(canDel?'<button onclick="caisseDeleteMovement('+m.id+')" title="حذف" style="background:transparent;border:1px solid rgba(232,64,64,0.3);color:var(--red);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:11px">🗑️</button>':'<span title="مربوط — يتحذف من المصدر" style="color:var(--text3);font-size:11px">🔗</span>')+'</td>'
+    +'</tr>';
+  });
+  html += '</tbody></table></div></div>';
+
+  document.getElementById('page-caisse').innerHTML = html;
+}
+
+function caisseOpenAddIn(){ _caisseOpenAddModal('in'); }
+function caisseOpenAddOut(){ _caisseOpenAddModal('out'); }
+function _caisseOpenAddModal(type){
+  const today = new Date().toISOString().slice(0,10);
+  const isIn = type === 'in';
+  const html = '<div class="modal-title"><span>'+(isIn?'➕ دخول جديد':'➖ خرج جديد')+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<input type="hidden" id="caisse-add-type" value="'+type+'">'
+    +'<div class="form-grid" style="gap:12px">'
+      +'<div class="form-full"><label class="field-lbl">التاريخ *</label><input class="field-inp" type="date" id="caisse-add-date" value="'+today+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">البيان *</label><input class="field-inp" id="caisse-add-desig" placeholder="'+(isIn?'مثلا: المعلم جاب فلوس':'مثلا: transport - scotch')+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" type="number" id="caisse-add-amount" min="0" step="0.01" placeholder="0.00"></div>'
+      +'<div class="form-full"><label class="field-lbl">ملاحظة (اختياري)</label><input class="field-inp" id="caisse-add-notes" placeholder=""></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:18px">'
+      +'<button class="btn '+(isIn?'btn-accent':'')+'" style="flex:1;padding:12px;background:'+(isIn?'var(--green)':'var(--red)')+';color:#fff;border:none" onclick="caisseSubmitAdd()">'+(isIn?'➕ تسجيل دخول':'➖ تسجيل خرج')+'</button>'
+      +'<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
+    +'</div>'
+    +'<div id="caisse-add-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+  setTimeout(function(){ const el=document.getElementById('caisse-add-desig'); if(el) el.focus(); }, 100);
+}
+
+async function caisseSubmitAdd(){
+  const type   = (document.getElementById('caisse-add-type')||{value:'in'}).value;
+  const date   = (document.getElementById('caisse-add-date')||{value:''}).value;
+  const desig  = (document.getElementById('caisse-add-desig')||{value:''}).value.trim();
+  const amount = parseFloat((document.getElementById('caisse-add-amount')||{value:'0'}).value)||0;
+  const notes  = (document.getElementById('caisse-add-notes')||{value:''}).value.trim();
+  const msg    = document.getElementById('caisse-add-msg');
+  const setMsg = (t,c) => { if(msg){ msg.style.color=c||'var(--text2)'; msg.textContent=t||''; } };
+  if(!desig){ setMsg('البيان مطلوب','var(--red)'); return; }
+  if(!amount){ setMsg('المبلغ مطلوب','var(--red)'); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')){ setMsg('تاريخ غير صالح','var(--red)'); return; }
+  setMsg('⏳ جاري الحفظ...');
+  const saved = await pushCaisseMovement(date, type, amount, desig, null, null, notes);
+  if(saved && saved.id){
+    setMsg('✅ تم','var(--green)');
+    setTimeout(function(){ document.getElementById('modal-main').classList.remove('open'); renderCaisse(); }, 600);
+  } else {
+    setMsg('❌ فشل الحفظ','var(--red)');
+  }
+}
+
+async function caisseDeleteMovement(id){
+  const m = (caisseMovements||[]).find(function(x){return Number(x.id)===Number(id);});
+  if(!m) return;
+  if(m.linked_kind){
+    alert('هاد الحركة مربوطة ب '+m.linked_kind+' — حذفها كيتم من المصدر (السلفة / التسوية).');
+    return;
+  }
+  if(!confirm('حذف "'+(m.designation||'')+'" — '+fmtN(m.amount)+' DH ؟')) return;
+  showLoader('🗑️');
+  await sbFetch('caisse_movements?id=eq.'+id,'DELETE');
+  caisseMovements = caisseMovements.filter(function(x){ return Number(x.id) !== Number(id); });
+  localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+  hideLoader();
+  renderCaisse();
 }
 
 // ─── HISTORIQUE ───────────────────────────────────────────────
@@ -15253,6 +15588,7 @@ function renderSalPcs(){
         ?'<button onclick="pcSaveEdit('+o.id+')" style="padding:5px 12px;border-radius:20px;background:var(--accent);color:#fff;border:none;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">💾</button>'
          +'<button onclick="pcEditId=null;renderSalaries()" style="padding:5px 10px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">✕</button>'
         :'<button onclick="pcEditId='+o.id+';renderSalaries()" style="padding:5px 10px;border-radius:20px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">✏️</button>'
+         +'<button onclick="pcSaveQuickAvance('+o.id+')" title="سلفة" style="padding:5px 10px;border-radius:20px;border:1px solid var(--amber);background:rgba(245,166,35,0.08);color:var(--amber);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">💳</button>'
          +'<button onclick="pcToggleActif('+o.id+')" style="padding:5px 10px;border-radius:20px;border:1px solid '+(o.actif!==false?'var(--green)':'var(--border)')+';background:transparent;color:'+(o.actif!==false?'var(--green)':'var(--text3)')+';font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">'+(o.actif!==false?'نشيط':'متوقف')+'</button>'
          +'<button onclick="pcDeleteAjir('+o.id+',\''+escB(o.nom)+'\')" style="padding:5px 10px;border-radius:20px;border:1px solid rgba(232,64,64,0.35);background:rgba(232,64,64,0.07);color:var(--red);font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">🗑️</button>'
       )

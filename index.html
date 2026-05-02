@@ -14875,6 +14875,14 @@ async function salKhallas(salId){
     // Mirror net cash payout to caisse OUT. Avances of the same period were
     // already mirrored when each was saved → no double-count here.
     pushCaisseMovement(today,'out',r.net,'تسوية — '+nomSal,'sal_payment',res[0].id,'');
+    // Telegram notif so the user sees each settlement with name + amount.
+    var lines = [
+      '💰 *تخلص — '+nomSal+'*',
+      '📅 الفترة: '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
+      '💵 المبلغ: '+fmtN(r.net)+' DH',
+    ];
+    if(r.totalAvs > 0) lines.push('🛈 (الأجر '+fmtN(r.totalJours+r.totalHsup+r.totalProd)+' − سلف '+fmtN(r.totalAvs)+')');
+    sendTelegramBroadcast(lines.join('\n'));
     renderSalaries();
   }
 }
@@ -14912,6 +14920,12 @@ async function pcKhallas(ouvrierId){
     // at avance-save time, so this row is the net hand-out only.
     pushCaisseMovement(res[0].date_paiement, 'out', Number(res[0].montant)||0,
       'تسوية PC — '+(o?o.nom:''), 'pc_payment', res[0].id, '');
+    // Telegram notif: name + period + amount.
+    sendTelegramBroadcast([
+      '💰 *تخلص PC — '+(o?o.nom:('#'+ouvrierId))+'*',
+      '📅 الفترة: '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
+      '💵 المبلغ: '+fmtN(r)+' DH',
+    ].join('\n'));
   } else {
     pcTaswiyas.push(payload); // offline fallback
   }

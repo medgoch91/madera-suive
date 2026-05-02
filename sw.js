@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v104-lazyload-ed-on-dashboard';
+const CACHE = 'suivi-v105-dashboard-design-unified';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -15120,6 +15120,28 @@ function edExportReportCSV(){
   try{toast('📊 تنزيل '+fn,'success');}catch(e){}
 }
 
+// Visual helpers for the dashboard so the 3 wage sections share the same
+// rhythm (header pill + table chrome + total band + خلاص button).
+function _dashSectionHeader(emoji, title, color, sub){
+  // Pill-shaped header with gradient lines on both sides — same shape used
+  // by the admin page section dividers for visual consistency.
+  return '<div style="margin:22px 0 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,'+color+'40);min-width:20px"></div>'
+    +'<div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:'+color+'15;border:1px solid '+color+'45;border-radius:20px">'
+      +'<span style="font-size:14px">'+emoji+'</span>'
+      +'<span style="font-size:12px;font-weight:800;color:'+color+';letter-spacing:0.3px">'+title+'</span>'
+      +(sub?'<span style="font-size:10px;color:var(--text3);font-weight:500;margin-inline-start:4px">'+sub+'</span>':'')
+    +'</div>'
+    +'<div style="flex:1;height:1px;background:linear-gradient(90deg,'+color+'40,transparent);min-width:20px"></div>'
+  +'</div>';
+}
+function _dashKhallasBtn(onclickAttr){
+  return '<button onclick="'+onclickAttr+'" style="padding:6px 14px;border:none;border-radius:20px;background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(46,204,122,0.3);white-space:nowrap">💰 خلاص</button>';
+}
+function _dashPaidBadge(){
+  return '<span style="font-size:10px;background:rgba(39,174,96,0.12);color:var(--green);padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid rgba(39,174,96,0.3)">✓ مخلص</span>';
+}
+
 function renderSalDashboard(){
   // Lazy-load elec-dist data on first dashboard render so the 🛠️ التقنيون
   // KPI + table show real values even when the user hasn't opened the
@@ -15207,8 +15229,8 @@ function renderSalDashboard(){
   // ── Nharat table (skipped entirely when empty — the thin notice above
   //     already tells the user, no need to render an empty table shell) ──
   if(rows.length){
-  html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">📅 بالنهار</div>';
-  html+='<div class="dash-panel" style="margin-bottom:16px"><div style="overflow-x:auto"><table class="data-table">'
+  html+=_dashSectionHeader('📅', 'الأجراء بالنهار', '#4f8ef7', rows.length+' أجير');
+  html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
     +'<thead><tr><th>الأجير</th><th>الأيام</th><th>أجر الأيام</th><th>الإنتاج</th><th>السلف</th><th>الصافي / الحالة</th></tr></thead><tbody>';
   rows.forEach(function(r,i){
     const taswiya=salTaswiyas.find(function(t){return t.salarie_id===r.s.id&&t.date_from===salDashFrom&&t.date_to===salDashTo;});
@@ -15220,15 +15242,15 @@ function renderSalDashboard(){
       +'<td style="text-align:center;color:var(--red);font-weight:600">'+(r.totalAvs>0?'-'+fmtN(r.totalAvs):'—')+'</td>'
       +'<td style="min-width:130px">'
         +(taswiya
-          ?'<div style="display:flex;align-items:center;gap:6px">'
+          ?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
             +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(taswiya.montant)+' DH</span>'
-            +'<span style="font-size:10px;background:rgba(39,174,96,0.1);color:var(--green);padding:2px 8px;border-radius:20px;font-weight:700">✓ مخلص</span>'
-            +(taswiya.id?'<button onclick="printTaswiyaRow('+taswiya.id+')" title="طبع الشيك" style="padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')
-            +'<button onclick="salAnnulerTasw('+r.s.id+')" style="padding:2px 6px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:10px;cursor:pointer">↩</button>'
+            +_dashPaidBadge()
+            +(taswiya.id?'<button onclick="printTaswiyaRow('+taswiya.id+')" title="طبع الشيك" style="padding:3px 8px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
+            +'<button onclick="salAnnulerTasw('+r.s.id+')" title="إلغاء" style="padding:3px 8px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
           +'</div>'
           :'<div style="display:flex;align-items:center;gap:6px">'
             +'<span style="font-size:14px;font-weight:800;color:var(--accent)">'+fmtN(r.net)+' DH</span>'
-            +'<button onclick="salKhallas('+r.s.id+')" style="padding:5px 12px;border:none;border-radius:var(--radius-sm);background:var(--green);color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">💰 خلاص</button>'
+            +_dashKhallasBtn('salKhallas('+r.s.id+')')
           +'</div>'
         )
       +'</td>'
@@ -15265,8 +15287,8 @@ function renderSalDashboard(){
   const pcGrandTotal=pcRows.reduce(function(t,r){return t+r.total;},0);
   const pcGrandAvs  =pcRows.reduce(function(t,r){return t+r.avsTotal;},0);
   const pcGrandNet  =pcRows.reduce(function(t,r){return t+r.net;},0);
-  html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">👷 Par PCs</div>';
-  html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table">'
+  html+=_dashSectionHeader('👷', 'Par PCs', '#10b981', pcRows.length?(pcRows.length+' عامل'):'');
+  html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
     +'<thead><tr><th>الأجير</th><th>التفاصيل</th><th style="white-space:nowrap">💳 السلف</th><th>الإجمالي / الحالة</th></tr></thead><tbody>';
   if(!pcRows.length){
     html+='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:20px">لا توجد بيانات في هاد الفترة</td></tr>';
@@ -15285,9 +15307,9 @@ function renderSalDashboard(){
           +(tasw
             ?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
               +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(tasw.montant)+' DH</span>'
-              +'<span style="font-size:10px;background:rgba(39,174,96,0.1);color:var(--green);padding:2px 8px;border-radius:20px;font-weight:700">✓ مخلص</span>'
-              +(tasw.id?'<button onclick="printPcTaswiyaRow('+tasw.id+')" title="طبع الشيك" style="padding:2px 6px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')
-              +'<button onclick="pcAnnulerTasw('+r.o.id+')" style="padding:2px 6px;border:1px solid var(--red);border-radius:6px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:10px;cursor:pointer">↩</button>'
+              +_dashPaidBadge()
+              +(tasw.id?'<button onclick="printPcTaswiyaRow('+tasw.id+')" title="طبع الشيك" style="padding:3px 8px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')
+              +'<button onclick="pcAnnulerTasw('+r.o.id+')" title="إلغاء" style="padding:3px 8px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
             +'</div>'
             :'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
               +(r.avsTotal>0
@@ -15299,7 +15321,7 @@ function renderSalDashboard(){
                     +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(r.net)+' DH</span>'
                   +'</div>'
                 : '<span style="font-size:14px;font-weight:800;color:var(--accent)">'+fmtN(r.total)+' DH</span>')
-              +'<button onclick="pcKhallas('+r.o.id+')" style="padding:5px 12px;border:none;border-radius:var(--radius-sm);background:var(--green);color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">💰 خلاص</button>'
+              +_dashKhallasBtn('pcKhallas('+r.o.id+')')
             +'</div>'
           )
         +'</td>'
@@ -15334,8 +15356,8 @@ function renderSalDashboard(){
     const edEarned = edTechRows.reduce(function(t,r){return t+r.earned;}, 0);
     const edPaid   = edTechRows.reduce(function(t,r){return t+r.paid;}, 0);
     const edDue    = edEarned - edPaid;
-    html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin:18px 0 8px;text-transform:uppercase;letter-spacing:0.5px">🛠️ التقنيون (électricité à distance)</div>';
-    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table">'
+    html+=_dashSectionHeader('🛠️', 'التقنيون', '#fbbf24', 'électricité à distance · '+(edTechRows.length?edTechRows.length+' تقني':''));
+    html+='<div class="dash-panel" style="margin-bottom:8px"><div style="overflow-x:auto"><table class="data-table">'
       +'<thead><tr><th>التقني</th><th style="text-align:end">المستحق</th><th style="text-align:end">تخلص</th><th>الباقي / الحالة</th></tr></thead><tbody>';
     if(!edTechRows.length){
       html+='<tr><td colspan="4" style="text-align:center;color:var(--text3);padding:18px;font-size:12px">ما كاين شي تقني — زيد تقني من tabular ⚡ électricité à distance</td></tr>';
@@ -15349,9 +15371,9 @@ function renderSalDashboard(){
           +(r.due > 0.01
             ? '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'
                 +'<span style="font-size:14px;font-weight:800;color:#fbbf24">'+fmtN(r.due)+' DH</span>'
-                +'<button onclick="edDashKhallasTech(\''+escB(r.name).replace(/\x27/g,"\\\x27")+'\')" style="padding:5px 12px;border:none;border-radius:var(--radius-sm);background:#fbbf24;color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">💰 خلاص</button>'
+                +_dashKhallasBtn('edDashKhallasTech(\''+escB(r.name).replace(/\x27/g,"\\\x27")+'\')')
               +'</div>'
-            : '<span style="font-size:12px;color:var(--green);font-weight:700">✓ كاع تخلص</span>'
+            : _dashPaidBadge()
           )
         +'</td>'
       +'</tr>';

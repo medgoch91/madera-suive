@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v86-notif-auto-fire-with-override';
+const CACHE = 'suivi-v87-avance-fk-preflight';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

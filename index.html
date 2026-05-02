@@ -12637,6 +12637,12 @@ async function salSaveWeekAvance(){
   const notes=(document.getElementById('sal-week-av-notes')||{value:''}).value.trim();
   const msg=document.getElementById('sal-week-av-msg');
   if(!montant){if(msg){msg.style.color='var(--red)';msg.textContent='المبلغ مطلوب';}return;}
+  // Pre-flight: catch the stale-ID case (worker removed server-side, or user
+  // picked a PC option) before hitting Supabase with an FK-doomed POST.
+  if(!id || isNaN(id) || !(salariesData||[]).find(function(s){return Number(s.id)===id;})){
+    if(msg){msg.style.color='var(--red)';msg.textContent='⚠️ خاص تختار أجير صحيح (من النهار). ايلا الأجير ما تيبانش ف القائمة، Hard-refresh الصفحة (Ctrl+Shift+R).';}
+    return;
+  }
   showLoader('💾 جاري الحفظ...');
   const res=await sbFetch('salarie_avances','POST',{salarie_id:id,montant,date,notes,rembourse:false});
   hideLoader();

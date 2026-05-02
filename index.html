@@ -1648,18 +1648,43 @@ function _doPointageNotif(kind, workerId, targetDate){
       // means the day was just cleared, which we report as a wipe message.
       const records = (typeof pcPresences !== 'undefined' ? pcPresences : []).filter(r => Number(r.ouvrier_id) === Number(workerId) && r.date === dateUsed && Number(r.qte||0) > 0);
       const dateLbl = fmtDate(dateUsed) + (isToday?'':' 📅 (متأخر)');
+
+      // Cumulative pending earnings since the last settlement: every notif
+      // shows "what's the running tally I'd owe if I paid now". Excludes
+      // already-settled tasweyas; subtracts unpaid avances for the net.
+      const lastTasweya = (typeof pcTaswiyas !== 'undefined' ? pcTaswiyas : [])
+        .filter(t => Number(t.ouvrier_id) === Number(workerId))
+        .slice()
+        .sort((a,b) => String(b.date_to||'').localeCompare(String(a.date_to||'')))[0];
+      const sinceDate = lastTasweya ? String(lastTasweya.date_to) : '0000-01-01';
+      const sinceLabel = lastTasweya ? fmtDate(lastTasweya.date_to) : 'البداية';
+      const cumGross = (typeof pcPresences !== 'undefined' ? pcPresences : [])
+        .filter(r => Number(r.ouvrier_id) === Number(workerId) && String(r.date) > sinceDate)
+        .reduce((t,r) => t + Number(r.qte||0) * Number(r.prix||0), 0);
+      const pendingAvs = (typeof pcAvances !== 'undefined' ? pcAvances : [])
+        .filter(a => Number(a.ouvrier_id) === Number(workerId) && !a.rembourse)
+        .reduce((t,a) => t + Number(a.montant||0), 0);
+      const netPending = cumGross - pendingAvs;
+
+      let text;
       if(!records.length){
-        sendTelegramBroadcast(`👷 ${name} — ${dateLbl}\n🗑️ ما كاين شي إنتاج (تمسح)`);
-        return;
+        text = `👷 ${name} — ${dateLbl}\n🗑️ ما كاين شي إنتاج (تمسح)`;
+      } else {
+        text = `👷 ${name} — ${dateLbl}\n`;
+        let dayTotal = 0;
+        records.forEach(r => {
+          const c = Number(r.qte||0) * Number(r.prix||0);
+          dayTotal += c;
+          text += `🧱 ${r.pc_nom} · ${r.qte} × ${fmtN(r.prix)} = ${fmt(c)}\n`;
+        });
+        text += `📦 مجموع اليوم: ${fmt(dayTotal)} DH`;
       }
-      let text = `👷 ${name} — ${dateLbl}\n`;
-      let total = 0;
-      records.forEach(r => {
-        const c = Number(r.qte||0) * Number(r.prix||0);
-        total += c;
-        text += `🧱 ${r.pc_nom} · ${r.qte} × ${fmtN(r.prix)} = ${fmt(c)}\n`;
-      });
-      text += `\n📦 المجموع: ${fmt(total)}`;
+      // Cumulative summary block — same layout for both produce + clear paths
+      text += `\n\n💰 الإجمالي المعلق من ${sinceLabel}: ${fmt(cumGross)} DH`;
+      if(pendingAvs > 0){
+        text += `\n💳 سلف معلقة: −${fmt(pendingAvs)} DH`;
+        text += `\n🟢 الباقي للخلاص: ${fmt(netPending)} DH`;
+      }
       sendTelegramBroadcast(text);
     }
   }catch(e){

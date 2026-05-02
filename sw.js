@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v84-notif-on-explicit-save';
+const CACHE = 'suivi-v85-pc-notif-cumulative-total';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

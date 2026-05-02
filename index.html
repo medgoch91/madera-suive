@@ -15165,6 +15165,15 @@ function renderSalDashboard(){
     .reduce(function(t,a){ return t + Number(a.montant||0); }, 0);
   const outstandingAll = outstandingSal + outstandingPc;
 
+  // Technicians (électricité à distance) — sum of unsettled balances per
+  // tech (earned − paid). Only counts what's still owed so the KPI reflects
+  // pending wages, matching the "أجور" framing of the dashboard.
+  const edTechDueAll = (typeof edGetTechList === 'function' ? edGetTechList() : []).reduce(function(t, name){
+    const e = (typeof edComputeTechRevenue === 'function') ? edComputeTechRevenue(name) : 0;
+    const p = (typeof edComputeTechPaid    === 'function') ? edComputeTechPaid(name)    : 0;
+    return t + Math.max(0, e - p);
+  }, 0);
+
   let html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
     +'<div><label class="field-lbl">من</label><input type="date" class="field-inp" value="'+salDashFrom+'" onchange="salDashFrom=this.value;renderSalaries()"></div>'
     +'<div><label class="field-lbl">إلى</label><input type="date" class="field-inp" value="'+salDashTo+'" onchange="salDashTo=this.value;renderSalaries()"></div>'
@@ -15173,12 +15182,13 @@ function renderSalDashboard(){
     +'<button onclick="salSetDashWeek()" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الأسبوع</button>'
     +'<button onclick="salSetDashMonth()" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الشهر</button>'
   +'</div>'
-  +'<div class="dash-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">'
+  +'<div class="dash-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">'
     +'<div class="kpi blue"><div class="kpi-icon">📅</div><div class="kpi-val" style="color:var(--accent)">'+fmtN(grandTotal)+'</div><div class="kpi-lbl">أجور بالنهار</div><div class="kpi-sub">DH (net)</div></div>'
     +'<div class="kpi green"><div class="kpi-icon">👷</div><div class="kpi-val" style="color:var(--green)">'+fmtN(pcGrandTotalKpi)+'</div><div class="kpi-lbl">أجور Par PCs</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi" style="border-color:rgba(251,191,36,0.45);background:rgba(251,191,36,0.05)" title="الباقي للتقنيون — électricité à distance"><div class="kpi-icon">🛠️</div><div class="kpi-val" style="color:#fbbf24">'+fmtN(edTechDueAll)+'</div><div class="kpi-lbl">أجور تقنيون</div><div class="kpi-sub">DH (الباقي)</div></div>'
     +'<div class="kpi amber" title="السلف اللي تخصمو ف هاد الفترة"><div class="kpi-icon">💳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(totalAvsAll)+'</div><div class="kpi-lbl">سلف ف الحساب</div><div class="kpi-sub">DH</div></div>'
     +'<div class="kpi" style="border-color:rgba(245,166,35,0.4);background:rgba(245,166,35,0.04)" title="السلف اللي مزال ما تخلصاتش — كتنتقل للتسوية الجاية"><div class="kpi-icon">⏳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(outstandingAll)+'</div><div class="kpi-lbl">سلف معلقة</div><div class="kpi-sub">'+(outstandingSal>0?'👤'+fmtN(outstandingSal):'')+(outstandingSal>0&&outstandingPc>0?' · ':'')+(outstandingPc>0?'👷'+fmtN(outstandingPc):'')+(outstandingAll===0?'كاملة محسومة':'')+'</div></div>'
-    +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi+edTechDueAll)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
 
   // Don't early-return when salariés rows are empty — PCs may still have

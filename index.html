@@ -1530,18 +1530,33 @@ function _doPointageNotif(kind, workerId){
       const sal = (typeof salariesData !== 'undefined' ? salariesData : []).find(x => Number(x.id) === Number(workerId));
       const pres = (typeof salariePresences !== 'undefined' ? salariePresences : []).find(p => Number(p.salarie_id) === Number(workerId) && p.date === today);
       const name = sal
-        ? ((String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('#'+workerId))
+        ? ((String(sal.nom||'') + (sal.prenom ? ' ' + sal.prenom : '')).trim() || ('أجير #'+workerId))
         : ('أجير #'+workerId);
       if(!pres){
         // Row was just saved — should be there. Fallback to a simple ping if cache missed.
         sendTelegramBroadcast(`👤 ${name}\n📝 تحديث الحضور — ${fmtDate(today)}`);
         return;
       }
-      const st = _POINTAGE_STATUS[pres.statut] || { icon:'·', lbl:String(pres.statut||'?') };
       const hsup = Number(pres.heures_supp || 0);
       const taux = Number(pres.taux_horaire || 0);
       const cost = hsup * taux;
-      let text = `👤 ${name}\n${st.icon} ${st.lbl} — ${fmtDate(today)}`;
+      // Resolve status to a readable Arabic label. If statut is null/empty
+      // (happens when a cell is cleared back to "no status" but the row
+      // stays for hsup/notes), show a meaningful "تحديث" message instead
+      // of falling back to a bare "?". If statut is something the dict
+      // doesn't know yet, log it and surface the raw value rather than "?".
+      let stIcon, stLbl;
+      const knownSt = _POINTAGE_STATUS[pres.statut];
+      if(knownSt){
+        stIcon = knownSt.icon; stLbl = knownSt.lbl;
+      } else if(!pres.statut){
+        // Row exists with hsup/notes but no status set
+        stIcon = '🔄'; stLbl = 'تحديث الحضور';
+      } else {
+        console.warn('[notif] unknown statut:', pres.statut, 'on worker', workerId);
+        stIcon = '📝'; stLbl = String(pres.statut);
+      }
+      let text = `👤 ${name}\n${stIcon} ${stLbl} — ${fmtDate(today)}`;
       if(hsup > 0){
         text += `\n⏱️ +${hsup}h`;
         if(taux > 0) text += ` × ${fmtN(taux)} = ${fmt(cost)}`;

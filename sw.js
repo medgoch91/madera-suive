@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v72-salary-numeric-precision';
+const CACHE = 'suivi-v73-pointage-notif-readable';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

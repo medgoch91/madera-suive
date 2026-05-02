@@ -1560,25 +1560,21 @@ const _POINTAGE_STATUS = {
 // (empty) only to avoid breakage if any extension accesses it.
 const _pointageDebounce = {};
 
-// Auto-fire: per-(kind:workerId:date) debounce. Each edit (re)schedules a
-// 5s timer; if no further edit arrives, the notif goes out automatically.
-// _pendingPointageNotifs holds the keys with active timers so we can show
-// the count + let the user fire them early via the FAB override.
-const _pendingPointageNotifs = new Map(); // key → timeoutId
+// Auto-fire with a single GLOBAL 5s debounce. All pending edits (any worker,
+// any date) coalesce into one Telegram summary instead of N per-worker
+// messages. _pendingPointageNotifs holds the keys; _pendingPointageTimer is
+// the single timer that flushes them all.
+const _pendingPointageNotifs = new Set();
+let _pendingPointageTimer = null;
+
 function notifyPointageChange(kind, workerId, date){
   const targetDate = date || new Date().toISOString().slice(0,10);
-  const key = kind + ':' + workerId + ':' + targetDate;
-  // Reset any in-flight timer for this exact key so rapid re-edits coalesce
-  // into a single notification.
-  if(_pendingPointageNotifs.has(key)){
-    clearTimeout(_pendingPointageNotifs.get(key));
-  }
-  const tid = setTimeout(function(){
-    _pendingPointageNotifs.delete(key);
-    _refreshNotifBadge();
-    try{ _doPointageNotif(kind, Number(workerId), targetDate); }catch(e){ console.warn('pointage notif failed', e); }
+  _pendingPointageNotifs.add(kind + ':' + workerId + ':' + targetDate);
+  if(_pendingPointageTimer) clearTimeout(_pendingPointageTimer);
+  _pendingPointageTimer = setTimeout(function(){
+    _pendingPointageTimer = null;
+    try{ flushPendingPointageNotifs(true); }catch(e){ console.warn('flush failed', e); }
   }, 5000);
-  _pendingPointageNotifs.set(key, tid);
   _refreshNotifBadge();
 }
 
@@ -1592,28 +1588,95 @@ function _refreshNotifBadge(){
   });
 }
 
-// Override: fire all pending notifs immediately instead of waiting for the
-// 5s debounce. Useful when the user is sure they're done and wants the
-// Telegram message right away (no risk of forgetting — the auto-fire still
-// fires anyway if they don't click).
-async function flushPendingPointageNotifs(){
+// Flush all pending pointage notifs as ONE batched Telegram message.
+// `silent`: when true (auto-fire), suppress the toast — only the manual FAB
+// click should show the "✅ سيفطو" toast. When only one entry is pending,
+// fall back to the richer per-worker template (with cumulative totals etc.).
+async function flushPendingPointageNotifs(silent){
   if(!_pendingPointageNotifs.size){
-    try{ toast('ما كاين شي تنبيه ينتظر','info'); }catch(_){}
+    if(!silent){ try{ toast('ما كاين شي تنبيه ينتظر','info'); }catch(_){} }
     return;
   }
-  const entries = [..._pendingPointageNotifs.entries()];
-  // Cancel timers + clear the buffer so the auto-fire path doesn't re-fire.
-  entries.forEach(function(e){ try{ clearTimeout(e[1]); }catch(_){ } });
+  if(_pendingPointageTimer){ clearTimeout(_pendingPointageTimer); _pendingPointageTimer = null; }
+  const entries = [..._pendingPointageNotifs];
   _pendingPointageNotifs.clear();
   _refreshNotifBadge();
-  let sent = 0;
-  for(const [key] of entries){
-    const m = key.match(/^([^:]+):([^:]+):(.+)$/);
-    if(!m) continue;
-    const [, kind, idStr, date] = m;
-    try{ await _doPointageNotif(kind, Number(idStr), date); sent++; }catch(e){ console.warn('flush notif failed', e); }
+  if(entries.length === 1){
+    const m = entries[0].match(/^([^:]+):([^:]+):(.+)$/);
+    if(m){ try{ await _doPointageNotif(m[1], Number(m[2]), m[3]); }catch(e){ console.warn('notif failed', e); } }
+  } else {
+    await _sendBatchedPointageNotif(entries);
   }
-  try{ toast('📨 سيفطو '+sent+' notifications دابا','success'); }catch(_){}
+  if(!silent){ try{ toast('📨 سيفطات الرسالة','success'); }catch(_){} }
+}
+
+// Build ONE Telegram message summarizing every pending edit. Groups by date
+// so a mixed-day batch reads cleanly. Each line is one worker.
+async function _sendBatchedPointageNotif(entries){
+  const today = new Date().toISOString().slice(0,10);
+  const byDate = {};
+  entries.forEach(function(e){
+    const m = e.match(/^([^:]+):([^:]+):(.+)$/);
+    if(!m) return;
+    (byDate[m[3]] = byDate[m[3]] || []).push({kind:m[1], id:Number(m[2])});
+  });
+
+  let text = '';
+  Object.keys(byDate).sort().forEach(function(date){
+    const isToday = date === today;
+    text += '📋 *تحديث الحضور — '+fmtDate(date)+(isToday?'':' (متأخر)')+'*\n';
+    const list = byDate[date];
+    list.forEach(function(item){
+      if(item.kind === 'sal'){
+        const sal = (salariesData||[]).find(function(x){return Number(x.id)===item.id;});
+        const pres = (salariePresences||[]).find(function(p){return Number(p.salarie_id)===item.id && p.date===date;});
+        const name = sal ? ((String(sal.nom||'')+(sal.prenom?' '+sal.prenom:'')).trim() || ('#'+item.id)) : ('#'+item.id);
+        if(!pres){
+          text += '👤 '+name+' — تحديث\n';
+          return;
+        }
+        const knownSt = _POINTAGE_STATUS[pres.statut];
+        const stIcon = knownSt ? knownSt.icon : (pres.statut ? '📝' : '🔄');
+        const stLbl = knownSt ? knownSt.lbl : (pres.statut || 'تحديث');
+        const hsup = Number(pres.heures_supp || 0);
+        const taux = Number(pres.taux_horaire || 0);
+        let line = stIcon+' '+name+' — '+stLbl;
+        if(hsup > 0){ line += ' · +'+hsup+'h'; if(taux > 0) line += ' × '+fmtN(taux)+' = '+fmt(hsup*taux); }
+        text += line+'\n';
+      } else if(item.kind === 'pc'){
+        const ouv = (ouvriersPc||[]).find(function(o){return Number(o.id)===item.id;});
+        const name = ouv ? (ouv.nom || ('#'+item.id)) : ('#'+item.id);
+        const records = (pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===item.id && r.date===date && Number(r.qte||0)>0;});
+        if(!records.length){ text += '👷 '+name+' — 🗑️ ما كاين شي إنتاج\n'; return; }
+        const dayTotal = records.reduce(function(t,r){return t + r.qte*r.prix;}, 0);
+        text += '👷 '+name+' — '+records.map(function(r){return r.pc_nom+' '+r.qte+'×'+fmtN(r.prix);}).join(' | ')+' = '+fmt(dayTotal)+'\n';
+      }
+    });
+    text += '\n';
+  });
+
+  // Cumulative pending block for any PC workers in the batch (carry-forward
+  // since last tasweya). Helpful when the user updates several PCs at once.
+  const pcIds = new Set();
+  entries.forEach(function(e){ const m=e.match(/^([^:]+):([^:]+):(.+)$/); if(m && m[1]==='pc') pcIds.add(Number(m[2])); });
+  if(pcIds.size > 0){
+    let pcSum = 0, pcAvsSum = 0;
+    pcIds.forEach(function(id){
+      const lastTasweya = (pcTaswiyas||[])
+        .filter(function(t){return Number(t.ouvrier_id)===id;})
+        .slice().sort(function(a,b){return String(b.date_to||'').localeCompare(String(a.date_to||''));})[0];
+      const since = lastTasweya ? String(lastTasweya.date_to) : '0000-01-01';
+      pcSum += (pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===id && String(r.date)>since;}).reduce(function(t,r){return t+r.qte*r.prix;},0);
+      pcAvsSum += (pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===id && !a.rembourse;}).reduce(function(t,a){return t+Number(a.montant||0);},0);
+    });
+    if(pcSum > 0 || pcAvsSum > 0){
+      text += '💰 الإجمالي المعلق ل '+pcIds.size+' عامل PCs: '+fmt(pcSum)+' DH';
+      if(pcAvsSum > 0) text += '\n💳 سلف معلقة: −'+fmt(pcAvsSum)+' DH\n🟢 الباقي للخلاص: '+fmt(pcSum - pcAvsSum)+' DH';
+      text += '\n\n';
+    }
+  }
+  text += '('+entries.length+' تحديث' + (entries.length>1?'ات':'') + ')';
+  sendTelegramBroadcast(text.trim());
 }
 
 function _doPointageNotif(kind, workerId, targetDate){

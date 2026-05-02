@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v90-pcSaveAvance-uses-pc-table';
+const CACHE = 'suivi-v91-pc-dashboard-avance-column';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

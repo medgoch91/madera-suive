@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v112-modal-box-class-fix';
+const CACHE = 'suivi-v113-i18n-nav-caisse-key';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

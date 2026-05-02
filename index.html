@@ -15160,6 +15160,115 @@ function edExportReportCSV(){
   try{toast('📊 تنزيل '+fn,'success');}catch(e){}
 }
 
+// Open a details modal for a salarié — period range, days breakdown,
+// hsup, production, avances. Renders the same data the settle button uses
+// so the user can audit before clicking خلاص.
+function salCardShowDetails(salId){
+  const s = (salariesData||[]).find(function(x){return Number(x.id)===Number(salId);});
+  if(!s) return;
+  const fullName = escB(s.nom)+(s.prenom?' '+escB(s.prenom):'');
+  const days = (salariePresences||[])
+    .filter(function(p){return Number(p.salarie_id)===Number(salId) && p.date>=salDashFrom && p.date<=salDashTo;})
+    .slice().sort(function(a,b){return String(a.date).localeCompare(String(b.date));});
+  const stMap = (typeof _POINTAGE_STATUS!=='undefined') ? _POINTAGE_STATUS : {};
+  let totalH=0, totalProd=0, jours=0;
+  const daysHTML = days.map(function(p){
+    const stEntry = stMap[p.statut] || {icon:'•', lbl: p.statut||'—'};
+    const hsup = Number(p.heures_supp||0);
+    const taux = Number(p.taux_horaire||0);
+    totalH += hsup * taux;
+    let prodStr='—';
+    if(p.notes){
+      try{
+        const ls = JSON.parse(p.notes);
+        const pt = ls.reduce(function(t,l){return t + Number(l.qte)*Number(l.prix);},0);
+        if(ls.length){ prodStr = fmtN(pt)+' DH ('+ls.length+' قطعة)'; totalProd += pt; }
+      }catch(e){}
+    }
+    if(p.statut==='present') jours += 1;
+    if(p.statut==='demi') jours += 0.5;
+    return '<tr>'
+      +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(p.date)+'</td>'
+      +'<td><span style="font-weight:700">'+stEntry.icon+' '+stEntry.lbl+'</span></td>'
+      +'<td style="text-align:end;color:var(--purple);font-weight:700">'+(hsup>0?fmtN(hsup)+'h × '+fmtN(taux):'—')+'</td>'
+      +'<td style="text-align:end;font-size:11px;color:var(--green);font-weight:700">'+prodStr+'</td>'
+    +'</tr>';
+  }).join('');
+  const avs = (salarieAvances||[]).filter(function(a){return Number(a.salarie_id)===Number(salId) && !a.rembourse;})
+    .slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));});
+  const avsHTML = avs.length
+    ? avs.map(function(a){return '<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:8px"><span style="color:var(--text2)">'+fmtDate(a.date)+'</span><span style="color:var(--amber);font-weight:800">−'+fmtN(a.montant)+' DH</span></div>';}).join('')
+    : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">ما كاين شي سلف معلقة</div>';
+  const html = '<div class="modal-title"><span>📋 تفاصيل — '+fullName+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">📅 '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo)+'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'
+      +'<div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">📅 أيام</div><div style="font-size:18px;font-weight:800">'+jours+'</div></div>'
+      +'<div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">⏱️ س.إضافية</div><div style="font-size:14px;font-weight:800;color:var(--purple)">'+fmtN(totalH)+'</div></div>'
+      +'<div style="background:var(--bg3);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">🔧 إنتاج</div><div style="font-size:14px;font-weight:800;color:var(--green)">'+fmtN(totalProd)+'</div></div>'
+    +'</div>'
+    +(daysHTML
+      ? '<div style="font-size:12px;font-weight:700;margin-bottom:6px">📅 الحضور</div>'
+        +'<div style="overflow:auto;max-height:240px;margin-bottom:14px"><table class="data-table" style="font-size:12px"><thead><tr><th>التاريخ</th><th>الحالة</th><th style="text-align:end">س. إضافية</th><th style="text-align:end">الإنتاج</th></tr></thead><tbody>'+daysHTML+'</tbody></table></div>'
+      : '<div style="color:var(--text3);text-align:center;padding:14px;font-size:12px;background:var(--bg3);border-radius:8px;margin-bottom:14px">ما كاين شي حضور فهاد الفترة</div>'
+    )
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
+    +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+// Open a details modal for a technician — earned (orders) + paid history.
+function techCardShowDetails(name){
+  const myOrders = (typeof edOrders !== 'undefined' ? edOrders : [])
+    .filter(function(o){return String(o.technician_name||'').trim()===String(name).trim();})
+    .slice().sort(function(a,b){return String(b.created_at||'').localeCompare(String(a.created_at||''));});
+  const myPays = (typeof edPayments !== 'undefined' ? edPayments : [])
+    .filter(function(p){return String(p.technician_name||'').trim()===String(name).trim();})
+    .slice().sort(function(a,b){return String(b.pay_date||'').localeCompare(String(a.pay_date||''));});
+  const earned = myOrders.reduce(function(t,o){return t + Number(o.quantity_received||0)*Number(o.labor_cost_per_piece_ttc||0);},0);
+  const paid   = myPays.reduce(function(t,p){return t + Number(p.amount||0);},0);
+  const due    = earned - paid;
+  const ordersHTML = myOrders.length
+    ? myOrders.map(function(o){
+        const sub = Number(o.quantity_received||0) * Number(o.labor_cost_per_piece_ttc||0);
+        const prod = (typeof edProducts!=='undefined'?edProducts:[]).find(function(p){return Number(p.id)===Number(o.product_id);});
+        return '<tr>'
+          +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate((o.created_at||'').slice(0,10))+'</td>'
+          +'<td>'+(prod?escB(prod.nom):'#'+o.product_id)+'</td>'
+          +'<td style="text-align:center;font-weight:700">'+fmtN(o.quantity_received||0)+'</td>'
+          +'<td style="text-align:end;color:var(--accent);font-weight:700">'+fmtN(sub)+'</td>'
+        +'</tr>';
+      }).join('')
+    : '';
+  const paysHTML = myPays.length
+    ? myPays.map(function(p){
+        return '<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(46,204,122,0.08);border:1px solid rgba(46,204,122,0.25);border-radius:8px">'
+          +'<span style="color:var(--text2)">'+fmtDate(p.pay_date||'')+(p.note?' · '+escB(p.note):'')+'</span>'
+          +'<span style="color:var(--green);font-weight:800">'+fmtN(p.amount)+' DH</span>'
+        +'</div>';
+      }).join('')
+    : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">ما كاين شي خلاص بعد</div>';
+  const html = '<div class="modal-title"><span>🛠️ تفاصيل — '+escB(name)+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">'
+      +'<div style="background:rgba(79,142,247,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">💵 المستحق</div><div style="font-size:16px;font-weight:800;color:var(--accent)">'+fmtN(earned)+'</div></div>'
+      +'<div style="background:rgba(46,204,122,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">✓ تخلص</div><div style="font-size:16px;font-weight:800;color:var(--green)">'+fmtN(paid)+'</div></div>'
+      +'<div style="background:rgba(251,191,36,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">💰 الباقي</div><div style="font-size:16px;font-weight:800;color:#fbbf24">'+fmtN(due)+'</div></div>'
+    +'</div>'
+    +(ordersHTML
+      ? '<div style="font-size:12px;font-weight:700;margin-bottom:6px">📦 الطلبيات ('+myOrders.length+')</div>'
+        +'<div style="overflow:auto;max-height:200px;margin-bottom:14px"><table class="data-table" style="font-size:12px"><thead><tr><th>التاريخ</th><th>المنتج</th><th style="text-align:center">الكمية</th><th style="text-align:end">المبلغ</th></tr></thead><tbody>'+ordersHTML+'</tbody></table></div>'
+      : '<div style="color:var(--text3);text-align:center;padding:14px;font-size:12px;background:var(--bg3);border-radius:8px;margin-bottom:14px">ما كاينش شي طلبيات بعد</div>'
+    )
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">✓ تاريخ الخلاص ('+myPays.length+')</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+paysHTML+'</div>'
+    +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
 // Pop a small modal with the PC worker's piece-by-piece breakdown so the
 // dashboard card stays compact (no inline TIROIR list cluttering each row).
 function pcCardShowDetails(detailText, workerName){
@@ -15312,6 +15421,7 @@ function renderSalDashboard(){
         +'<div class="wc-head">'
           +'<div class="wc-avatar" style="background:rgba(79,142,247,0.15);color:#4f8ef7">'+escB(r.s.nom.charAt(0))+'</div>'
           +'<div class="wc-id"><div class="wc-name">'+fullName+'</div><div class="wc-role">'+(escB(r.s.poste||'أجير'))+'</div></div>'
+          +'<button onclick="salCardShowDetails('+r.s.id+')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(79,142,247,0.4);background:rgba(79,142,247,0.08);color:#4f8ef7;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 تفاصيل</button>'
         +'</div>'
         +'<div class="wc-stats" style="grid-template-columns:1fr 1fr">'+stats+'</div>'
         +'<div class="wc-action">'+action+'</div>'
@@ -15429,6 +15539,7 @@ function renderSalDashboard(){
           +'<div class="wc-head">'
             +'<div class="wc-avatar" style="background:rgba(251,191,36,0.18);color:#fbbf24">'+escB(r.name.charAt(0))+'</div>'
             +'<div class="wc-id"><div class="wc-name">'+escB(r.name)+'</div><div class="wc-role">électricité à distance</div></div>'
+            +'<button onclick="techCardShowDetails(\''+escB(r.name).replace(/\x27/g,"&#39;")+'\')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(251,191,36,0.5);background:rgba(251,191,36,0.1);color:#fbbf24;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 تفاصيل</button>'
           +'</div>'
           +'<div class="wc-stats">'
             +'<div class="wc-stat"><span class="wc-stat-lbl">💵 المستحق</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.earned)+'</span></div>'

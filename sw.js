@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v109-no-auto-reload-on-sw-update';
+const CACHE = 'suivi-v110-details-button-on-each-card';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

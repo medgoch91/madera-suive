@@ -1555,19 +1555,48 @@ const _POINTAGE_STATUS = {
   conge:   { icon:'🟡', lbl:'عطلة' },
   demi:    { icon:'🟠', lbl:'نص نهار' },
 };
+// Legacy: _pointageDebounce was the 3s-coalesce timer map. Replaced by the
+// _pendingPointageNotifs Set + manual flush below. Kept the symbol declared
+// (empty) only to avoid breakage if any extension accesses it.
 const _pointageDebounce = {};
 
+// Queue a pointage notif instead of firing it 3s after each cell change.
+// User asked for explicit "enregistrer" semantics: hits Telegram only when
+// they tap the floating "📨 سجل و بلّغ" button. The set dedups multiple
+// edits to the same kind+worker+date.
+const _pendingPointageNotifs = new Set();
 function notifyPointageChange(kind, workerId, date){
-  const key = kind + ':' + workerId;
-  if(_pointageDebounce[key]) clearTimeout(_pointageDebounce[key]);
-  // Capture the date this edit was for. If multiple edits land within the
-  // 3s window we keep the latest date — the user can fire another notif by
-  // editing again in the next window if they need a separate date logged.
   const targetDate = date || new Date().toISOString().slice(0,10);
-  _pointageDebounce[key] = setTimeout(function(){
-    delete _pointageDebounce[key];
-    try{ _doPointageNotif(kind, workerId, targetDate); }catch(e){ console.warn('pointage notif failed', e); }
-  }, 3000);
+  _pendingPointageNotifs.add(kind + ':' + workerId + ':' + targetDate);
+  _refreshNotifBadge();
+}
+
+function _refreshNotifBadge(){
+  const els = document.querySelectorAll('[data-notif-badge]');
+  const n = _pendingPointageNotifs.size;
+  els.forEach(function(el){
+    el.textContent = n > 0 ? ('📨 سجل و بلّغ ('+n+')') : '📨 سجل و بلّغ';
+    el.style.opacity = n > 0 ? '1' : '0.55';
+    el.style.pointerEvents = n > 0 ? '' : 'none';
+  });
+}
+
+async function flushPendingPointageNotifs(){
+  if(!_pendingPointageNotifs.size){
+    try{ toast('ما كاين شي تنبيه ينتظر','info'); }catch(_){}
+    return;
+  }
+  const entries = [..._pendingPointageNotifs];
+  _pendingPointageNotifs.clear();
+  _refreshNotifBadge();
+  let sent = 0;
+  for(const key of entries){
+    const m = key.match(/^([^:]+):([^:]+):(.+)$/);
+    if(!m) continue;
+    const [, kind, idStr, date] = m;
+    try{ await _doPointageNotif(kind, Number(idStr), date); sent++; }catch(e){ console.warn('flush notif failed', e); }
+  }
+  try{ toast('📨 سيفطو '+sent+' notifications','success'); }catch(_){}
 }
 
 function _doPointageNotif(kind, workerId, targetDate){
@@ -3156,6 +3185,11 @@ function showPage(page,btn){
   document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
   if(btn)btn.classList.add('active');
+  // Hide the salaries-only "📨 سجل و بلّغ" FAB when leaving الأجراء.
+  if(page !== 'salaries'){
+    const fab = document.getElementById('sal-notif-fab');
+    if(fab) fab.style.display = 'none';
+  }
   var _tk='pt.'+page; var _tv=(typeof t==='function')?t(_tk):null;
   document.getElementById('topbar-title').textContent=(_tv && _tv!==_tk) ? _tv : (pageTitles[page]||'');
   document.getElementById('topbar-actions').innerHTML=pageActions[page]||'';
@@ -11930,11 +11964,32 @@ function _renderSalHeroTabsHTML(active){
   return '<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">' + btns + '</div>';
 }
 
+// Fixed FAB that lets the user fire all queued pointage notifs at once.
+// Replaces the old "auto-fire 3s after every cell change" behavior — user
+// asked for explicit "enregistrer" semantics. Stays in DOM permanently;
+// shown only on the salaries page via the page-visibility hook below.
+const _NOTIF_FAB_HTML = '<div id="sal-notif-fab" style="position:fixed;bottom:24px;left:24px;z-index:900;display:none">'
+  +'<button data-notif-badge onclick="flushPendingPointageNotifs()" style="padding:13px 20px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;border:none;border-radius:30px;font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.4);transition:all 0.2s">📨 سجل و بلّغ</button>'
++'</div>';
+function _ensureNotifFab(visible){
+  let el = document.getElementById('sal-notif-fab');
+  if(!el){
+    document.body.insertAdjacentHTML('beforeend', _NOTIF_FAB_HTML);
+    el = document.getElementById('sal-notif-fab');
+  }
+  el.style.display = visible ? 'block' : 'none';
+  if(visible) _refreshNotifBadge();
+}
+
 function renderSalaries(){
   const page=document.getElementById('page-salaries');
   if(!page)return;
   page.style.direction=(typeof CURRENT_LANG!=='undefined' && CURRENT_LANG==='fr'?'ltr':'rtl');page.style.width='100%';page.style.height='auto';
   const heroTabs = _renderSalHeroTabsHTML(salTopGroup);
+  // Show FAB on الأجراء page in pointage / pcs sub-pages where cell edits
+  // happen. Hide elsewhere to avoid noise.
+  const showFab = (salTopGroup === 'pcs') || (salTopGroup === 'workers' && (salSubPage==='pointage' || salSubPage==='dashboard'));
+  _ensureNotifFab(showFab);
 
   if(salTopGroup === 'elec'){
     page.innerHTML = heroTabs + '<div style="max-width:1300px;margin:0 auto">' + renderSalElecDist() + '</div>';

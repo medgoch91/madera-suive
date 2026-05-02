@@ -1560,14 +1560,25 @@ const _POINTAGE_STATUS = {
 // (empty) only to avoid breakage if any extension accesses it.
 const _pointageDebounce = {};
 
-// Queue a pointage notif instead of firing it 3s after each cell change.
-// User asked for explicit "enregistrer" semantics: hits Telegram only when
-// they tap the floating "📨 سجل و بلّغ" button. The set dedups multiple
-// edits to the same kind+worker+date.
-const _pendingPointageNotifs = new Set();
+// Auto-fire: per-(kind:workerId:date) debounce. Each edit (re)schedules a
+// 5s timer; if no further edit arrives, the notif goes out automatically.
+// _pendingPointageNotifs holds the keys with active timers so we can show
+// the count + let the user fire them early via the FAB override.
+const _pendingPointageNotifs = new Map(); // key → timeoutId
 function notifyPointageChange(kind, workerId, date){
   const targetDate = date || new Date().toISOString().slice(0,10);
-  _pendingPointageNotifs.add(kind + ':' + workerId + ':' + targetDate);
+  const key = kind + ':' + workerId + ':' + targetDate;
+  // Reset any in-flight timer for this exact key so rapid re-edits coalesce
+  // into a single notification.
+  if(_pendingPointageNotifs.has(key)){
+    clearTimeout(_pendingPointageNotifs.get(key));
+  }
+  const tid = setTimeout(function(){
+    _pendingPointageNotifs.delete(key);
+    _refreshNotifBadge();
+    try{ _doPointageNotif(kind, Number(workerId), targetDate); }catch(e){ console.warn('pointage notif failed', e); }
+  }, 5000);
+  _pendingPointageNotifs.set(key, tid);
   _refreshNotifBadge();
 }
 
@@ -1575,28 +1586,34 @@ function _refreshNotifBadge(){
   const els = document.querySelectorAll('[data-notif-badge]');
   const n = _pendingPointageNotifs.size;
   els.forEach(function(el){
-    el.textContent = n > 0 ? ('📨 سجل و بلّغ ('+n+')') : '📨 سجل و بلّغ';
-    el.style.opacity = n > 0 ? '1' : '0.55';
+    el.textContent = n > 0 ? ('📨 سيفط دابا ('+n+')') : '📨 ولا تنبيه ينتظر';
+    el.style.opacity = n > 0 ? '1' : '0.45';
     el.style.pointerEvents = n > 0 ? '' : 'none';
   });
 }
 
+// Override: fire all pending notifs immediately instead of waiting for the
+// 5s debounce. Useful when the user is sure they're done and wants the
+// Telegram message right away (no risk of forgetting — the auto-fire still
+// fires anyway if they don't click).
 async function flushPendingPointageNotifs(){
   if(!_pendingPointageNotifs.size){
     try{ toast('ما كاين شي تنبيه ينتظر','info'); }catch(_){}
     return;
   }
-  const entries = [..._pendingPointageNotifs];
+  const entries = [..._pendingPointageNotifs.entries()];
+  // Cancel timers + clear the buffer so the auto-fire path doesn't re-fire.
+  entries.forEach(function(e){ try{ clearTimeout(e[1]); }catch(_){ } });
   _pendingPointageNotifs.clear();
   _refreshNotifBadge();
   let sent = 0;
-  for(const key of entries){
+  for(const [key] of entries){
     const m = key.match(/^([^:]+):([^:]+):(.+)$/);
     if(!m) continue;
     const [, kind, idStr, date] = m;
     try{ await _doPointageNotif(kind, Number(idStr), date); sent++; }catch(e){ console.warn('flush notif failed', e); }
   }
-  try{ toast('📨 سيفطو '+sent+' notifications','success'); }catch(_){}
+  try{ toast('📨 سيفطو '+sent+' notifications دابا','success'); }catch(_){}
 }
 
 function _doPointageNotif(kind, workerId, targetDate){
@@ -11993,8 +12010,11 @@ function _renderSalHeroTabsHTML(active){
 // Replaces the old "auto-fire 3s after every cell change" behavior — user
 // asked for explicit "enregistrer" semantics. Stays in DOM permanently;
 // shown only on the salaries page via the page-visibility hook below.
+// FAB shows the count of notifs waiting on the 5s debounce. Tapping it
+// fires them immediately (override). If the user ignores the FAB, the
+// notifs still go out automatically — no risk of forgetting.
 const _NOTIF_FAB_HTML = '<div id="sal-notif-fab" style="position:fixed;bottom:24px;left:24px;z-index:900;display:none">'
-  +'<button data-notif-badge onclick="flushPendingPointageNotifs()" style="padding:13px 20px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;border:none;border-radius:30px;font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.4);transition:all 0.2s">📨 سجل و بلّغ</button>'
+  +'<button data-notif-badge onclick="flushPendingPointageNotifs()" title="سيفط دابا بدل ما تستنى 5 ثواني" style="padding:11px 18px;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;border:none;border-radius:30px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px rgba(124,58,237,0.4);transition:all 0.2s">📨 سيفط دابا</button>'
 +'</div>';
 function _ensureNotifFab(visible){
   let el = document.getElementById('sal-notif-fab');

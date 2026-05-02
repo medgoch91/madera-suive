@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v93-avance-overflow-rollover';
+const CACHE = 'suivi-v94-dashboard-pc-only-render';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

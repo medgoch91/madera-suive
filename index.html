@@ -15013,11 +15013,16 @@ function renderSalDashboard(){
     +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
 
+  // Don't early-return when salariés rows are empty — PCs may still have
+  // data and we want to render their table below. Just emit a thin notice
+  // for the salariés section and continue.
   if(!rows.length){
-    return html+'<div style="text-align:center;padding:40px;color:var(--text3);background:var(--bg3);border-radius:var(--radius)"><div style="font-size:32px;margin-bottom:8px">📊</div><div>لا توجد بيانات في هاد الفترة</div></div>';
+    html+='<div style="text-align:center;padding:18px;color:var(--text3);background:var(--bg3);border-radius:var(--radius);margin-bottom:14px;font-size:12px">📅 ما كاين شي أجير بالنهار خدم ف هاد الفترة</div>';
   }
 
-  // ── Nharat table ──
+  // ── Nharat table (skipped entirely when empty — the thin notice above
+  //     already tells the user, no need to render an empty table shell) ──
+  if(rows.length){
   html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">📅 بالنهار</div>';
   html+='<div class="dash-panel" style="margin-bottom:16px"><div style="overflow-x:auto"><table class="data-table">'
     +'<thead><tr><th>الأجير</th><th>الأيام</th><th>أجر الأيام</th><th>الإنتاج</th><th>السلف</th><th>الصافي / الحالة</th></tr></thead><tbody>';
@@ -15052,8 +15057,8 @@ function renderSalDashboard(){
     +'<td style="text-align:center;color:var(--red)">'+fmtN(rows.reduce(function(t,r){return t+r.totalAvs;},0))+'</td>'
     +'<td><span style="font-size:16px;font-weight:800;color:var(--accent)">'+fmtN(grandTotal)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
   +'</tr>';
-  if(!rows.length) html+='<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:20px">لا توجد بيانات في هاد الفترة</td></tr>';
   html+='</tbody></table></div></div>';
+  } // end if(rows.length) — Nharat table
 
   // ── Par PCs table ──
   const pcActifsD=ouvriersPc.filter(function(o){return o.actif!==false;});

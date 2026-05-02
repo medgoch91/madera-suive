@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v88-avance-telegram-notif';
+const CACHE = 'suivi-v89-avance-route-pc-vs-sal';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

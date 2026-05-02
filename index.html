@@ -12631,12 +12631,39 @@ function renderSalPointageDetail(){
 }
 
 async function salSaveWeekAvance(){
-  const id=Number(salPointageSalId);
   const date=(document.getElementById('sal-week-av-date')||{value:new Date().toISOString().split('T')[0]}).value;
   const montant=parseFloat((document.getElementById('sal-week-av-montant')||{value:'0'}).value)||0;
   const notes=(document.getElementById('sal-week-av-notes')||{value:''}).value.trim();
   const msg=document.getElementById('sal-week-av-msg');
   if(!montant){if(msg){msg.style.color='var(--red)';msg.textContent='المبلغ مطلوب';}return;}
+
+  // PC mode: route to pc_avances instead of salarie_avances (the dropdown
+  // mixes both worker types — clicking 💳 on a PC selection used to FK-fail).
+  if(salPointageType === 'pcs' && salPcPointageId){
+    const ouvrierId = Number(salPcPointageId);
+    const o = (ouvriersPc||[]).find(function(x){return Number(x.id)===ouvrierId;});
+    if(!o){ if(msg){msg.style.color='var(--red)';msg.textContent='⚠️ عامل PC غير صحيح';} return; }
+    showLoader('💾 جاري الحفظ...');
+    const av = await pushPcAvance(ouvrierId, date, montant, notes);
+    hideLoader();
+    if(av && av.id){
+      await pushCaisseMovement(date, 'out', montant, 'سلفة PC — '+o.nom, 'pc_avance', av.id, notes);
+      sendTelegramBroadcast([
+        '💳 *سلفة PC جديدة*',
+        '👷 العامل: '+o.nom,
+        '📅 التاريخ: '+fmtDate(date),
+        '💵 المبلغ: '+fmtN(montant)+' DH',
+      ].concat(notes?['📝 '+notes]:[]).join('\n'));
+      if(msg){msg.style.color='var(--green)';msg.textContent='✅ سلفة PC مسجلة!';}
+      setTimeout(function(){renderSalaries();},700);
+    } else {
+      if(msg){msg.style.color='var(--red)';msg.textContent='خطأ في الحفظ';}
+    }
+    return;
+  }
+
+  // Salarié path
+  const id=Number(salPointageSalId);
   // Pre-flight: catch the stale-ID case (worker removed server-side, or user
   // picked a PC option) before hitting Supabase with an FK-doomed POST.
   if(!id || isNaN(id) || !(salariesData||[]).find(function(s){return Number(s.id)===id;})){

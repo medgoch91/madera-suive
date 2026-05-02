@@ -15896,6 +15896,14 @@ async function pcAddAssign(ouvrierId){
   if(saved&&saved.id){
     ouvrierPcAssigns.push({id:saved.id,ouvrier_id:ouvrierId,pc_nom,prix});
     localStorage.setItem('ouvrier_pc_assign_v1',JSON.stringify(ouvrierPcAssigns));
+    // Telegram: PC details added — name + worker + price.
+    const o=ouvriersPc.find(function(x){return x.id===ouvrierId;});
+    sendTelegramBroadcast(
+      '📋 *تفصيل PC جديد*\n'
+      +'👷 العامل: '+(o?o.nom:('#'+ouvrierId))+'\n'
+      +'🧱 PC: '+pc_nom+'\n'
+      +'💰 الثمن: '+fmtN(prix)+' DH / قطعة'
+    );
     renderSalaries();
   } else {
     if(msgEl)msgEl.textContent='خطأ في الحفظ';
@@ -15903,9 +15911,20 @@ async function pcAddAssign(ouvrierId){
 }
 
 async function pcDeleteAssign(assignId){
+  // Capture details before delete so the notif can include them.
+  const a = ouvrierPcAssigns.find(function(x){return Number(x.id)===Number(assignId);});
   await sbFetch('ouvrier_pc_assign?id=eq.'+assignId,'DELETE');
   ouvrierPcAssigns=ouvrierPcAssigns.filter(function(a){return a.id!==assignId;});
   localStorage.setItem('ouvrier_pc_assign_v1',JSON.stringify(ouvrierPcAssigns));
+  if(a){
+    const o=ouvriersPc.find(function(x){return x.id===a.ouvrier_id;});
+    sendTelegramBroadcast(
+      '🗑️ *تحذف تفصيل PC*\n'
+      +'👷 العامل: '+(o?o.nom:('#'+a.ouvrier_id))+'\n'
+      +'🧱 PC: '+a.pc_nom+'\n'
+      +'💰 الثمن: '+fmtN(a.prix)+' DH / قطعة'
+    );
+  }
   renderSalaries();
 }
 

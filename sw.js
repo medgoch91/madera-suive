@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v110-details-button-on-each-card';
+const CACHE = 'suivi-v111-pc-rich-details-modal';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

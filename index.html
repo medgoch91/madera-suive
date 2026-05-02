@@ -15269,21 +15269,71 @@ function techCardShowDetails(name){
   document.getElementById('modal-main').classList.add('open');
 }
 
-// Pop a small modal with the PC worker's piece-by-piece breakdown so the
-// dashboard card stays compact (no inline TIROIR list cluttering each row).
-function pcCardShowDetails(detailText, workerName){
-  const items = String(detailText||'').split('|').map(function(s){return s.trim();}).filter(Boolean);
-  const html = '<div class="modal-title"><span>📋 تفاصيل الإنتاج — '+escB(workerName||'')+'</span>'
-    + '<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
-    + '<div style="display:flex;flex-direction:column;gap:6px">'
-    + items.map(function(it){
-        return '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:10px;border-right:3px solid #10b981">'
-          +'<span style="flex:1;font-size:13px;font-weight:700">'+escB(it.split(':')[0]||'').trim()+'</span>'
-          +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+escB((it.split(':')[1]||'').trim())+'</span>'
+// Rich PC details modal — period KPIs, per-PC totals + per-day breakdown,
+// pending avances. Same layout family as salCardShowDetails / techCardShowDetails.
+function pcCardShowDetails(ouvrierId){
+  const o = (ouvriersPc||[]).find(function(x){return Number(x.id)===Number(ouvrierId);});
+  if(!o) return;
+  const assigns = (ouvrierPcAssigns||[]).filter(function(a){return Number(a.ouvrier_id)===Number(ouvrierId);});
+  const myPres = (pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===Number(ouvrierId) && r.date>=salDashFrom && r.date<=salDashTo;});
+  const total = myPres.reduce(function(t,r){return t + Number(r.qte||0)*Number(r.prix||0);},0);
+  const daysSet = new Set(myPres.filter(function(r){return Number(r.qte||0)>0;}).map(function(r){return r.date;}));
+  // Per-PC totals
+  const perPcRows = assigns.map(function(a){
+    const q = myPres.filter(function(r){return r.pc_nom===a.pc_nom;}).reduce(function(t,r){return t+Number(r.qte||0);},0);
+    return {pc:a.pc_nom, qty:q, prix:a.prix, sum:q*Number(a.prix||0)};
+  }).filter(function(x){return x.qty>0;});
+  // Per-day rows
+  const dayMap = {};
+  myPres.forEach(function(r){
+    if(Number(r.qte||0)<=0) return;
+    if(!dayMap[r.date]) dayMap[r.date] = [];
+    dayMap[r.date].push(r);
+  });
+  const dayKeys = Object.keys(dayMap).sort();
+  const daysHTML = dayKeys.map(function(d){
+    const rows = dayMap[d];
+    const dayTot = rows.reduce(function(t,r){return t+Number(r.qte||0)*Number(r.prix||0);},0);
+    return '<tr>'
+      +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(d)+'</td>'
+      +'<td style="font-size:11px;color:var(--text2)">'+rows.map(function(r){return escB(r.pc_nom)+' '+r.qte+'×'+fmtN(r.prix);}).join(' · ')+'</td>'
+      +'<td style="text-align:end;color:var(--green);font-weight:800">'+fmtN(dayTot)+'</td>'
+    +'</tr>';
+  }).join('');
+  const avs = (pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===Number(ouvrierId) && !a.rembourse;})
+    .slice().sort(function(a,b){return String(b.date).localeCompare(String(a.date));});
+  const avsTotal = avs.reduce(function(t,a){return t+Number(a.montant||0);},0);
+  const avsHTML = avs.length
+    ? avs.map(function(a){return '<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:8px"><span style="color:var(--text2)">'+fmtDate(a.date)+(a.notes?' · '+escB(a.notes):'')+'</span><span style="color:var(--amber);font-weight:800">−'+fmtN(a.montant)+' DH</span></div>';}).join('')
+    : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">ما كاين شي سلف معلقة</div>';
+  const perPcHTML = perPcRows.length
+    ? perPcRows.map(function(p){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg3);border-radius:10px;border-right:3px solid #10b981">'
+          +'<span style="flex:1;font-size:13px;font-weight:700">'+escB(p.pc)+'</span>'
+          +'<span style="font-size:11px;color:var(--text3)">'+fmtN(p.qty)+' × '+fmtN(p.prix)+'</span>'
+          +'<span style="font-size:14px;font-weight:800;color:var(--green);min-width:80px;text-align:end">'+fmtN(p.sum)+' DH</span>'
         +'</div>';
       }).join('')
-    + '</div>'
-    + '<button class="btn btn-outline" style="width:100%;padding:10px;margin-top:14px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
+    : '<div style="color:var(--text3);text-align:center;padding:14px;font-size:12px;background:var(--bg3);border-radius:8px">ما كاين شي إنتاج فهاد الفترة</div>';
+  const html = '<div class="modal-title"><span>👷 تفاصيل — '+escB(o.nom)+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">📅 '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo)+'</div>'
+    +'<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">'
+      +'<div style="background:rgba(46,204,122,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">🔧 الإجمالي</div><div style="font-size:15px;font-weight:800;color:var(--green)">'+fmtN(total)+'</div></div>'
+      +'<div style="background:rgba(79,142,247,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">📅 أيام</div><div style="font-size:15px;font-weight:800;color:var(--accent)">'+daysSet.size+'</div></div>'
+      +'<div style="background:rgba(245,166,35,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">💳 سلف</div><div style="font-size:15px;font-weight:800;color:var(--amber)">'+(avsTotal>0?'−'+fmtN(avsTotal):'0')+'</div></div>'
+      +'<div style="background:rgba(124,58,237,0.08);border-radius:8px;padding:10px;text-align:center"><div style="font-size:10px;color:var(--text3)">💰 الصافي</div><div style="font-size:15px;font-weight:800;color:#7c3aed">'+fmtN(total-avsTotal)+'</div></div>'
+    +'</div>'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">🧱 حسب الـ PC ('+perPcRows.length+')</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+perPcHTML+'</div>'
+    +(daysHTML
+      ? '<div style="font-size:12px;font-weight:700;margin-bottom:6px">📅 يومي</div>'
+        +'<div style="overflow:auto;max-height:200px;margin-bottom:14px"><table class="data-table" style="font-size:12px"><thead><tr><th>التاريخ</th><th>التفاصيل</th><th style="text-align:end">المجموع</th></tr></thead><tbody>'+daysHTML+'</tbody></table></div>'
+      : ''
+    )
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
+    +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
   document.getElementById('modal-main-c').innerHTML = html;
   document.getElementById('modal-main').classList.add('open');
 }
@@ -15482,15 +15532,11 @@ function renderSalDashboard(){
             +(r.avsTotal>0?'<div class="wc-net-sub">'+fmtN(r.total)+' − '+fmtN(r.avsTotal)+'</div>':'')
           +'</div>'
           +_dashKhallasBtn('pcKhallas('+r.o.id+')');
-      const detTxt = r.detail || 'ما كاين شي إنتاج فهاد الفترة';
-      const detSafe = String(detTxt).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
       html+='<div class="worker-card'+(isPaid?' paid':(r.net<0?' warn':''))+'" data-kind="pc">'
         +'<div class="wc-head">'
           +'<div class="wc-avatar" style="background:rgba(16,185,129,0.15);color:#10b981">'+escB(r.o.nom.charAt(0))+'</div>'
           +'<div class="wc-id"><div class="wc-name">'+escB(r.o.nom)+'</div><div class="wc-role">عامل القطعة</div></div>'
-          +(r.detailCount>0
-            ? '<button onclick="pcCardShowDetails(\''+detSafe+'\',\''+escB(r.o.nom).replace(/\x27/g,"&#39;")+'\')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:#10b981;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 '+r.detailCount+' PC</button>'
-            : '')
+          +'<button onclick="pcCardShowDetails('+r.o.id+')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:#10b981;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 تفاصيل</button>'
         +'</div>'
         +'<div class="wc-stats">'
           +'<div class="wc-stat"><span class="wc-stat-lbl">🔧 إجمالي</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.total)+'</span></div>'

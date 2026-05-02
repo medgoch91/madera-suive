@@ -12514,7 +12514,7 @@ function renderSalPointageToday(){
 // ─── Week Grid view: matrix workers × 7 days, click cell to cycle status ───
 function renderSalPointageGrid(){
   const days = getSemaineDays(salPointageSemFrom);
-  const dayNames = ['ث','ث','ر','خ','ج','س','ح'];
+  const dayNames = ['ح','ث','ث','ر','خ','ج','س'];
   const fullNames = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   const today = new Date().toISOString().split('T')[0];
   const actifs = salariesData.filter(x=>x.actif!==false);

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v108-pc-details-modal';
+const CACHE = 'suivi-v109-no-auto-reload-on-sw-update';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

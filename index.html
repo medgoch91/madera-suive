@@ -19034,12 +19034,22 @@ if('serviceWorker' in navigator){
         });
       });
     }).catch(function(e){console.warn('SW register failed',e);});
-    // When the active SW changes, reload once so the new HTML+assets take effect
-    var _reloadedForSW = false;
+    // SW activated. Don't force a reload — that hammers loadAllData every
+    // time we push a new version. Instead show a non-blocking banner and
+    // let the user pick when to apply the update.
+    var _shownSwBanner = false;
     navigator.serviceWorker.addEventListener('controllerchange',function(){
-      if(_reloadedForSW) return;
-      _reloadedForSW = true;
-      try{ location.reload(); }catch(_){}
+      if(_shownSwBanner) return;
+      _shownSwBanner = true;
+      try{
+        var b = document.createElement('div');
+        b.id = '__sw-update-banner';
+        b.style.cssText = 'position:fixed;bottom:20px;inset-inline-start:20px;z-index:9998;background:linear-gradient(135deg,#7c3aed,#06b6d4);color:#fff;padding:12px 18px;border-radius:14px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(124,58,237,0.35);display:flex;align-items:center;gap:12px;direction:rtl';
+        b.innerHTML = '<span>✨ تحديث جديد جاهز</span>'
+          + '<button onclick="location.reload()" style="padding:6px 14px;border:none;border-radius:20px;background:rgba(255,255,255,0.95);color:#7c3aed;font-family:Cairo,sans-serif;font-size:12px;font-weight:800;cursor:pointer">تطبيق</button>'
+          + '<button onclick="document.getElementById(\'__sw-update-banner\').remove()" style="padding:6px 10px;border:1px solid rgba(255,255,255,0.5);border-radius:20px;background:transparent;color:#fff;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">لاحقا</button>';
+        document.body.appendChild(b);
+      }catch(_){}
     });
   });
 }

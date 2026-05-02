@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v78-tasweya-telegram-notif';
+const CACHE = 'suivi-v79-avance-carry-forward';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

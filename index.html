@@ -14698,10 +14698,14 @@ function renderSalDashboard(){
       if(!p.notes)return t;
       try{const ls=JSON.parse(p.notes);return t+ls.reduce(function(s2,l){return s2+Number(l.qte)*Number(l.prix);},0);}catch{return t;}
     },0);
-    const myAvs=salarieAvances.filter(function(a){return a.salarie_id===s.id&&a.date>=salDashFrom&&a.date<=salDashTo&&!a.rembourse;});
+    // Carry-forward avances: take ALL unpaid avances regardless of date so a
+    // 500 DH advance from week 1 still gets deducted when settling week 3.
+    // After salKhallas, each one gets rembourse=true + settled_in_tasweya
+    // pointing back to the tasweya that absorbed it.
+    const myAvs=salarieAvances.filter(function(a){return a.salarie_id===s.id&&!a.rembourse;});
     const totalAvs=myAvs.reduce(function(t,a){return t+Number(a.montant);},0);
     const net=totalJours+totalHsup+totalProd-totalAvs;
-    return {s,joursTotal,totalJours,totalHsup,totalProd,totalAvs,net};
+    return {s,joursTotal,totalJours,totalHsup,totalProd,totalAvs,net,_avIds:myAvs.map(function(x){return x.id;})};
   }).filter(function(r){return r.joursTotal>0||r.totalProd>0||r.totalAvs>0;});
   salLastRows=rows;
 
@@ -14712,6 +14716,17 @@ function renderSalDashboard(){
     return t+pcPresences.filter(function(r){return r.ouvrier_id===o.id&&r.date>=salDashFrom&&r.date<=salDashTo;}).reduce(function(s,r){return s+(r.qte*r.prix);},0);
   },0);
 
+  // Outstanding (carry-forward) avances across ALL workers + PCs, ignoring
+  // the date range. This is the "credit pending" figure — the user-facing
+  // signal that there's debt waiting to be absorbed by the next settlement.
+  const outstandingSal = (salarieAvances||[])
+    .filter(function(a){ return !a.rembourse; })
+    .reduce(function(t,a){ return t + Number(a.montant||0); }, 0);
+  const outstandingPc = (pcAvances||[])
+    .filter(function(a){ return !a.rembourse; })
+    .reduce(function(t,a){ return t + Number(a.montant||0); }, 0);
+  const outstandingAll = outstandingSal + outstandingPc;
+
   let html='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'
     +'<div><label class="field-lbl">من</label><input type="date" class="field-inp" value="'+salDashFrom+'" onchange="salDashFrom=this.value;renderSalaries()"></div>'
     +'<div><label class="field-lbl">إلى</label><input type="date" class="field-inp" value="'+salDashTo+'" onchange="salDashTo=this.value;renderSalaries()"></div>'
@@ -14720,10 +14735,11 @@ function renderSalDashboard(){
     +'<button onclick="salSetDashWeek()" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الأسبوع</button>'
     +'<button onclick="salSetDashMonth()" style="padding:6px 12px;border-radius:20px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">هاد الشهر</button>'
   +'</div>'
-  +'<div class="dash-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:16px">'
-    +'<div class="kpi blue"><div class="kpi-icon">📅</div><div class="kpi-val" style="color:var(--accent)">'+fmtN(grandTotal)+'</div><div class="kpi-lbl">أجور بالنهار</div><div class="kpi-sub">DH</div></div>'
+  +'<div class="dash-grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:16px">'
+    +'<div class="kpi blue"><div class="kpi-icon">📅</div><div class="kpi-val" style="color:var(--accent)">'+fmtN(grandTotal)+'</div><div class="kpi-lbl">أجور بالنهار</div><div class="kpi-sub">DH (net)</div></div>'
     +'<div class="kpi green"><div class="kpi-icon">👷</div><div class="kpi-val" style="color:var(--green)">'+fmtN(pcGrandTotalKpi)+'</div><div class="kpi-lbl">أجور Par PCs</div><div class="kpi-sub">DH</div></div>'
-    +'<div class="kpi amber"><div class="kpi-icon">💳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(totalAvsAll)+'</div><div class="kpi-lbl">إجمالي السلف</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi amber" title="السلف اللي تخصمو ف هاد الفترة"><div class="kpi-icon">💳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(totalAvsAll)+'</div><div class="kpi-lbl">سلف ف الحساب</div><div class="kpi-sub">DH</div></div>'
+    +'<div class="kpi" style="border-color:rgba(245,166,35,0.4);background:rgba(245,166,35,0.04)" title="السلف اللي مزال ما تخلصاتش — كتنتقل للتسوية الجاية"><div class="kpi-icon">⏳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(outstandingAll)+'</div><div class="kpi-lbl">سلف معلقة</div><div class="kpi-sub">'+(outstandingSal>0?'👤'+fmtN(outstandingSal):'')+(outstandingSal>0&&outstandingPc>0?' · ':'')+(outstandingPc>0?'👷'+fmtN(outstandingPc):'')+(outstandingAll===0?'كاملة محسومة':'')+'</div></div>'
     +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
 
@@ -14875,6 +14891,18 @@ async function salKhallas(salId){
     // Mirror net cash payout to caisse OUT. Avances of the same period were
     // already mirrored when each was saved → no double-count here.
     pushCaisseMovement(today,'out',r.net,'تسوية — '+nomSal,'sal_payment',res[0].id,'');
+    // Mark each absorbed avance as remboursé + link to this tasweya, so
+    // a future cancel can reopen them and so they don't get re-deducted.
+    const avIds = r._avIds || [];
+    if(avIds.length){
+      try{
+        await sbFetch('salarie_avances?id=in.('+avIds.join(',')+')', 'PATCH', {rembourse:true, settled_in_tasweya:res[0].id});
+        salarieAvances.forEach(function(a){
+          if(avIds.indexOf(a.id) >= 0){ a.rembourse=true; a.settled_in_tasweya=res[0].id; }
+        });
+        localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
+      }catch(e){ console.warn('avance mark-remboursé failed:', e); }
+    }
     // Telegram notif so the user sees each settlement with name + amount.
     var lines = [
       '💰 *تخلص — '+nomSal+'*',
@@ -14893,18 +14921,34 @@ async function salAnnulerTasw(salId){
   if(t&&t.id){
     await sbFetch('salarie_taswiyas?id=eq.'+t.id,'DELETE');
     await unlinkCaisseMovement('sal_payment', t.id);
+    // Reopen any avances that were absorbed by this specific tasweya so they
+    // re-appear in the worker's pending credit and the next settlement
+    // deducts them again. Scoped via settled_in_tasweya = t.id.
+    try{
+      await sbFetch('salarie_avances?settled_in_tasweya=eq.'+t.id, 'PATCH', {rembourse:false, settled_in_tasweya:null});
+      salarieAvances.forEach(function(a){
+        if(Number(a.settled_in_tasweya) === Number(t.id)){ a.rembourse=false; a.settled_in_tasweya=null; }
+      });
+      localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
+    }catch(e){ console.warn('avance reopen on cancel failed:', e); }
   }
   salTaswiyas=salTaswiyas.filter(function(x){return !(x.salarie_id===salId&&x.date_from===salDashFrom&&x.date_to===salDashTo);});
   renderSalaries();
 }
 
 async function pcKhallas(ouvrierId){
-  const r=(function(){
+  const grossPC=(function(){
     const myPres=pcPresences.filter(function(x){return x.ouvrier_id===ouvrierId&&x.date>=salDashFrom&&x.date<=salDashTo;});
     return myPres.reduce(function(t,x){return t+(x.qte*x.prix);},0);
   })();
+  // Carry-forward unpaid PC avances regardless of date — same logic as
+  // salariés. These get absorbed into this tasweya and marked remboursé.
+  const myPcAvs = (pcAvances||[]).filter(function(a){ return Number(a.ouvrier_id)===Number(ouvrierId) && !a.rembourse; });
+  const totalPcAvs = myPcAvs.reduce(function(t,a){ return t + Number(a.montant||0); }, 0);
+  const r = grossPC - totalPcAvs;
   const o=ouvriersPc.find(function(x){return x.id===ouvrierId;});
-  if(!confirm('تأكيد خلاص '+(o?o.nom:'')+' — '+fmtN(r)+' DH ؟'))return;
+  const explainAvs = totalPcAvs>0 ? '\nالأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+' = '+fmtN(r) : '';
+  if(!confirm('تأكيد خلاص '+(o?o.nom:'')+' — '+fmtN(r)+' DH ؟'+explainAvs))return;
   const payload={
     ouvrier_id:ouvrierId,
     date_from:salDashFrom,
@@ -14916,16 +14960,29 @@ async function pcKhallas(ouvrierId){
   pcTaswiyas=pcTaswiyas.filter(function(t){return !(t.ouvrier_id===ouvrierId&&t.date_from===salDashFrom&&t.date_to===salDashTo);});
   if(res&&res[0]){
     pcTaswiyas.push({id:res[0].id,ouvrier_id:res[0].ouvrier_id,date_from:res[0].date_from,date_to:res[0].date_to,montant:parseFloat(res[0].montant)||0,date_paiement:res[0].date_paiement});
-    // Mirror to caisse OUT. PC avances (when used) were already mirrored
-    // at avance-save time, so this row is the net hand-out only.
+    // Mirror to caisse OUT. PC avances were already mirrored at save time,
+    // so this row is the net hand-out only (gross − avances).
     pushCaisseMovement(res[0].date_paiement, 'out', Number(res[0].montant)||0,
       'تسوية PC — '+(o?o.nom:''), 'pc_payment', res[0].id, '');
+    // Mark absorbed PC avances as remboursé + link to this tasweya
+    if(myPcAvs.length){
+      const ids = myPcAvs.map(function(x){return x.id;});
+      try{
+        await sbFetch('pc_avances?id=in.('+ids.join(',')+')', 'PATCH', {rembourse:true, settled_in_tasweya:res[0].id});
+        pcAvances.forEach(function(a){
+          if(ids.indexOf(a.id) >= 0){ a.rembourse=true; a.settled_in_tasweya=res[0].id; }
+        });
+        localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+      }catch(e){ console.warn('pc avance mark-remboursé failed:', e); }
+    }
     // Telegram notif: name + period + amount.
-    sendTelegramBroadcast([
+    var pcLines = [
       '💰 *تخلص PC — '+(o?o.nom:('#'+ouvrierId))+'*',
       '📅 الفترة: '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
       '💵 المبلغ: '+fmtN(r)+' DH',
-    ].join('\n'));
+    ];
+    if(totalPcAvs > 0) pcLines.push('🛈 (الأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+')');
+    sendTelegramBroadcast(pcLines.join('\n'));
   } else {
     pcTaswiyas.push(payload); // offline fallback
   }
@@ -14939,6 +14996,14 @@ async function pcAnnulerTasw(ouvrierId){
   if(t&&t.id){
     try{ await sbFetch('pc_taswiyas?id=eq.'+t.id,'DELETE'); }catch(e){ console.warn('pc_taswiyas delete failed:',e); }
     await unlinkCaisseMovement('pc_payment', t.id);
+    // Reopen PC avances absorbed by this tasweya so the credit is restored.
+    try{
+      await sbFetch('pc_avances?settled_in_tasweya=eq.'+t.id, 'PATCH', {rembourse:false, settled_in_tasweya:null});
+      pcAvances.forEach(function(a){
+        if(Number(a.settled_in_tasweya) === Number(t.id)){ a.rembourse=false; a.settled_in_tasweya=null; }
+      });
+      localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+    }catch(e){ console.warn('pc avance reopen failed:', e); }
   }
   pcTaswiyas=pcTaswiyas.filter(function(x){return !(x.ouvrier_id===ouvrierId&&x.date_from===salDashFrom&&x.date_to===salDashTo);});
   localStorage.setItem('pc_taswiyas_v1',JSON.stringify(pcTaswiyas));

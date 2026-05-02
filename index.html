@@ -11861,6 +11861,57 @@ function getCaisseSolde(fromIso, toIso){
   return { in:inSum, out:outSum, solde: inSum - outSum };
 }
 
+// Snapshot of a worker's net balance since their last settlement: how much
+// they've earned vs. how much they still owe (unpaid avances). Returned net
+// can be positive (we still owe them) or negative (they owe us). Used in
+// avance notifs so the recipient sees the immediate impact.
+function _workerNetBalance(kind, id){
+  if(kind === 'sal'){
+    const lastT = (salTaswiyas||[])
+      .filter(function(t){return Number(t.salarie_id) === Number(id);})
+      .slice().sort(function(a,b){return String(b.date_to||'').localeCompare(String(a.date_to||''));})[0];
+    const since = lastT ? String(lastT.date_to) : '0000-01-01';
+    const myPres = (salariePresences||[]).filter(function(p){return Number(p.salarie_id) === Number(id) && String(p.date) > since;});
+    const totalJours = (typeof _sumDayWageBase === 'function') ? _sumDayWageBase(id, myPres) : 0;
+    const totalHsup = myPres.reduce(function(t,p){return t + Number(p.heures_supp||0) * Number(p.taux_horaire||0);}, 0);
+    const totalProd = myPres.reduce(function(t,p){
+      if(!p.notes) return t;
+      try{ const ls = JSON.parse(p.notes); return t + ls.reduce(function(s,l){return s + Number(l.qte) * Number(l.prix);}, 0); }catch(e){ return t; }
+    }, 0);
+    const gross = totalJours + totalHsup + totalProd;
+    const avs = (salarieAvances||[]).filter(function(a){return Number(a.salarie_id) === Number(id) && !a.rembourse;}).reduce(function(t,a){return t + Number(a.montant||0);}, 0);
+    return { gross: gross, avs: avs, net: gross - avs, sinceDate: lastT ? since : null };
+  }
+  if(kind === 'pc'){
+    const lastT = (pcTaswiyas||[])
+      .filter(function(t){return Number(t.ouvrier_id) === Number(id);})
+      .slice().sort(function(a,b){return String(b.date_to||'').localeCompare(String(a.date_to||''));})[0];
+    const since = lastT ? String(lastT.date_to) : '0000-01-01';
+    const gross = (pcPresences||[]).filter(function(r){return Number(r.ouvrier_id) === Number(id) && String(r.date) > since;}).reduce(function(t,r){return t + Number(r.qte||0) * Number(r.prix||0);}, 0);
+    const avs = (pcAvances||[]).filter(function(a){return Number(a.ouvrier_id) === Number(id) && !a.rembourse;}).reduce(function(t,a){return t + Number(a.montant||0);}, 0);
+    return { gross: gross, avs: avs, net: gross - avs, sinceDate: lastT ? since : null };
+  }
+  return null;
+}
+
+// Format the net for a Telegram line: positive → 🟢, negative → ⚠️ (مدين).
+function _fmtNetLine(bal){
+  if(!bal) return '';
+  const lines = [];
+  if(bal.sinceDate){
+    lines.push('💰 الإجمالي من '+fmtDate(bal.sinceDate)+': '+fmtN(bal.gross)+' DH');
+  } else {
+    lines.push('💰 الإجمالي (كاع المدة): '+fmtN(bal.gross)+' DH');
+  }
+  lines.push('💳 السلف المعلقة: '+fmtN(bal.avs)+' DH');
+  if(bal.net >= 0){
+    lines.push('🟢 الباقي للعامل: '+fmtN(bal.net)+' DH');
+  } else {
+    lines.push('⚠️ العامل مدين: '+fmtN(Math.abs(bal.net))+' DH');
+  }
+  return lines.join('\n');
+}
+
 async function pushPcAvance(ouvrierId, date, montant, notes){
   const payload = {
     ouvrier_id: Number(ouvrierId),
@@ -12711,12 +12762,13 @@ async function salSaveWeekAvance(){
     hideLoader();
     if(av && av.id){
       await pushCaisseMovement(date, 'out', montant, 'سلفة PC — '+o.nom, 'pc_avance', av.id, notes);
+      const balPc1 = _workerNetBalance('pc', ouvrierId);
       sendTelegramBroadcast([
         '💳 *سلفة PC جديدة*',
         '👷 العامل: '+o.nom,
         '📅 التاريخ: '+fmtDate(date),
         '💵 المبلغ: '+fmtN(montant)+' DH',
-      ].concat(notes?['📝 '+notes]:[]).join('\n'));
+      ].concat(notes?['📝 '+notes]:[]).concat(balPc1?['', _fmtNetLine(balPc1)]:[]).join('\n'));
       if(msg){msg.style.color='var(--green)';msg.textContent='✅ سلفة PC مسجلة!';}
       setTimeout(function(){renderSalaries();},700);
     } else {
@@ -12742,7 +12794,7 @@ async function salSaveWeekAvance(){
     const sal = salariesData.find(function(x){return x.id===id;});
     const nm  = sal ? ((String(sal.nom||'')+(sal.prenom?' '+sal.prenom:'')).trim() || ('#'+id)) : ('#'+id);
     pushCaisseMovement(date, 'out', montant, 'سلفة — '+nm, 'avance', res[0].id, notes);
-    // Telegram: name + date + amount + optional note.
+    // Telegram: name + date + amount + optional note + post-balance.
     var avLines = [
       '💳 *سلفة جديدة*',
       '👤 العامل: '+nm,
@@ -12750,6 +12802,8 @@ async function salSaveWeekAvance(){
       '💵 المبلغ: '+fmtN(montant)+' DH',
     ];
     if(notes) avLines.push('📝 '+notes);
+    const balSal = _workerNetBalance('sal', id);
+    if(balSal) avLines.push('', _fmtNetLine(balSal));
     sendTelegramBroadcast(avLines.join('\n'));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم تسجيل السلفة!';}
     setTimeout(function(){renderSalaries();},700);
@@ -13077,12 +13131,13 @@ async function pcSaveAvance(ouvrierId){
   hideLoader();
   if(av && av.id){
     await pushCaisseMovement(date, 'out', montant, 'سلفة PC — '+o.nom, 'pc_avance', av.id, notes);
+    const balPcL = _workerNetBalance('pc', ouvrierId);
     sendTelegramBroadcast([
       '💳 *سلفة PC جديدة*',
       '👷 العامل: '+o.nom,
       '📅 التاريخ: '+fmtDate(date),
       '💵 المبلغ: '+fmtN(montant)+' DH',
-    ].concat(notes?['📝 '+notes]:[]).join('\n'));
+    ].concat(notes?['📝 '+notes]:[]).concat(balPcL?['', _fmtNetLine(balPcL)]:[]).join('\n'));
     if(msg){msg.style.color='var(--green)';msg.textContent='✅ تم تسجيل السلفة!';}
     setTimeout(function(){renderSalaries();},700);
   } else {
@@ -15434,12 +15489,13 @@ async function salEditAvance(id){
     await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة — '+nm, 'avance', id, a.notes||'');
   }
   hideLoader();
+  const balSE = _workerNetBalance('sal', a.salarie_id);
   sendTelegramBroadcast([
     '✏️ *تعديل سلفة*',
     '👤 العامل: '+nm,
     '📅 التاريخ: '+fmtDate(a.date),
     '💵 '+fmtN(oldAmt)+' DH → '+fmtN(newAmt)+' DH',
-  ].join('\n'));
+  ].concat(balSE?['', _fmtNetLine(balSE)]:[]).join('\n'));
   try{toast('✅ تم التحديث','success');}catch(_){}
   renderSalaries();
 }
@@ -15455,12 +15511,13 @@ async function salDeleteAvance(id){
   localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
   await unlinkCaisseMovement('avance', id);
   hideLoader();
+  const balSD = _workerNetBalance('sal', a.salarie_id);
   sendTelegramBroadcast([
     '🗑️ *تحذف سلفة*',
     '👤 العامل: '+nm,
     '📅 التاريخ: '+fmtDate(a.date),
     '💵 المبلغ: '+fmtN(a.montant)+' DH',
-  ].join('\n'));
+  ].concat(balSD?['', _fmtNetLine(balSD)]:[]).join('\n'));
   try{toast('✅ تم الحذف','success');}catch(_){}
   renderSalaries();
 }
@@ -15501,12 +15558,13 @@ async function pcEditAvance(id){
     await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة PC — '+nm, 'pc_avance', id, a.notes||'');
   }
   hideLoader();
+  const balPE = _workerNetBalance('pc', a.ouvrier_id);
   sendTelegramBroadcast([
     '✏️ *تعديل سلفة PC*',
     '👷 العامل: '+nm,
     '📅 التاريخ: '+fmtDate(a.date),
     '💵 '+fmtN(oldAmt)+' DH → '+fmtN(newAmt)+' DH',
-  ].join('\n'));
+  ].concat(balPE?['', _fmtNetLine(balPE)]:[]).join('\n'));
   try{toast('✅ تم التحديث','success');}catch(_){}
   renderSalaries();
 }
@@ -15523,12 +15581,13 @@ async function pcDeleteAvance(id){
   localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
   await unlinkCaisseMovement('pc_avance', id);
   hideLoader();
+  const balPD = _workerNetBalance('pc', a.ouvrier_id);
   sendTelegramBroadcast([
     '🗑️ *تحذف سلفة PC*',
     '👷 العامل: '+nm,
     '📅 التاريخ: '+fmtDate(a.date),
     '💵 المبلغ: '+fmtN(a.montant)+' DH',
-  ].join('\n'));
+  ].concat(balPD?['', _fmtNetLine(balPD)]:[]).join('\n'));
   try{toast('✅ تم الحذف','success');}catch(_){}
   renderSalaries();
 }
@@ -15550,12 +15609,13 @@ async function pcSaveQuickAvance(ouvrierId){
   const av = await pushPcAvance(ouvrierId, d, m, '');
   if(av && av.id){
     await pushCaisseMovement(d, 'out', m, 'سلفة PC — '+o.nom, 'pc_avance', av.id, '');
+    const balPcQ = _workerNetBalance('pc', ouvrierId);
     sendTelegramBroadcast([
       '💳 *سلفة PC جديدة*',
       '👷 العامل: '+o.nom,
       '📅 التاريخ: '+fmtDate(d),
       '💵 المبلغ: '+fmtN(m)+' DH',
-    ].join('\n'));
+    ].concat(balPcQ?['', _fmtNetLine(balPcQ)]:[]).join('\n'));
     try{toast('✅ سلفة مسجلة','success');}catch(_){}
     renderSalaries();
   } else {

@@ -12538,7 +12538,7 @@ function renderSalPointageGrid(){
       + days.map(function(d,i){
           const dd=d.split('-')[2], mm=d.split('-')[1];
           const isT = d===today;
-          const weekend = i===5;
+          const weekend = false; // user works 7d/7 — no rest-day dim
           return '<th style="padding:8px 4px;font-size:11px;font-weight:700;border-bottom:1px solid var(--border);'+(isT?'background:rgba(79,142,247,0.08);color:var(--accent);':'color:var(--text3);')+(weekend?'opacity:0.6;':'')+'"><div style="font-size:10px;color:var(--text3);font-weight:600;white-space:nowrap">'+fullNames[i]+'</div><div>'+dd+'/'+mm+'</div></th>';
       }).join('')
       +'<th style="padding:8px 10px;font-size:11px;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border)">أيام</th>'
@@ -12669,7 +12669,7 @@ function renderSalPointageDetail(){
       const pres=salariePresences.find(function(p){return p.salarie_id===id&&p.date===date;});
       const st=pres?pres.statut:'';
       const isToday=date===today;
-      const isWeekend=i===5;
+      const isWeekend=false; // user works 7d/7 — no rest-day dim
       const dd=date.split('-')[2];const mm=date.split('-')[1];
       const sal=salariesData.find(function(x){return x.id===id;});
       const defTaux=sal?Number(sal.taux_hsup||0):0;
@@ -12899,7 +12899,7 @@ function salRenderPieceWeek(days,dayNames,today){
     let lines=[];
     if(pres&&pres.notes){try{lines=JSON.parse(pres.notes);}catch{}}
     const isToday=date===today;
-    const isWeekend=i===5;
+    const isWeekend=false; // user works 7d/7 — no rest-day dim
     const dd=date.split('-')[2];const mm=date.split('-')[1];
     const dayTotal=lines.reduce(function(t,l){return t+Number(l.qte)*Number(l.prix);},0);
     html+='<div style="display:grid;grid-template-columns:100px repeat('+salCatalogue.length+',1fr) 90px;gap:0;border-bottom:1px solid var(--border);'
@@ -13055,7 +13055,7 @@ function renderSalPcPointage(){
   // Rows
   days.forEach(function(date,i){
     var isToday=date===today;
-    var isWeekend=i===5;
+    var isWeekend=false; // user works 7d/7 — no rest-day dim
     var dayTotal=assigns.reduce(function(s,a){
       var row=pcPresences.find(function(r){return r.ouvrier_id===oId&&r.date===date&&r.pc_nom===a.pc_nom;});
       return s+(row?(row.qte*row.prix):0);
@@ -13250,7 +13250,7 @@ function pcPrintWeekTable(){
     }, 0);
     weekTotal += dayTotal;
     const dd=date.split('-')[2], mm=date.split('-')[1];
-    const isWeekend = i===5;
+    const isWeekend = false; // user works 7d/7 — no rest-day dim
     bodyRows += '<tr'+(isWeekend?' style="opacity:0.6"':'')+'>'
       + '<td><b>'+dayNames[i]+'</b><br><small style="color:#666">'+dd+'/'+mm+'</small></td>'
       + assigns.map(function(a){

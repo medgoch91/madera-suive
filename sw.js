@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v99-grid-short-day-sun-first';
+const CACHE = 'suivi-v100-no-weekend-dim';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

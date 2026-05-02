@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v111-pc-rich-details-modal';
+const CACHE = 'suivi-v112-modal-box-class-fix';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

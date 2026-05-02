@@ -11983,7 +11983,10 @@ let salSubPage='pointage';
 // Top-level worker grouping: 'workers' (الأجراء day-workers), 'pcs' (piece-work), 'elec' (subcontracting)
 let salTopGroup='workers';
 let salPointageSemFrom=(function(){
-  const d=new Date();d.setDate(d.getDate()-d.getDay()+1);
+  // Week starts on Sunday (Morocco workshop convention — paid on Saturday).
+  // d.getDay() returns 0=Sun..6=Sat → subtracting it lands us on the most
+  // recent Sunday (today if today is Sunday).
+  const d=new Date();d.setDate(d.getDate()-d.getDay());
   return d.toISOString().split('T')[0];
 })();
 let salPointageSalId='';
@@ -11992,7 +11995,7 @@ let salPointageType='nharat'; // 'nharat' | 'pcs'
 let salPointageView='grid';  // 'grid' | 'pcs' | 'detail' — default = weekly grid
 let salPointageDay=new Date().toISOString().split('T')[0]; // day displayed in 'today' view
 let salPcPointageId='';
-let salPcSemFrom=(function(){const d=new Date();d.setDate(d.getDate()-d.getDay()+1);return d.toISOString().split('T')[0];})();
+let salPcSemFrom=(function(){const d=new Date();d.setDate(d.getDate()-d.getDay());return d.toISOString().split('T')[0];})();
 let pcPresences=[]; // {id, ouvrier_id, date, pc_nom, qte, prix}
 let salPointageLignes=[{designation:'',qte:1,prix:0}];
 let salPointageStatut='present';
@@ -12512,7 +12515,7 @@ function renderSalPointageToday(){
 function renderSalPointageGrid(){
   const days = getSemaineDays(salPointageSemFrom);
   const dayNames = ['ث','ث','ر','خ','ج','س','ح'];
-  const fullNames = ['الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
+  const fullNames = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   const today = new Date().toISOString().split('T')[0];
   const actifs = salariesData.filter(x=>x.actif!==false);
   const stColors = {present:'#27ae60',absent:'#e84040',conge:'#f5a623',demi:'#9b59b6'};
@@ -12535,7 +12538,7 @@ function renderSalPointageGrid(){
       + days.map(function(d,i){
           const dd=d.split('-')[2], mm=d.split('-')[1];
           const isT = d===today;
-          const weekend = i>=5;
+          const weekend = i===5;
           return '<th style="padding:8px 4px;font-size:11px;font-weight:700;border-bottom:1px solid var(--border);'+(isT?'background:rgba(79,142,247,0.08);color:var(--accent);':'color:var(--text3);')+(weekend?'opacity:0.6;':'')+'"><div style="font-size:10px;color:var(--text3);font-weight:600;white-space:nowrap">'+fullNames[i]+'</div><div>'+dd+'/'+mm+'</div></th>';
       }).join('')
       +'<th style="padding:8px 10px;font-size:11px;color:var(--accent);font-weight:700;border-bottom:1px solid var(--border)">أيام</th>'
@@ -12623,7 +12626,7 @@ function renderSalPointageDetail(){
       }).join('')
     +'</optgroup>':'');
   const days=getSemaineDays(salPointageSemFrom);
-  const dayNames=['الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
+  const dayNames=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   const today=new Date().toISOString().split('T')[0];
 
   // Week summary
@@ -12666,7 +12669,7 @@ function renderSalPointageDetail(){
       const pres=salariePresences.find(function(p){return p.salarie_id===id&&p.date===date;});
       const st=pres?pres.statut:'';
       const isToday=date===today;
-      const isWeekend=i>=5;
+      const isWeekend=i===5;
       const dd=date.split('-')[2];const mm=date.split('-')[1];
       const sal=salariesData.find(function(x){return x.id===id;});
       const defTaux=sal?Number(sal.taux_hsup||0):0;
@@ -12896,7 +12899,7 @@ function salRenderPieceWeek(days,dayNames,today){
     let lines=[];
     if(pres&&pres.notes){try{lines=JSON.parse(pres.notes);}catch{}}
     const isToday=date===today;
-    const isWeekend=i>=5;
+    const isWeekend=i===5;
     const dd=date.split('-')[2];const mm=date.split('-')[1];
     const dayTotal=lines.reduce(function(t,l){return t+Number(l.qte)*Number(l.prix);},0);
     html+='<div style="display:grid;grid-template-columns:100px repeat('+salCatalogue.length+',1fr) 90px;gap:0;border-bottom:1px solid var(--border);'
@@ -12958,9 +12961,12 @@ async function salDeleteCatItem(idx){
 // ─── DASHBOARD ────────────────────────────────────────────────
 
 function salSetDashWeek(){
-  const d=new Date();d.setDate(d.getDate()-6);
-  salDashFrom=d.toISOString().split('T')[0];
-  salDashTo=new Date().toISOString().split('T')[0];
+  // "هاد الأسبوع" = current work week (Sun → Sat). The settle button uses
+  // this range so the boundaries match payday conventions.
+  const d=new Date(); d.setDate(d.getDate()-d.getDay());
+  const e=new Date(d); e.setDate(e.getDate()+6);
+  salDashFrom = d.toISOString().split('T')[0];
+  salDashTo   = e.toISOString().split('T')[0];
   renderSalaries();
 }
 function salSetDashMonth(){
@@ -12994,7 +13000,7 @@ function renderSalPcPointage(){
     }).join('');
 
   var days=getSemaineDays(salPcSemFrom);
-  var dayNames=['الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
+  var dayNames=['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   var today=new Date().toISOString().split('T')[0];
   var d0=new Date(salPcSemFrom);
   var d6=new Date(salPcSemFrom);d6.setDate(d6.getDate()+6);
@@ -13049,7 +13055,7 @@ function renderSalPcPointage(){
   // Rows
   days.forEach(function(date,i){
     var isToday=date===today;
-    var isWeekend=i>=5;
+    var isWeekend=i===5;
     var dayTotal=assigns.reduce(function(s,a){
       var row=pcPresences.find(function(r){return r.ouvrier_id===oId&&r.date===date&&r.pc_nom===a.pc_nom;});
       return s+(row?(row.qte*row.prix):0);
@@ -13227,7 +13233,7 @@ function pcPrintWeekTable(){
   const o = (ouvriersPc||[]).find(function(x){return Number(x.id)===oId;});
   if(!o){ try{toast('اختر عامل أولاً','warning');}catch(_){} return; }
   const days = getSemaineDays(salPcSemFrom);
-  const dayNames = ['الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت','الأحد'];
+  const dayNames = ['الأحد','الإثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
   const assigns = (ouvrierPcAssigns||[]).filter(function(a){return Number(a.ouvrier_id)===oId;});
   if(!assigns.length){ try{toast('هاد العامل ما عندوش PCs','warning');}catch(_){} return; }
   const d0=new Date(salPcSemFrom);
@@ -13244,7 +13250,7 @@ function pcPrintWeekTable(){
     }, 0);
     weekTotal += dayTotal;
     const dd=date.split('-')[2], mm=date.split('-')[1];
-    const isWeekend = i>=5;
+    const isWeekend = i===5;
     bodyRows += '<tr'+(isWeekend?' style="opacity:0.6"':'')+'>'
       + '<td><b>'+dayNames[i]+'</b><br><small style="color:#666">'+dd+'/'+mm+'</small></td>'
       + assigns.map(function(a){
@@ -15916,7 +15922,7 @@ async function caisseDeleteMovement(id){
 function salHistPreset(p){
   const today=new Date().toISOString().split('T')[0];
   if(p==='today'){ salHistFrom=today; salHistTo=today; }
-  else if(p==='week'){ const d=new Date(); d.setDate(d.getDate()-6); salHistFrom=d.toISOString().split('T')[0]; salHistTo=today; }
+  else if(p==='week'){ const d=new Date(); d.setDate(d.getDate()-d.getDay()); const e=new Date(d); e.setDate(e.getDate()+6); salHistFrom=d.toISOString().split('T')[0]; salHistTo=e.toISOString().split('T')[0]; }
   else if(p==='month'){ const d=new Date(); d.setDate(1); salHistFrom=d.toISOString().split('T')[0]; salHistTo=today; }
   else if(p==='all'){ salHistFrom='2020-01-01'; salHistTo=today; }
   renderSalaries();

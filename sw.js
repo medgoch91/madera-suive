@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v97-pc-week-print-pdf';
+const CACHE = 'suivi-v98-week-sun-to-sat';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

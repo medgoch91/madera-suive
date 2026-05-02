@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v74-caisse-module';
+const CACHE = 'suivi-v75-caisse-rename';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

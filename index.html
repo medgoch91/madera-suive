@@ -1107,7 +1107,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
     <button class="nav-btn" onclick="showPage('caisse',this)" id="nav-caisse">
-      <span class="nav-icon">💵</span> <span data-i18n="nav.caisse">الصندوق</span>
+      <span class="nav-icon">💵</span> <span data-i18n="nav.caisse">صندوق</span>
       <span class="nav-badge" id="badge-caisse" style="display:none">0</span>
     </button>
     <!-- elec-dist merged into الأجراء as a tab -->
@@ -2519,9 +2519,8 @@ const AR_FR_DICT = (typeof Object.freeze === 'function' ? Object.freeze : functi
   'الأجراء':'Salariés', 'الفواتير':'Factures', 'إدارة المستخدمين':'Gestion utilisateurs',
   '📊 تاريخ تغيير الأسعار':'📊 Historique des taux',
   'تاريخ تغيير الأسعار':'Historique des taux',
-  '💵 الصندوق':'💵 Caisse', 'الصندوق':'Caisse',
-  '➕ دخول (المعلم جاب فلوس)':'➕ Entrée (cash apporté)',
-  '➖ خرج (transport, scotch...)':'➖ Sortie (libre)',
+  '💵 صندوق':'💵 Caisse', 'صندوق':'Caisse',
+  '➕ دخول':'➕ Entrée', '➖ خرج':'➖ Sortie',
   '➕ دخول جديد':'➕ Nouvelle entrée', '➖ خرج جديد':'➖ Nouvelle sortie',
   '➕ تسجيل دخول':'➕ Enregistrer entrée', '➖ تسجيل خرج':'➖ Enregistrer sortie',
   'دخل':'Entrées', 'خرج':'Sorties', 'الباقي ف الفترة':'Solde période',
@@ -8715,7 +8714,7 @@ const ALL_PAGES = [
   {key:'fournisseurs', label:'🏢 الفورنيسورات',    emoji:'🏢', name:'الفورنيسورات'},
   {key:'articles',     label:'📦 السلع',           emoji:'📦', name:'السلع'},
   {key:'salaries',     label:'👥 الأجراء',         emoji:'👥', name:'الأجراء'},
-  {key:'caisse',       label:'💵 الصندوق',          emoji:'💵', name:'الصندوق'},
+  {key:'caisse',       label:'💵 صندوق',            emoji:'💵', name:'صندوق'},
   {key:'elec-dist',    label:'⚡ التوزيع الكهربائي', emoji:'⚡', name:'التوزيع الكهربائي'},
   {key:'factures',     label:'🧾 الفواتير',        emoji:'🧾', name:'الفواتير'},
 ];
@@ -15013,7 +15012,7 @@ function renderCaisse(){
 
   let html = '<div class="page-title" style="display:flex;align-items:center;gap:10px;margin-bottom:18px">'
     +'<span style="font-size:22px">💵</span>'
-    +'<span>الصندوق</span>'
+    +'<span>صندوق</span>'
     +'<span style="font-size:11px;color:var(--text3);font-weight:400;margin-inline-start:auto">إجمالي كل الوقت: <b style="color:'+(allTime.solde>=0?'var(--green)':'var(--red)')+'">'+fmtN(allTime.solde)+' DH</b></span>'
   +'</div>';
 
@@ -15039,8 +15038,8 @@ function renderCaisse(){
 
   // Action buttons
   html += '<div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">'
-    +'<button onclick="caisseOpenAddIn()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(46,204,122,0.3)">➕ دخول (المعلم جاب فلوس)</button>'
-    +'<button onclick="caisseOpenAddOut()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(232,64,64,0.3)">➖ خرج (transport, scotch...)</button>'
+    +'<button onclick="caisseOpenAddIn()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(46,204,122,0.3)">➕ دخول</button>'
+    +'<button onclick="caisseOpenAddOut()" style="flex:1;min-width:140px;padding:11px;background:linear-gradient(135deg,var(--red),#c0392b);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;box-shadow:0 4px 12px rgba(232,64,64,0.3)">➖ خرج</button>'
   +'</div>'
   +'<div style="display:flex;gap:6px;margin-bottom:10px">'
     +'<button onclick="caisseTypeFilter=\'all\';renderCaisse()" style="flex:1;padding:7px;border:1px solid var(--border);background:'+(caisseTypeFilter==='all'?'var(--accent)':'transparent')+';color:'+(caisseTypeFilter==='all'?'#fff':'var(--text2)')+';border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">الكل</button>'

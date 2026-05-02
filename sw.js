@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v107-loader-stuck-guard';
+const CACHE = 'suivi-v108-pc-details-modal';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

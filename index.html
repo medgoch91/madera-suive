@@ -15160,6 +15160,25 @@ function edExportReportCSV(){
   try{toast('📊 تنزيل '+fn,'success');}catch(e){}
 }
 
+// Pop a small modal with the PC worker's piece-by-piece breakdown so the
+// dashboard card stays compact (no inline TIROIR list cluttering each row).
+function pcCardShowDetails(detailText, workerName){
+  const items = String(detailText||'').split('|').map(function(s){return s.trim();}).filter(Boolean);
+  const html = '<div class="modal-title"><span>📋 تفاصيل الإنتاج — '+escB(workerName||'')+'</span>'
+    + '<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    + '<div style="display:flex;flex-direction:column;gap:6px">'
+    + items.map(function(it){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg3);border-radius:10px;border-right:3px solid #10b981">'
+          +'<span style="flex:1;font-size:13px;font-weight:700">'+escB(it.split(':')[0]||'').trim()+'</span>'
+          +'<span style="font-size:14px;font-weight:800;color:var(--green)">'+escB((it.split(':')[1]||'').trim())+'</span>'
+        +'</div>';
+      }).join('')
+    + '</div>'
+    + '<button class="btn btn-outline" style="width:100%;padding:10px;margin-top:14px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
 // Visual helpers for the dashboard so the 3 wage sections share the same
 // rhythm (header pill + table chrome + total band + خلاص button).
 function _dashSectionHeader(emoji, title, color, sub){
@@ -15315,16 +15334,18 @@ function renderSalDashboard(){
     const myPres=pcPresences.filter(function(r){return r.ouvrier_id===o.id&&r.date>=salDashFrom&&r.date<=salDashTo;});
     const total=myPres.reduce(function(t,r){return t+(r.qte*r.prix);},0);
     const assigns=ouvrierPcAssigns.filter(function(a){return a.ouvrier_id===o.id;});
-    const detail=assigns.map(function(a){
+    const detailItems=assigns.map(function(a){
       const q=myPres.filter(function(r){return r.pc_nom===a.pc_nom;}).reduce(function(t,r){return t+r.qte;},0);
       return q>0?escB(a.pc_nom)+': '+fmtN(q):'';
-    }).filter(Boolean).join(' | ');
+    }).filter(Boolean);
+    const detail=detailItems.join(' | ');
+    const detailCount=detailItems.length;
     // Pending PC avances (carry-forward — same logic pcKhallas uses, so the
     // displayed net here matches what the settle button will actually pay).
     const myAvs=(pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===Number(o.id) && !a.rembourse;});
     const avsTotal=myAvs.reduce(function(t,a){return t+Number(a.montant||0);},0);
     const net=total - avsTotal;
-    return {o,total,detail,avsTotal,net};
+    return {o,total,detail,detailCount,avsTotal,net};
   }).filter(function(r){return r.total>0 || r.avsTotal>0;});
 
   const pcGrandTotal=pcRows.reduce(function(t,r){return t+r.total;},0);
@@ -15351,12 +15372,16 @@ function renderSalDashboard(){
             +(r.avsTotal>0?'<div class="wc-net-sub">'+fmtN(r.total)+' − '+fmtN(r.avsTotal)+'</div>':'')
           +'</div>'
           +_dashKhallasBtn('pcKhallas('+r.o.id+')');
+      const detTxt = r.detail || 'ما كاين شي إنتاج فهاد الفترة';
+      const detSafe = String(detTxt).replace(/'/g,'&#39;').replace(/"/g,'&quot;');
       html+='<div class="worker-card'+(isPaid?' paid':(r.net<0?' warn':''))+'" data-kind="pc">'
         +'<div class="wc-head">'
           +'<div class="wc-avatar" style="background:rgba(16,185,129,0.15);color:#10b981">'+escB(r.o.nom.charAt(0))+'</div>'
           +'<div class="wc-id"><div class="wc-name">'+escB(r.o.nom)+'</div><div class="wc-role">عامل القطعة</div></div>'
+          +(r.detailCount>0
+            ? '<button onclick="pcCardShowDetails(\''+detSafe+'\',\''+escB(r.o.nom).replace(/\x27/g,"&#39;")+'\')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:#10b981;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 '+r.detailCount+' PC</button>'
+            : '')
         +'</div>'
-        +'<div class="wc-detail">'+detailText+'</div>'
         +'<div class="wc-stats">'
           +'<div class="wc-stat"><span class="wc-stat-lbl">🔧 إجمالي</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.total)+'</span></div>'
           +'<div class="wc-stat"><span class="wc-stat-lbl">💳 سلف</span><span class="wc-stat-val" style="color:'+(r.avsTotal>0?'var(--amber)':'var(--text3)')+'">'+(r.avsTotal>0?'−'+fmtN(r.avsTotal):'—')+'</span></div>'

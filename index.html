@@ -14931,6 +14931,120 @@ async function pcAnnulerTasw(ouvrierId){
   renderSalaries();
 }
 
+// Edit a salarié avance amount. Updates the source row + the linked caisse
+// mirror so the cash-box stays in sync — the user can "decrease the credit"
+// (e.g., worker brought back 200 of a 500 avance) before next settlement,
+// and the caisse OUT row shrinks accordingly.
+async function salEditAvance(id){
+  const a = salarieAvances.find(function(x){return Number(x.id)===Number(id);});
+  if(!a) return;
+  const nm = (typeof getSalNom==='function') ? getSalNom(a.salarie_id) : ('#'+a.salarie_id);
+  const newStr = prompt('💳 سلفة — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(Number(a.montant)||0));
+  if(newStr === null) return;
+  const newAmt = parseFloat(newStr);
+  if(isNaN(newAmt) || newAmt < 0){ try{toast('المبلغ خاص يكون رقم موجب','warning');}catch(_){ } return; }
+  if(Math.abs(newAmt - Number(a.montant||0)) < 0.01) return;
+  showLoader('💾');
+  const r1 = await sbFetch('salarie_avances?id=eq.'+id, 'PATCH', {montant: newAmt});
+  if(!r1 || r1.__sbError){
+    hideLoader();
+    try{toast('❌ فشل تحديث السلفة','error');}catch(_){}
+    return;
+  }
+  a.montant = newAmt;
+  localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
+  // Sync the linked caisse_movement
+  const cm = caisseMovements.find(function(m){
+    return m.linked_kind==='avance' && Number(m.linked_id)===Number(id);
+  });
+  if(cm){
+    if(newAmt > 0){
+      await sbFetch('caisse_movements?id=eq.'+cm.id, 'PATCH', {amount: newAmt});
+      cm.amount = newAmt;
+    } else {
+      // 0 amount — cleaner to drop the mirror entirely
+      await unlinkCaisseMovement('avance', id);
+    }
+    localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+  } else if(newAmt > 0){
+    // Legacy avance without a mirror (created before backfill)
+    await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة — '+nm, 'avance', id, a.notes||'');
+  }
+  hideLoader();
+  try{toast('✅ تم التحديث','success');}catch(_){}
+  renderSalaries();
+}
+
+async function salDeleteAvance(id){
+  const a = salarieAvances.find(function(x){return Number(x.id)===Number(id);});
+  if(!a) return;
+  const nm = (typeof getSalNom==='function') ? getSalNom(a.salarie_id) : ('#'+a.salarie_id);
+  if(!confirm('حذف السلفة ديال '+nm+' — '+fmtN(a.montant)+' DH ؟\n\nالحركة فالصندوق غادي تتمسح تا هي.')) return;
+  showLoader('🗑️');
+  await sbFetch('salarie_avances?id=eq.'+id, 'DELETE');
+  salarieAvances = salarieAvances.filter(function(x){return Number(x.id)!==Number(id);});
+  localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
+  await unlinkCaisseMovement('avance', id);
+  hideLoader();
+  try{toast('✅ تم الحذف','success');}catch(_){}
+  renderSalaries();
+}
+
+// Mirror functions for PC avances (same pattern, different table + linked_kind).
+async function pcEditAvance(id){
+  const a = pcAvances.find(function(x){return Number(x.id)===Number(id);});
+  if(!a) return;
+  const o = ouvriersPc.find(function(x){return x.id===a.ouvrier_id;});
+  const nm = o ? o.nom : ('PC #'+a.ouvrier_id);
+  const newStr = prompt('💳 سلفة PC — '+nm+'\n\nالمبلغ الحالي: '+fmtN(a.montant)+' DH\nالمبلغ الجديد (DH):', String(Number(a.montant)||0));
+  if(newStr === null) return;
+  const newAmt = parseFloat(newStr);
+  if(isNaN(newAmt) || newAmt < 0){ try{toast('المبلغ خاص يكون رقم موجب','warning');}catch(_){ } return; }
+  if(Math.abs(newAmt - Number(a.montant||0)) < 0.01) return;
+  showLoader('💾');
+  const r1 = await sbFetch('pc_avances?id=eq.'+id, 'PATCH', {montant: newAmt});
+  if(!r1 || r1.__sbError){
+    hideLoader();
+    try{toast('❌ فشل التحديث','error');}catch(_){}
+    return;
+  }
+  a.montant = newAmt;
+  localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+  const cm = caisseMovements.find(function(m){
+    return m.linked_kind==='pc_avance' && Number(m.linked_id)===Number(id);
+  });
+  if(cm){
+    if(newAmt > 0){
+      await sbFetch('caisse_movements?id=eq.'+cm.id, 'PATCH', {amount: newAmt});
+      cm.amount = newAmt;
+    } else {
+      await unlinkCaisseMovement('pc_avance', id);
+    }
+    localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+  } else if(newAmt > 0){
+    await pushCaisseMovement(a.date, 'out', newAmt, 'سلفة PC — '+nm, 'pc_avance', id, a.notes||'');
+  }
+  hideLoader();
+  try{toast('✅ تم التحديث','success');}catch(_){}
+  renderSalaries();
+}
+
+async function pcDeleteAvance(id){
+  const a = pcAvances.find(function(x){return Number(x.id)===Number(id);});
+  if(!a) return;
+  const o = ouvriersPc.find(function(x){return x.id===a.ouvrier_id;});
+  const nm = o ? o.nom : ('PC #'+a.ouvrier_id);
+  if(!confirm('حذف السلفة ديال '+nm+' — '+fmtN(a.montant)+' DH ؟')) return;
+  showLoader('🗑️');
+  await sbFetch('pc_avances?id=eq.'+id, 'DELETE');
+  pcAvances = pcAvances.filter(function(x){return Number(x.id)!==Number(id);});
+  localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+  await unlinkCaisseMovement('pc_avance', id);
+  hideLoader();
+  try{toast('✅ تم الحذف','success');}catch(_){}
+  renderSalaries();
+}
+
 // Quick PC avance: prompt for amount + date, save, mirror to caisse.
 async function pcSaveQuickAvance(ouvrierId){
   const o = ouvriersPc.find(function(x){return x.id===ouvrierId;});
@@ -15280,13 +15394,18 @@ function renderSalHistorique(){
     html+='</tbody></table></div></div>';
   } else if(salHistTab==='avances'){
     if(!avsF.length) return html + emptyBlock('💸','ما كاين حتى سلف f had الفترة');
-    html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>المبلغ</th><th>الحالة</th></tr></thead><tbody>';
+    html+='<div style="font-size:11px;color:var(--text3);margin-bottom:8px;padding:8px 12px;background:var(--bg3);border-radius:6px;border-right:3px solid var(--amber)">💡 ✏️ تنقص أو تزيد المبلغ · 🗑️ تحذف السلفة كاملة. الصندوق كيتعدل أوتوماتيك.</div>'
+      +'<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>المبلغ</th><th>الحالة</th><th style="width:90px;text-align:center">🛠️</th></tr></thead><tbody>';
     avsF.forEach(function(a,i){
       html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
         +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(a.date)+'</td>'
         +'<td style="font-weight:700">'+escB(getSalNom(a.salarie_id))+'</td>'
         +'<td style="font-weight:800;color:var(--amber);font-size:14px">'+fmtN(a.montant)+' <span style="font-size:10px;color:var(--text3);font-weight:600">DH</span></td>'
         +'<td><span class="badge '+(a.rembourse?'badge-linked':'badge-free')+'">'+(a.rembourse?'✓ محسوم':'⏳ جاري')+'</span></td>'
+        +'<td style="text-align:center;white-space:nowrap">'
+          +'<button onclick="salEditAvance('+a.id+')" title="تعديل المبلغ" style="padding:3px 8px;border:1px solid var(--accent);background:rgba(79,142,247,0.08);color:var(--accent);border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;margin-inline-end:4px">✏️</button>'
+          +'<button onclick="salDeleteAvance('+a.id+')" title="حذف السلفة" style="padding:3px 8px;border:1px solid rgba(232,64,64,0.35);background:rgba(232,64,64,0.07);color:var(--red);border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">🗑️</button>'
+        +'</td>'
       +'</tr>';
     });
     html+='</tbody></table></div></div>';
@@ -15611,7 +15730,28 @@ function renderSalPcs(){
       +'<button onclick="pcAddAssign('+o.id+')" style="padding:6px 12px;background:rgba(46,204,122,0.12);border:1px solid rgba(46,204,122,0.3);color:var(--green);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">➕</button>'
     +'</div>'
     +'<div id="pca-msg-'+o.id+'" style="font-size:11px;min-height:12px;margin-top:4px;color:var(--red)"></div>';
-    return '<div class="card" style="margin-bottom:10px;padding:12px 16px">'+header+assignList+addForm+'</div>';
+    // Outstanding avances for this PC worker — editable so the user can
+    // adjust the credit before settlement, with caisse mirror staying in sync.
+    var myAvs = (pcAvances||[]).filter(function(a){ return Number(a.ouvrier_id)===Number(o.id); })
+      .sort(function(a,b){ return String(b.date).localeCompare(String(a.date)); });
+    var avList = '';
+    if(myAvs.length){
+      var totalAvs = myAvs.reduce(function(t,a){return t + Number(a.montant||0);}, 0);
+      avList = '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">'
+        +'<div style="font-size:11px;font-weight:700;color:var(--amber);margin-bottom:6px">💳 السلف ('+myAvs.length+') · المجموع: '+fmtN(totalAvs)+' DH</div>'
+        +'<div style="display:flex;flex-direction:column;gap:4px;max-height:140px;overflow:auto">'
+        + myAvs.map(function(a){
+            return '<div style="display:flex;align-items:center;gap:8px;background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius-sm);padding:5px 9px;font-size:11px">'
+              +'<span style="color:var(--text3);font-weight:600;min-width:78px">'+fmtDate(a.date)+'</span>'
+              +'<span style="flex:1;font-weight:700;color:var(--amber)">'+fmtN(a.montant)+' DH</span>'
+              +(a.notes?'<span style="font-size:10px;color:var(--text3);font-style:italic">'+escB(a.notes)+'</span>':'')
+              +'<button onclick="pcEditAvance('+a.id+')" title="تعديل" style="padding:2px 7px;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:10px;font-size:10px;cursor:pointer">✏️</button>'
+              +'<button onclick="pcDeleteAvance('+a.id+')" title="حذف" style="padding:2px 7px;border:1px solid rgba(232,64,64,0.3);background:transparent;color:var(--red);border-radius:10px;font-size:10px;cursor:pointer">🗑️</button>'
+            +'</div>';
+          }).join('')
+        +'</div></div>';
+    }
+    return '<div class="card" style="margin-bottom:10px;padding:12px 16px">'+header+assignList+addForm+avList+'</div>';
   };
 
   if(actifs.length){

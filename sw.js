@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v76-caisse-sndo9';
+const CACHE = 'suivi-v77-avance-edit-delete';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

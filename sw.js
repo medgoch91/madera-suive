@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v79-avance-carry-forward';
+const CACHE = 'suivi-v80-caisse-spelling';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

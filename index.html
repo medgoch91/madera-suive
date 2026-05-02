@@ -15121,6 +15121,12 @@ function edExportReportCSV(){
 }
 
 function renderSalDashboard(){
+  // Lazy-load elec-dist data on first dashboard render so the 🛠️ التقنيون
+  // KPI + table show real values even when the user hasn't opened the
+  // elec-dist page yet. Re-renders once data lands.
+  if(typeof edLoaded !== 'undefined' && !edLoaded && typeof loadEdData === 'function'){
+    loadEdData().then(function(){ if(typeof renderSalaries === 'function') renderSalaries(); }).catch(function(){});
+  }
   const actifs=salariesData.filter(function(s){return s.actif!==false;});
   let salLastRowsLocal=[];
   const rows=actifs.map(function(s){

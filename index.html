@@ -14976,8 +14976,8 @@ function renderSalAjout(){
             +'<div><label class="field-lbl">المنصب</label><input class="field-inp" id="sal-edit-poste" value="'+escB(s.poste||'')+'" style="font-size:13px"></div>'
             +'<div><label class="field-lbl">التليفون</label><input class="field-inp" id="sal-edit-tel" value="'+escB(s.tel||'')+'" style="font-size:13px"></div>'
             +'<div><label class="field-lbl">الراتب الأسبوعي (DH)</label><input type="number" class="field-inp" id="sal-edit-weekly" value="'+((Number(s.salaire_base)||0)*6).toFixed(2)+'" min="0" step="0.01" oninput="salSyncFromWeekly(\'edit\')" style="font-size:13px"><div style="font-size:10px;color:var(--text3);margin-top:3px">÷ 6 أيام = يومي</div></div>'
-            +'<div><label class="field-lbl">الراتب اليومي (DH) *</label><input type="number" class="field-inp" id="sal-edit-salaire" value="'+s.salaire_base+'" min="0" step="0.01" oninput="salSyncFromDaily(\'edit\')" style="font-size:13px"><div id="sal-edit-hourly-info" style="font-size:10px;color:var(--accent);margin-top:3px;font-weight:600">= '+((Number(s.salaire_base)||0)/8).toFixed(2)+' DH/س (÷ 8)</div></div>'
-            +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-edit-taux" value="'+(s.taux_hsup||0)+'" min="0" step="0.5" oninput="salTauxManual(\'edit\')" style="font-size:13px"><div style="font-size:10px;color:var(--text3);margin-top:3px">يتعمر تلقائيا = اليومي ÷ 8 (تقدر تعدلها)</div></div>'
+            +'<div><label class="field-lbl">الراتب اليومي (DH) *</label><input type="number" class="field-inp" id="sal-edit-salaire" value="'+(Number(s.salaire_base)||0).toFixed(2)+'" data-exact="'+(Number(s.salaire_base)||0)+'" min="0" step="0.01" oninput="salSyncFromDaily(\'edit\')" style="font-size:13px"><div id="sal-edit-hourly-info" style="font-size:10px;color:var(--accent);margin-top:3px;font-weight:600">= '+((Number(s.salaire_base)||0)/8).toFixed(2)+' DH/س (÷ 8)</div></div>'
+            +'<div><label class="field-lbl">تعريفة الساعة الإضافية</label><input type="number" class="field-inp" id="sal-edit-taux" value="'+(Number(s.taux_hsup)||0).toFixed(2)+'" data-exact="'+(Number(s.taux_hsup)||0)+'" min="0" step="0.5" oninput="salTauxManual(\'edit\')" style="font-size:13px"><div style="font-size:10px;color:var(--text3);margin-top:3px">يتعمر تلقائيا = اليومي ÷ 8 (تقدر تعدلها)</div></div>'
           +'</div>'
           +'<div style="display:flex;gap:8px">'
             +'<button onclick="salSaveEdit('+s.id+')" style="flex:1;padding:9px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer">💾 حفظ</button>'
@@ -15069,11 +15069,18 @@ function _salAutoFillTaux(mode, daily){
   var tEl=document.getElementById('sal-'+mode+'-taux');
   if(!tEl) return;
   if(tEl.dataset.manual === '1') return;
-  tEl.value = daily ? (daily/8).toFixed(2) : '';
+  var hourly = daily ? daily/8 : 0;
+  tEl.value = hourly ? hourly.toFixed(2) : '';
+  // Keep the unrounded value alongside so save reads precise.
+  tEl.dataset.exact = hourly ? String(hourly) : '';
 }
 function salTauxManual(mode){
   var tEl=document.getElementById('sal-'+mode+'-taux');
-  if(tEl) tEl.dataset.manual='1';
+  if(!tEl) return;
+  tEl.dataset.manual='1';
+  // User-typed value: store as-is, no extra precision available.
+  var v = parseFloat(tEl.value)||0;
+  tEl.dataset.exact = v ? String(v) : '';
 }
 function salSyncFromWeekly(mode){
   var wEl=document.getElementById('sal-'+mode+'-weekly');
@@ -15084,6 +15091,10 @@ function salSyncFromWeekly(mode){
   var daily=w/6;
   var hourly=daily/8;
   dEl.value=daily?daily.toFixed(2):'';
+  // Stash the unrounded daily so salSaveEdit/salSaveNouvelAjir can send full
+  // precision to the DB (numeric(12,4)) instead of the 2-decimal display.
+  // Without this, weekly=700 → daily 116.67 → reload weekly = 700.02.
+  dEl.dataset.exact = daily ? String(daily) : '';
   if(hInfo)hInfo.textContent='= '+hourly.toFixed(2)+' DH/س (÷ 8)';
   _salAutoFillTaux(mode, daily);
 }
@@ -15093,9 +15104,25 @@ function salSyncFromDaily(mode){
   var hInfo=document.getElementById('sal-'+mode+'-hourly-info');
   if(!dEl)return;
   var d=parseFloat(dEl.value)||0;
+  // User typed daily directly — no extra precision available beyond what
+  // they entered. Clear stash so save uses the field value verbatim.
+  dEl.dataset.exact = d ? String(d) : '';
   if(wEl)wEl.value=d?(d*6).toFixed(2):'';
   if(hInfo)hInfo.textContent='= '+(d/8).toFixed(2)+' DH/س (÷ 8)';
   _salAutoFillTaux(mode, d);
+}
+
+// Read either the unrounded `data-exact` (set by sync helpers) or the input
+// value as a fallback. Keeps weekly→daily→DB→weekly round-trips clean.
+function _salReadExactNum(elId){
+  var el=document.getElementById(elId);
+  if(!el) return 0;
+  var raw = el.dataset && el.dataset.exact;
+  if(raw) {
+    var v = parseFloat(raw);
+    if(!isNaN(v)) return v;
+  }
+  return parseFloat(el.value)||0;
 }
 
 function salStartEdit(id){
@@ -15108,8 +15135,8 @@ async function salSaveEdit(id){
   const prenom=(document.getElementById('sal-edit-prenom')||{value:''}).value.trim();
   const poste=(document.getElementById('sal-edit-poste')||{value:''}).value.trim();
   const tel=(document.getElementById('sal-edit-tel')||{value:''}).value.trim();
-  const salaire=parseFloat((document.getElementById('sal-edit-salaire')||{value:'0'}).value)||0;
-  const taux=parseFloat((document.getElementById('sal-edit-taux')||{value:'0'}).value)||0;
+  const salaire=_salReadExactNum('sal-edit-salaire');
+  const taux=_salReadExactNum('sal-edit-taux');
   const msg=document.getElementById('sal-edit-msg');
   if(!nom){if(msg){msg.style.color='var(--red)';msg.textContent='الاسم مطلوب';}return;}
   const sCur=salariesData.find(function(x){return x.id===id;});
@@ -15145,8 +15172,8 @@ async function salSaveNouvelAjir(){
   const prenom=(document.getElementById('sal-new-prenom')||{value:''}).value.trim();
   const poste=(document.getElementById('sal-new-poste')||{value:''}).value.trim();
   const tel=(document.getElementById('sal-new-tel')||{value:''}).value.trim();
-  const salaire=parseFloat((document.getElementById('sal-new-salaire')||{value:''}).value)||0;
-  const taux=parseFloat((document.getElementById('sal-new-taux')||{value:'0'}).value)||0;
+  const salaire=_salReadExactNum('sal-new-salaire');
+  const taux=_salReadExactNum('sal-new-taux');
   const msg=document.getElementById('sal-ajout-msg');
   if(!nom){if(msg){msg.style.color='var(--red)';msg.textContent='الاسم مطلوب';}return;}
   if(!salaire){if(msg){msg.style.color='var(--red)';msg.textContent='الراتب مطلوب';}return;}

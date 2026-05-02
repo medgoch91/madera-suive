@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v92-batched-daily-notif';
+const CACHE = 'suivi-v93-avance-overflow-rollover';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

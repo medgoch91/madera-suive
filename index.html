@@ -15173,20 +15173,41 @@ async function salKhallas(salId){
   const r=salLastRows&&salLastRows.find(function(x){return x.s.id===salId;});
   if(!r)return;
   const s=r.s;
-  if(!confirm('تأكيد خلاص '+s.nom+' — '+fmtN(r.net)+' DH ؟'))return;
+  // Auto-rollover: if avances exceed wages, cash paid is 0 and the leftover
+  // becomes a NEW avance for next week. All current avances get marked as
+  // absorbed by this tasweya; the leftover ride forward independently.
+  const gross = r.totalJours + r.totalHsup + r.totalProd;
+  const avs = r.totalAvs;
+  const isOverflow = avs > gross + 0.01;
+  const cashPaid = Math.max(0, gross - avs);
+  const rollover = isOverflow ? Math.round((avs - gross) * 100) / 100 : 0;
+  let confirmMsg;
+  if(isOverflow){
+    confirmMsg = '⚠️ '+s.nom+' خد سلف أكثر من الأجر:\n\n'
+      +'  • الأجر: '+fmtN(gross)+' DH\n'
+      +'  • السلف المعلقة: '+fmtN(avs)+' DH\n'
+      +'  • الكاش اليوم: 0 DH\n'
+      +'  • 🔄 ترصيد للأسبوع الجاي: '+fmtN(rollover)+' DH\n\n'
+      +'تأكيد التسوية؟';
+  } else {
+    confirmMsg = 'تأكيد خلاص '+s.nom+' — '+fmtN(cashPaid)+' DH ؟';
+  }
+  if(!confirm(confirmMsg))return;
   showLoader('💾 جاري الحفظ...');
   const today=new Date().toISOString().split('T')[0];
   const nomSal=s.nom+(s.prenom?' '+s.prenom:'');
-  const payload={salarie_id:salId,montant:r.net,date_from:salDashFrom,date_to:salDashTo,
+  const payload={salarie_id:salId,montant:cashPaid,date_from:salDashFrom,date_to:salDashTo,
     date_paiement:today,nom_salarie:nomSal};
   const res=await sbFetch('salarie_taswiyas','POST',payload);
   hideLoader();
   if(res&&res[0]){
     salTaswiyas=salTaswiyas.filter(function(t){return !(t.salarie_id===salId&&t.date_from===salDashFrom&&t.date_to===salDashTo);});
     salTaswiyas.push(res[0]);
-    // Mirror net cash payout to caisse OUT. Avances of the same period were
-    // already mirrored when each was saved → no double-count here.
-    pushCaisseMovement(today,'out',r.net,'تسوية — '+nomSal,'sal_payment',res[0].id,'');
+    // Mirror to caisse only when there's actual cash flow. A 0-cash tasweya
+    // (full overflow case) doesn't touch the box.
+    if(cashPaid > 0){
+      pushCaisseMovement(today,'out',cashPaid,'تسوية — '+nomSal,'sal_payment',res[0].id,'');
+    }
     // Mark each absorbed avance as remboursé + link to this tasweya, so
     // a future cancel can reopen them and so they don't get re-deducted.
     const avIds = r._avIds || [];
@@ -15199,13 +15220,36 @@ async function salKhallas(salId){
         localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
       }catch(e){ console.warn('avance mark-remboursé failed:', e); }
     }
+    // Rollover: when avs > gross, create a new avance for the leftover so
+    // it carries forward to the next settlement. Not mirrored to caisse —
+    // it's a bookkeeping carry, no actual cash leaves the box.
+    if(rollover > 0){
+      const rolloverPayload = {
+        salarie_id: salId,
+        date: today,
+        montant: rollover,
+        notes: '🔄 ترصيد من تسوية '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
+        rembourse: false,
+      };
+      const rRes = await sbFetch('salarie_avances','POST',rolloverPayload);
+      if(rRes && rRes[0]){
+        salarieAvances.push(rRes[0]);
+        localStorage.setItem('sal_av_v1', JSON.stringify(salarieAvances));
+      }
+    }
     // Telegram notif so the user sees each settlement with name + amount.
     var lines = [
       '💰 *تخلص — '+nomSal+'*',
       '📅 الفترة: '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
-      '💵 المبلغ: '+fmtN(r.net)+' DH',
     ];
-    if(r.totalAvs > 0) lines.push('🛈 (الأجر '+fmtN(r.totalJours+r.totalHsup+r.totalProd)+' − سلف '+fmtN(r.totalAvs)+')');
+    if(isOverflow){
+      lines.push('⚠️ السلف ('+fmtN(avs)+') > الأجر ('+fmtN(gross)+')');
+      lines.push('💵 الكاش: 0 DH');
+      lines.push('🔄 ترصيد للأسبوع الجاي: '+fmtN(rollover)+' DH');
+    } else {
+      lines.push('💵 المبلغ: '+fmtN(cashPaid)+' DH');
+      if(avs > 0) lines.push('🛈 (الأجر '+fmtN(gross)+' − سلف '+fmtN(avs)+')');
+    }
     sendTelegramBroadcast(lines.join('\n'));
     renderSalaries();
   }
@@ -15241,10 +15285,25 @@ async function pcKhallas(ouvrierId){
   // salariés. These get absorbed into this tasweya and marked remboursé.
   const myPcAvs = (pcAvances||[]).filter(function(a){ return Number(a.ouvrier_id)===Number(ouvrierId) && !a.rembourse; });
   const totalPcAvs = myPcAvs.reduce(function(t,a){ return t + Number(a.montant||0); }, 0);
-  const r = grossPC - totalPcAvs;
+  // Auto-rollover for PC: if totalPcAvs > grossPC, cash paid is 0 and the
+  // leftover becomes a new pc_avance for next week.
+  const isOverflow = totalPcAvs > grossPC + 0.01;
+  const r = Math.max(0, grossPC - totalPcAvs);
+  const rollover = isOverflow ? Math.round((totalPcAvs - grossPC) * 100) / 100 : 0;
   const o=ouvriersPc.find(function(x){return x.id===ouvrierId;});
-  const explainAvs = totalPcAvs>0 ? '\nالأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+' = '+fmtN(r) : '';
-  if(!confirm('تأكيد خلاص '+(o?o.nom:'')+' — '+fmtN(r)+' DH ؟'+explainAvs))return;
+  let confirmMsg;
+  if(isOverflow){
+    confirmMsg = '⚠️ '+(o?o.nom:'')+' خد سلف أكثر من الأجر:\n\n'
+      +'  • الأجر: '+fmtN(grossPC)+' DH\n'
+      +'  • السلف المعلقة: '+fmtN(totalPcAvs)+' DH\n'
+      +'  • الكاش اليوم: 0 DH\n'
+      +'  • 🔄 ترصيد للأسبوع الجاي: '+fmtN(rollover)+' DH\n\n'
+      +'تأكيد التسوية؟';
+  } else {
+    const explainAvs = totalPcAvs>0 ? '\nالأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+' = '+fmtN(r) : '';
+    confirmMsg = 'تأكيد خلاص '+(o?o.nom:'')+' — '+fmtN(r)+' DH ؟'+explainAvs;
+  }
+  if(!confirm(confirmMsg))return;
   const payload={
     ouvrier_id:ouvrierId,
     date_from:salDashFrom,
@@ -15256,10 +15315,12 @@ async function pcKhallas(ouvrierId){
   pcTaswiyas=pcTaswiyas.filter(function(t){return !(t.ouvrier_id===ouvrierId&&t.date_from===salDashFrom&&t.date_to===salDashTo);});
   if(res&&res[0]){
     pcTaswiyas.push({id:res[0].id,ouvrier_id:res[0].ouvrier_id,date_from:res[0].date_from,date_to:res[0].date_to,montant:parseFloat(res[0].montant)||0,date_paiement:res[0].date_paiement});
-    // Mirror to caisse OUT. PC avances were already mirrored at save time,
-    // so this row is the net hand-out only (gross − avances).
-    pushCaisseMovement(res[0].date_paiement, 'out', Number(res[0].montant)||0,
-      'تسوية PC — '+(o?o.nom:''), 'pc_payment', res[0].id, '');
+    // Mirror only when there's actual cash flow. Overflow case (cashPaid=0)
+    // doesn't touch the box.
+    if(r > 0){
+      pushCaisseMovement(res[0].date_paiement, 'out', Number(res[0].montant)||0,
+        'تسوية PC — '+(o?o.nom:''), 'pc_payment', res[0].id, '');
+    }
     // Mark absorbed PC avances as remboursé + link to this tasweya
     if(myPcAvs.length){
       const ids = myPcAvs.map(function(x){return x.id;});
@@ -15271,13 +15332,34 @@ async function pcKhallas(ouvrierId){
         localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
       }catch(e){ console.warn('pc avance mark-remboursé failed:', e); }
     }
+    // Rollover: leftover avance carries forward as a fresh pc_avances row.
+    if(rollover > 0){
+      const rPayload = {
+        ouvrier_id: ouvrierId,
+        date: res[0].date_paiement,
+        montant: rollover,
+        notes: '🔄 ترصيد من تسوية '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
+        rembourse: false,
+      };
+      const rRes = await sbFetch('pc_avances','POST',rPayload);
+      if(rRes && rRes[0]){
+        pcAvances.push(rRes[0]);
+        localStorage.setItem('pc_av_v1', JSON.stringify(pcAvances));
+      }
+    }
     // Telegram notif: name + period + amount.
     var pcLines = [
       '💰 *تخلص PC — '+(o?o.nom:('#'+ouvrierId))+'*',
       '📅 الفترة: '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo),
-      '💵 المبلغ: '+fmtN(r)+' DH',
     ];
-    if(totalPcAvs > 0) pcLines.push('🛈 (الأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+')');
+    if(isOverflow){
+      pcLines.push('⚠️ السلف ('+fmtN(totalPcAvs)+') > الأجر ('+fmtN(grossPC)+')');
+      pcLines.push('💵 الكاش: 0 DH');
+      pcLines.push('🔄 ترصيد للأسبوع الجاي: '+fmtN(rollover)+' DH');
+    } else {
+      pcLines.push('💵 المبلغ: '+fmtN(r)+' DH');
+      if(totalPcAvs > 0) pcLines.push('🛈 (الأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+')');
+    }
     sendTelegramBroadcast(pcLines.join('\n'));
   } else {
     pcTaswiyas.push(payload); // offline fallback

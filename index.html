@@ -8928,6 +8928,36 @@ function saveCheque(){
 // ===== AUTH SYSTEM =====
 let currentUser = null;
 
+// "First activity" Telegram notif — fires once per page load on the first
+// real interaction (click/keydown/touch). Tells the boss which admin is
+// online without forcing a logout flow. Resets on page reload / reopen.
+let _firstActivityFired = false;
+function _fireFirstActivityNotif(){
+  if(_firstActivityFired) return;
+  if(!currentUser || !currentUser.email) return; // wait until login completes
+  _firstActivityFired = true;
+  try{
+    // Detach the listener once we've fired; no need to keep paying for
+    // capture-phase event handling on every subsequent click.
+    ['click','keydown','touchstart'].forEach(function(ev){
+      window.removeEventListener(ev, _fireFirstActivityNotif, true);
+    });
+    const nm = currentUser.nom || currentUser.username || currentUser.email;
+    const ua = (navigator.userAgent||'').slice(0, 80).replace(/\(/g,' ').replace(/\)/g,' ');
+    const lines = [
+      '🔐 *Admin متصل*',
+      '👤 '+nm,
+      '✉️ '+currentUser.email,
+      '🕐 '+new Date().toLocaleString('fr-MA'),
+      '💻 '+ua,
+    ];
+    if(typeof sendTelegramBroadcast === 'function') sendTelegramBroadcast(lines.join('\n'));
+  }catch(e){ console.warn('first-activity notif failed:', e); }
+}
+['click','keydown','touchstart'].forEach(function(ev){
+  window.addEventListener(ev, _fireFirstActivityNotif, { capture: true, passive: true });
+});
+
 // Pages & permissions config
 
 // All app pages (admin always sees everything; non-admin gated by role/per-user perms)

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v113-i18n-nav-caisse-key';
+const CACHE = 'suivi-v114-first-activity-notif';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -13666,33 +13666,37 @@ function bsoUpdateLine(i, field, val){
 }
 function bsoAddLine(){ bsoLines.push(bsoBlankLine()); renderSortiesContent(); }
 function bsoRemoveLine(i){ bsoLines.splice(i,1); bsoPadLines(); renderSortiesContent(); }
+var bsoCatFilter='';
+function bsoSetCatFilter(v){ bsoCatFilter=v||''; renderSortiesContent(); }
+async function bsoReloadArticles(){
+  try{
+    var res=await sbFetch('articles','GET',null,'select=*&order=id&limit=10000');
+    if(Array.isArray(res)){
+      articles.length=0;
+      res.forEach(function(a){articles.push({id:a.id,nom:a.nom,unite:a.unite,cat:a.cat,ref:a.ref||''});});
+      res.forEach(function(a){ try{ if(a.stock!=null) localStorage.setItem('art_stock_'+a.id,String(Math.max(0,Math.floor(Number(a.stock)||0)))); }catch(e){} });
+      try{ saveCacheLS(); }catch(e){}
+      try{toast('🔄 تحديث: '+articles.length+' سلعة','success');}catch(e){}
+      renderSortiesContent();
+    }
+  }catch(e){ try{toast('❌ فشل التحديث','error');}catch(err){} }
+}
 function renderSortiesNewTab(){
   bsoPadLines();
   var dept=(departments||[]).find(function(x){return x.id===sortiesActiveDept;}) || {name:'',code:''};
   var arts=bsoArticlesForActiveDept();
   var allDepts=(departments||[]).filter(function(d){return d.active!==false;});
-  var deptPicker='<div style="margin-bottom:14px;padding:12px 14px;background:linear-gradient(135deg,'+escB((dept.color||'#94a3b8'))+'15,'+escB((dept.color||'#94a3b8'))+'05);border:1px solid '+escB((dept.color||'#94a3b8'))+'55;border-radius:var(--radius-sm)">'+
-    '<label style="font-size:12px;color:var(--text2);font-weight:700;display:block;margin-bottom:6px">📍 القسم</label>'+
-    '<select class="field-inp" onchange="setSortiesDept(Number(this.value))" style="width:100%;font-size:14px;font-weight:700;padding:10px 12px">'+
-      allDepts.map(function(d){return '<option value="'+d.id+'" '+(d.id===sortiesActiveDept?'selected':'')+'>'+escB((d.icon||'')+' '+d.name)+'</option>';}).join('')+
-    '</select>'+
+  var col=dept.color||'#94a3b8';
+  var nextBon=bsoGenBonNumber(sortiesActiveDept);
+  var deptPicker='<div style="margin-bottom:14px;display:flex;gap:10px;align-items:stretch;flex-wrap:wrap">'+
+    '<div style="flex:1;min-width:240px;padding:10px 14px;background:linear-gradient(135deg,'+escB(col)+'15,'+escB(col)+'05);border:1px solid '+escB(col)+'55;border-radius:var(--radius-sm)">'+
+      '<label style="font-size:11px;color:var(--text2);font-weight:700;display:block;margin-bottom:4px">📍 القسم</label>'+
+      '<select class="field-inp" onchange="setSortiesDept(Number(this.value))" style="width:100%;font-size:14px;font-weight:700;padding:8px 10px">'+
+        allDepts.map(function(d){return '<option value="'+d.id+'" '+(d.id===sortiesActiveDept?'selected':'')+'>'+escB((d.icon||'')+' '+d.name)+'</option>';}).join('')+
+      '</select>'+
+    '</div>'+
+    '<div style="display:flex;align-items:center;font-family:monospace;font-size:13px;color:'+escB(col)+';background:'+escB(col)+'15;padding:10px 14px;border-radius:var(--radius-sm);font-weight:800;border:1px dashed '+escB(col)+'55">'+escB(nextBon)+'</div>'+
   '</div>';
-  var lineRows=bsoLines.map(function(l, i){
-    var aid=Number(l.articleId||0); var q=Number(l.qty||0);
-    var avail=bsoAvailForRow(i, aid);
-    var artOpts='<option value="0">—</option>'+arts.map(function(a){
-      var sel=(a.id===aid)?'selected':'';
-      return '<option value="'+a.id+'" '+sel+'>'+escB(a.nom)+'</option>';
-    }).join('');
-    var availClass=(aid && q>avail)?'color:var(--red);font-weight:700':'';
-    return '<tr>'+
-      '<td style="text-align:center;color:var(--text3)">'+(i+1)+'</td>'+
-      '<td><select class="field-inp" onchange="bsoUpdateLine('+i+',\'articleId\',this.value)" style="width:100%">'+artOpts+'</select></td>'+
-      '<td><input class="field-inp" type="number" min="0" value="'+q+'" onchange="bsoUpdateLine('+i+',\'qty\',this.value)" style="width:100px;text-align:center"></td>'+
-      '<td style="text-align:center;font-size:12px;'+availClass+'">'+(aid?(avail+' متبقي'):'—')+'</td>'+
-      '<td style="text-align:center"><button class="btn-ghost" style="padding:4px 8px;color:var(--red)" onclick="bsoRemoveLine('+i+')">🗑️</button></td>'+
-    '</tr>';
-  }).join('');
   if(arts.length===0){
     return deptPicker+'<div style="padding:24px;text-align:center;color:var(--text3);background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">'+
       '⚠️ ما كاين حتى سلعة taggée f قسم <b style="color:var(--text)">'+escB(dept.name)+'</b>.<br><br>'+
@@ -13704,18 +13708,99 @@ function renderSortiesNewTab(){
       '<button class="btn" style="margin-top:6px;padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:Cairo,sans-serif;font-weight:700" onclick="showPage(\'articles\',null)">📦 سير ل السلع</button>'+
       '</div>';
   }
+  // Family list from tagged articles only
+  var cats=Array.from(new Set(arts.map(function(a){return (a.cat||'').trim();}).filter(Boolean))).sort(function(a,b){return String(a).localeCompare(String(b),'ar');});
+  // Apply cat filter
+  var pool=arts.filter(function(a){
+    return !bsoCatFilter || String(a.cat||'').trim()===bsoCatFilter;
+  });
+  // Already-picked set (excludes from OTHER rows' dropdowns)
+  var pickedSet={};
+  bsoLines.forEach(function(l){ if(Number(l.articleId)) pickedSet[Number(l.articleId)]=true; });
+  // Search filter applied at row-pool level
+  var qSearch=bsoArtSearch;
+  var lineRows=bsoLines.map(function(l, i){
+    var curAid=Number(l.articleId||0);
+    var curArt=curAid?(articles||[]).find(function(x){return x.id===curAid;}):null;
+    var rowPool=pool.filter(function(a){
+      if(a.id===curAid) return true;
+      if(pickedSet[a.id]) return false;
+      var s=getArtStock(a.id);
+      if(s==null || Number(s)<=0) return false;
+      if(qSearch && (a.nom||'').toLowerCase().indexOf(qSearch)<0 && (a.ref||'').toLowerCase().indexOf(qSearch)<0) return false;
+      return true;
+    });
+    if(curArt && !rowPool.some(function(x){return x.id===curArt.id;})){ rowPool.unshift(curArt); }
+    var curStock=curAid?getArtStock(curAid):null;
+    var curStockN=(curStock==null?0:Number(curStock));
+    var availRow=curAid?bsoAvailForRow(i,curAid):0;
+    var qtyNum=Number(l.qty||0);
+    var overflow=curAid && qtyNum>availRow;
+    var outOfStock=curAid && curStockN<=0;
+    var qtyVal=(l.qty && qtyNum>0)?l.qty:'';
+    var qtyStyle='text-align:center;font-size:13px;';
+    if(overflow || outOfStock){
+      qtyStyle+='border-color:#ef4444;background:rgba(239,68,68,0.15);color:#ef4444;font-weight:800;';
+    } else if(curAid && !qtyNum){
+      qtyStyle+='border-color:#ef4444;background:rgba(239,68,68,0.08);';
+    }
+    var warnMsg='';
+    if(outOfStock) warnMsg='⛔ هاد المنتج نفذ من المخزون';
+    else if(overflow) warnMsg='⚠️ الكمية المطلوبة غير متوفرة بالكامل — المتبقي '+availRow+' فقط';
+    var artOpts='<option value="0"'+(curAid===0?' selected':'')+'>— اختر سلعة —</option>'+
+      rowPool.map(function(a){
+        var s=getArtStock(a.id);
+        var planned=bsoLines.reduce(function(sum,x,xi){ return sum+((Number(x.articleId)===a.id && xi!==i)?Number(x.qty||0):0); },0);
+        var avail=Math.max(0,(s==null?0:Number(s))-planned);
+        var zero=avail<=0;
+        return '<option value="'+a.id+'"'+(curAid===a.id?' selected':'')+(zero?' disabled':'')+'>'+escB(a.nom)+(a.ref?' · '+escB(a.ref):'')+' (باقي '+avail+(zero?' — نفذ':'')+')</option>';
+      }).join('');
+    return '<tr'+((overflow||outOfStock)?' style="background:rgba(239,68,68,0.04)"':'')+'>'+
+      '<td style="text-align:center;color:var(--text3);font-weight:700">'+(i+1)+'</td>'+
+      '<td><select class="field-inp" onchange="bsoUpdateLine('+i+',\'articleId\',this.value)" style="width:100%;font-size:12px'+(outOfStock?';border-color:#ef4444':'')+'">'+artOpts+'</select></td>'+
+      '<td><input class="field-inp" type="number" min="0" step="1"'+(curAid?' max="'+availRow+'"':'')+' placeholder="0" value="'+qtyVal+'" onchange="bsoUpdateLine('+i+',\'qty\',this.value)" style="width:100%;'+qtyStyle+'"></td>'+
+      '<td style="text-align:center;font-size:12px;color:'+(overflow||outOfStock?'#ef4444':'var(--text2)')+';font-weight:700">'+(curAid?(availRow+''):'—')+'</td>'+
+      '<td style="text-align:center"><button class="btn-ghost" style="padding:4px 8px;color:var(--red)" onclick="bsoRemoveLine('+i+')">🗑️</button></td>'+
+    '</tr>'+(warnMsg?'<tr><td colspan="5" style="font-size:11px;color:#ef4444;font-weight:700;padding:4px 12px">'+warnMsg+'</td></tr>':'');
+  }).join('');
+  var validLines=bsoLines.filter(function(l){return Number(l.articleId)&&Number(l.qty)>0;});
+  var linesTotal=validLines.reduce(function(s,l){return s+Number(l.qty||0);},0);
+  var val=bsoValidateStock();
+  var hasBad=!val.ok;
+  var canSave=validLines.length>0 && !hasBad;
+  var saveBg=canSave?'linear-gradient(135deg,var(--accent),var(--accent2))':(hasBad?'rgba(239,68,68,0.15)':'var(--bg3)');
+  var saveFg=canSave?'#fff':(hasBad?'#ef4444':'var(--text3)');
+  var saveLabel=hasBad
+    ? '⛔ صحح الكميات قبل الحفظ ('+val.bad.length+' سطر)'
+    : '💾 حفظ البون ('+validLines.length+')';
+  var warnBar=hasBad
+    ? '<div style="margin-top:8px;padding:8px 10px;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;font-size:11px;color:#ef4444;font-weight:700;text-align:right">⚠️ لا يمكن الحفظ: كاين '+val.bad.length+' سطر فيه كمية تتجاوز المتوفر</div>'
+    : '';
   return ''+
     deptPicker+
-    '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">'+
-      '<input class="field-inp" placeholder="📍 الوجهة (chantier/projet — اختياري)" value="'+escB(bsoDestination)+'" oninput="bsoDestination=this.value" style="flex:1;min-width:240px">'+
-      '<input class="field-inp" placeholder="🔍 بحث سلعة" value="'+escB(bsoArtSearch)+'" oninput="bsoArtSearch=this.value.toLowerCase();renderSortiesContent()" style="flex:1;min-width:200px">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:10px">'+
+      '<select class="field-inp" onchange="bsoSetCatFilter(this.value)" style="width:100%;font-size:12px">'+
+        '<option value=""'+(bsoCatFilter===''?' selected':'')+'>🏷️ كلشي العائلات ('+arts.length+')</option>'+
+        cats.map(function(c){
+          var n=arts.filter(function(x){return String(x.cat||'').trim()===c;}).length;
+          return '<option value="'+escB(c)+'"'+(c===bsoCatFilter?' selected':'')+'>'+escB(c)+' ('+n+')</option>';
+        }).join('')+
+      '</select>'+
+      '<input class="field-inp" type="text" value="'+escB(bsoArtSearch)+'" oninput="bsoArtSearch=this.value.toLowerCase();renderSortiesContent()" placeholder="🔍 ابحث بالاسم/المرجع" style="width:100%;font-size:12px">'+
+      '<button onclick="bsoReloadArticles()" title="إعادة تحميل السلع" style="padding:6px 10px;background:transparent;border:1px solid var(--border);color:var(--text2);border-radius:6px;cursor:pointer;font-size:11px">🔄 تحديث</button>'+
     '</div>'+
+    '<input class="field-inp" placeholder="📍 الوجهة (chantier/projet — اختياري)" value="'+escB(bsoDestination)+'" oninput="bsoDestination=this.value" style="width:100%;margin-bottom:10px">'+
     '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr>'+
-      '<th style="width:40px">#</th><th>السلعة</th><th style="width:120px">الكمية</th><th style="width:110px">المتوفر</th><th style="width:60px"></th>'+
-    '</tr></thead><tbody>'+lineRows+'</tbody></table>'+
-    '<div style="margin-top:8px"><button class="btn-ghost" style="padding:6px 12px" onclick="bsoAddLine()">➕ ligne</button></div>'+
-    '<textarea placeholder="📝 ملاحظات" oninput="bsoNotes=this.value" style="width:100%;margin-top:12px;padding:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;border-radius:var(--radius-sm);min-height:60px;resize:vertical">'+escB(bsoNotes)+'</textarea>'+
-    '<div style="margin-top:14px;text-align:center"><button class="btn" style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:10px 24px;font-weight:700" onclick="bsoSave()">💾 حفظ البون</button></div>';
+      '<th style="width:40px">#</th><th>السلعة</th><th style="width:120px">الكمية</th><th style="width:90px">المتبقي</th><th style="width:50px"></th>'+
+    '</tr></thead><tbody>'+lineRows+
+      '<tr style="background:var(--bg3);font-weight:800"><td></td><td>المجموع ('+validLines.length+' سلعة)</td><td style="text-align:center;color:'+escB(col)+'">'+linesTotal+'</td><td colspan="2"></td></tr>'+
+    '</tbody></table>'+
+    '<div style="margin-top:8px"><button onclick="bsoAddLine()" style="padding:8px 14px;background:transparent;border:1px dashed var(--accent);color:var(--accent);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;width:100%">＋ زيد سطر</button></div>'+
+    '<textarea placeholder="📝 ملاحظات (اختياري)" oninput="bsoNotes=this.value" style="width:100%;margin-top:10px;padding:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;border-radius:var(--radius-sm);min-height:50px;resize:vertical">'+escB(bsoNotes)+'</textarea>'+
+    '<div style="display:flex;gap:8px;margin-top:14px">'+
+      '<button onclick="bsoSave()"'+(canSave?'':' disabled')+' style="flex:1;padding:11px;background:'+saveBg+';color:'+saveFg+';border:none;border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:'+(canSave?'pointer':'not-allowed')+'">'+saveLabel+'</button>'+
+      (validLines.length?'<button onclick="if(confirm(\'مسح كل السطور؟\')){bsoLines=[];bsoPadLines();renderSortiesContent();}" style="padding:11px 14px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer">🗑️ مسح</button>':'')+
+    '</div>'+warnBar;
 }
 function bsoGenBonNumber(deptId){
   var d=(departments||[]).find(function(x){return x.id===deptId;});

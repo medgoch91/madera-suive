@@ -17751,12 +17751,20 @@ function renderSalPcs(){
       +'<input type="number" class="field-inp" id="pca-prix-'+o.id+'" placeholder="0.00" min="0" step="0.01" style="font-size:12px;padding:6px 8px;text-align:center">'
       +'<button onclick="pcAddAssign('+o.id+')" style="padding:6px 12px;background:rgba(46,204,122,0.12);border:1px solid rgba(46,204,122,0.3);color:var(--green);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">➕</button>'
     +'</div>'
-    +'<datalist id="pca-cat-list-'+o.id+'">'
-      +(salCatalogue||[]).map(function(c){ return '<option value="'+escB(c.nom)+'">'+fmtN(c.prix)+' DH</option>'; }).join('')
-    +'</datalist>'
-    +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin-top:6px;cursor:pointer">'
-      +'<input type="checkbox" id="pca-add-cat-'+o.id+'" style="margin:0">زيد فالكتالوغ ('+(salCatalogue||[]).length+')'
-    +'</label>'
+    // Build a set of PC names already assigned to THIS worker so the
+    // datalist hides them — prevents accidentally adding the same PC twice.
+    +(function(){
+      var alreadyAssigned={};
+      assigns.forEach(function(a){ alreadyAssigned[String(a.pc_nom||'').trim()]=true; });
+      var available=(salCatalogue||[]).filter(function(c){ return !alreadyAssigned[String(c.nom||'').trim()]; });
+      var hiddenCount=(salCatalogue||[]).length-available.length;
+      return '<datalist id="pca-cat-list-'+o.id+'">'
+        +available.map(function(c){ return '<option value="'+escB(c.nom)+'">'+fmtN(c.prix)+' DH</option>'; }).join('')
+      +'</datalist>'
+      +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin-top:6px;cursor:pointer">'
+        +'<input type="checkbox" id="pca-add-cat-'+o.id+'" style="margin:0">زيد فالكتالوغ ('+available.length+(hiddenCount?' / '+(salCatalogue||[]).length+'، '+hiddenCount+' déjà mawjoudin':'')+')'
+      +'</label>';
+    })()
     +'<div id="pca-msg-'+o.id+'" style="font-size:11px;min-height:12px;margin-top:4px;color:var(--red)"></div>';
     // Outstanding avances for this PC worker — editable so the user can
     // adjust the credit before settlement, with caisse mirror staying in sync.
@@ -17852,6 +17860,9 @@ async function pcAddAssign(ouvrierId){
   const wantAddCat=!!(addCatEl && addCatEl.checked);
   if(!pc_nom){if(msgEl)msgEl.textContent='اسم PC مطلوب';return;}
   if(!prix){if(msgEl)msgEl.textContent='الثمن مطلوب';return;}
+  // Guard against duplicates on the same worker — silently ignore re-adds.
+  var dup=(ouvrierPcAssigns||[]).some(function(a){ return Number(a.ouvrier_id)===Number(ouvrierId) && String(a.pc_nom||'').trim()===pc_nom; });
+  if(dup){if(msgEl)msgEl.textContent='⚠️ هاد الPC déjà mawjoud عند هاد العامل';return;}
   showLoader('💾');
   const res=await sbFetch('ouvrier_pc_assign','POST',{ouvrier_id:ouvrierId,pc_nom,prix});
   hideLoader();

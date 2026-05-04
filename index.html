@@ -2150,11 +2150,15 @@ async function loadAllData(){
     (spRows||[]).forEach(function(r){spLinks[r.supplier_id+'_'+r.product_id]=parseFloat(r.last_purchase_price_ttc);});
 
     articles = (arts||[]).map(a=>({id:a.id,nom:a.nom,unite:a.unite,cat:a.cat,ref:a.ref||''}));
-    // Cold-start: sync stock from Supabase → localStorage (cache for sync getArtStock)
+    // Cold-start: sync stock + stock_min from Supabase → localStorage (cache for sync getArtStock/getArtStockMin)
     (arts||[]).forEach(function(a){
       if(a.stock!=null){
         try{ localStorage.setItem('art_stock_'+a.id, String(Math.max(0,Math.floor(Number(a.stock)||0)))); }catch(e){}
       }
+      try{
+        if(a.stock_min!=null && a.stock_min!=='') localStorage.setItem('art_stockmin_'+a.id, String(Math.max(0, Number(a.stock_min))));
+        else localStorage.removeItem('art_stockmin_'+a.id);
+      }catch(e){}
     });
 
     prix = {};
@@ -8646,6 +8650,9 @@ function openArticleModal(id){
   });
   html+='</tbody></table>';
 
+  // ── Stock editor + low-stock limit (added 2026-05-04) ────────
+  html+=_articleStockEditorHTML(a);
+
   // ── Departments tagging (M3, 2026-05-04) ─────────────────────
   html+=_articleDeptChipsHTML(id);
 
@@ -13517,6 +13524,71 @@ async function archiveDepartment(id){
   }
 }
 
+// ─── Stock helpers (initial-stock entry + low-stock notif) ───
+function getArtStockMin(id){
+  try{ var v=localStorage.getItem('art_stockmin_'+id); return v==null||v===''?null:Number(v); }catch(e){ return null; }
+}
+function setArtStockMin(id, v){
+  try{
+    if(v==null || v==='') localStorage.removeItem('art_stockmin_'+id);
+    else localStorage.setItem('art_stockmin_'+id, String(Math.max(0, Number(v))));
+  }catch(e){}
+}
+async function articleSetStock(id){
+  var inp=document.getElementById('ea-stock-new'); if(!inp) return;
+  var raw=inp.value;
+  if(raw==='' || raw==null){ try{toast('⚠️ كتب القيمة','warning');}catch(e){} return; }
+  var n=Math.max(0, Math.floor(Number(raw)||0));
+  try{
+    await sbFetch('articles?id=eq.'+id,'PATCH',{stock:n});
+    try{ localStorage.setItem('art_stock_'+id, String(n)); }catch(e){}
+    try{toast('✅ المخزون = '+n,'success');}catch(e){}
+    try{ saveCacheLS(); }catch(e){}
+    openArticleModal(id);
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+async function articleSetStockMin(id, val){
+  var raw=String(val||'').trim();
+  var n=(raw==='')?null:Math.max(0, Number(raw));
+  if(raw!=='' && (isNaN(n))){ try{toast('⚠️ القيمة غير صحيحة','warning');}catch(e){} return; }
+  try{
+    await sbFetch('articles?id=eq.'+id,'PATCH',{stock_min:n});
+    setArtStockMin(id, n);
+    try{toast(n==null?'🗑️ Limit رفعت':'⚠️ Limit = '+n,'success');}catch(e){}
+  }catch(e){
+    try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+function _articleStockEditorHTML(a){
+  var stock=getArtStock(a.id);
+  var stockN=(stock==null?0:Number(stock));
+  var min=getArtStockMin(a.id);
+  var below=(min!=null && stockN<Number(min));
+  var stockColor=stock==null?'var(--text3)':(below?'var(--red)':(stockN===0?'var(--amber)':'var(--green)'));
+  return '<div style="margin-top:14px;padding:14px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid '+(below?'var(--red)':'var(--border)')+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">'+
+      '<div>'+
+        '<div style="font-size:11px;color:var(--text2);font-weight:700;letter-spacing:0.3px">📦 المخزون الحالي</div>'+
+        '<div style="font-size:24px;font-weight:900;color:'+stockColor+';font-family:monospace">'+(stock==null?'—':stockN)+'</div>'+
+        (below?'<div style="font-size:10px;color:var(--red);font-weight:700;margin-top:2px">⚠️ تحت الحد الأدنى ('+min+')</div>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:6px;align-items:center">'+
+        '<input id="ea-stock-new" type="number" min="0" step="1" placeholder="جديد..." style="width:100px;padding:8px 10px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;color:var(--text);text-align:center;font-family:Cairo,sans-serif;font-weight:700">'+
+        '<button onclick="articleSetStock('+a.id+')" style="padding:8px 14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:Cairo,sans-serif;font-weight:700;font-size:13px">✏️ تعديل</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'+
+      '<div>'+
+        '<div style="font-size:11px;color:var(--text2);font-weight:700">⚠️ الحد الأدنى</div>'+
+        '<small style="color:var(--text3);font-size:10px">Telegram notif مل stock يتنزل تحت هاد الحد</small>'+
+      '</div>'+
+      '<input type="number" min="0" step="1" placeholder="—" value="'+(min==null?'':min)+'" onchange="articleSetStockMin('+a.id+',this.value)" style="width:100px;padding:8px 10px;border:1px solid var(--border);background:var(--bg2);border-radius:6px;color:var(--text);text-align:center;font-family:Cairo,sans-serif;font-weight:700">'+
+    '</div>'+
+  '</div>';
+}
+
 // ─── M3: Article ↔ Department tagging (chips, max 3) ─────────
 function _articleDeptChipsHTML(articleId){
   var ids=(articleDepartments||[]).filter(function(x){return x.article_id===articleId;}).map(function(x){return x.department_id;});
@@ -13674,12 +13746,37 @@ async function bsoReloadArticles(){
     if(Array.isArray(res)){
       articles.length=0;
       res.forEach(function(a){articles.push({id:a.id,nom:a.nom,unite:a.unite,cat:a.cat,ref:a.ref||''});});
-      res.forEach(function(a){ try{ if(a.stock!=null) localStorage.setItem('art_stock_'+a.id,String(Math.max(0,Math.floor(Number(a.stock)||0)))); }catch(e){} });
+      res.forEach(function(a){
+        try{ if(a.stock!=null) localStorage.setItem('art_stock_'+a.id,String(Math.max(0,Math.floor(Number(a.stock)||0)))); }catch(e){}
+        try{
+          if(a.stock_min!=null && a.stock_min!=='') localStorage.setItem('art_stockmin_'+a.id, String(Math.max(0, Number(a.stock_min))));
+          else localStorage.removeItem('art_stockmin_'+a.id);
+        }catch(e){}
+      });
       try{ saveCacheLS(); }catch(e){}
       try{toast('🔄 تحديث: '+articles.length+' سلعة','success');}catch(e){}
       renderSortiesContent();
     }
   }catch(e){ try{toast('❌ فشل التحديث','error');}catch(err){} }
+}
+function bsoCheckLowStock(lineList){
+  var alerts=[];
+  (lineList||[]).forEach(function(l){
+    var aid=Number(l.article_id);
+    var min=getArtStockMin(aid);
+    if(min==null) return;
+    var stk=getArtStock(aid);
+    if(stk==null) return;
+    if(Number(stk)<Number(min)){
+      var a=(articles||[]).find(function(x){return x.id===aid;});
+      alerts.push({nom:(a?a.nom:'#'+aid), stk:Number(stk), min:Number(min)});
+    }
+  });
+  if(alerts.length){
+    var msg='⚠️ تنبيه: مخزون منخفض\n\n';
+    msg+=alerts.map(function(a){return '• '+a.nom+' · باقي '+a.stk+' (الحد الأدنى '+a.min+')';}).join('\n');
+    try{ sendTelegramBroadcast(msg); }catch(e){}
+  }
 }
 function renderSortiesNewTab(){
   bsoPadLines();
@@ -13861,6 +13958,7 @@ async function bsoSave(){
       bsoResetState();
       try{toast('✅ '+bonNumber,'success');}catch(e){}
       try{ bsoBroadcastNew(newId); }catch(e){}
+      try{ bsoCheckLowStock(lineList); }catch(e){}
       sortiesActiveSubtab='history';
       bsoOpenBon=newId;
       renderSortiesContent();
@@ -13980,6 +14078,7 @@ async function bsoSaveEdit(){
         });
       }
     }catch(e){}
+    try{ bsoCheckLowStock(clean.map(function(l){return {article_id:Number(l.articleId)};})); }catch(e){}
   }catch(e){
     try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
   }

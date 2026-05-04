@@ -8963,20 +8963,34 @@ function saveCheque(){
 // ===== AUTH SYSTEM =====
 let currentUser = null;
 
-// "First activity" Telegram notif — fires once per page load on the first
-// real interaction (click/keydown/touch). Tells the boss which admin is
-// online without forcing a logout flow. Resets on page reload / reopen.
+// "First activity" Telegram notif — fires on the first real interaction
+// (click/keydown/touch) AFTER login, but throttled per user/device:
+// only re-broadcasts once the cooldown has elapsed since the last
+// broadcast for the same email. A page refresh inside the cooldown
+// window stays silent.
+const FIRST_ACTIVITY_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 let _firstActivityFired = false;
 function _fireFirstActivityNotif(){
   if(_firstActivityFired) return;
   if(!currentUser || !currentUser.email) return; // wait until login completes
   _firstActivityFired = true;
+  // Detach the listener once we've fired; no need to keep paying for
+  // capture-phase event handling on every subsequent click.
+  ['click','keydown','touchstart'].forEach(function(ev){
+    window.removeEventListener(ev, _fireFirstActivityNotif, true);
+  });
+  // Cooldown check — don't broadcast more often than the configured window
+  // for the same email on the same device.
   try{
-    // Detach the listener once we've fired; no need to keep paying for
-    // capture-phase event handling on every subsequent click.
-    ['click','keydown','touchstart'].forEach(function(ev){
-      window.removeEventListener(ev, _fireFirstActivityNotif, true);
-    });
+    var lsKey='first_activity_last_'+currentUser.email;
+    var last=Number(localStorage.getItem(lsKey)||0);
+    if(last && (Date.now()-last) < FIRST_ACTIVITY_COOLDOWN_MS){
+      // Inside cooldown window — stay silent on this refresh.
+      return;
+    }
+    localStorage.setItem(lsKey, String(Date.now()));
+  }catch(e){}
+  try{
     const nm = currentUser.nom || currentUser.username || currentUser.email;
     const ua = (navigator.userAgent||'').slice(0, 80).replace(/\(/g,' ').replace(/\)/g,' ');
     const lines = [

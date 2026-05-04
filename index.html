@@ -1593,10 +1593,17 @@ const _POINTAGE_STATUS = {
 // (empty) only to avoid breakage if any extension accesses it.
 const _pointageDebounce = {};
 
-// Auto-fire with a single GLOBAL 5s debounce. All pending edits (any worker,
-// any date) coalesce into one Telegram summary instead of N per-worker
-// messages. _pendingPointageNotifs holds the keys; _pendingPointageTimer is
-// the single timer that flushes them all.
+// Auto-fire with a single GLOBAL silent-window debounce. All pending edits
+// (any worker, any date) coalesce into ONE Telegram summary instead of N
+// per-worker messages. _pendingPointageNotifs holds the keys;
+// _pendingPointageTimer is the single timer that flushes them all.
+//
+// Tuning: the user types pointage in bursts (open the app, mark several
+// workers, sometimes over 10-15 minutes). 20 min of silence ≈ "boss done
+// for now" — fire one summary with everything, instead of multiple noisy
+// per-worker pings. The manual "📨 سيفط دابا" FAB is always available
+// for users who want to flush sooner.
+const POINTAGE_DEBOUNCE_MS = 20 * 60 * 1000; // 20 minutes
 const _pendingPointageNotifs = new Set();
 let _pendingPointageTimer = null;
 
@@ -1607,9 +1614,19 @@ function notifyPointageChange(kind, workerId, date){
   _pendingPointageTimer = setTimeout(function(){
     _pendingPointageTimer = null;
     try{ flushPendingPointageNotifs(true); }catch(e){ console.warn('flush failed', e); }
-  }, 5000);
+  }, POINTAGE_DEBOUNCE_MS);
   _refreshNotifBadge();
 }
+
+// Best-effort flush on page unload — don't lose pending pointages if the
+// user closes the tab inside the silence window. sendBeacon would be ideal
+// but our Telegram broadcast goes through async sbFetch helpers, so a sync
+// flush call is the closest we can get without a sendBeacon refactor.
+window.addEventListener('beforeunload', function(){
+  if(_pendingPointageNotifs.size > 0){
+    try{ flushPendingPointageNotifs(true); }catch(_){}
+  }
+});
 
 function _refreshNotifBadge(){
   const els = document.querySelectorAll('[data-notif-badge]');

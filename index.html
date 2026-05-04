@@ -13670,6 +13670,13 @@ function renderSortiesNewTab(){
   bsoPadLines();
   var dept=(departments||[]).find(function(x){return x.id===sortiesActiveDept;}) || {name:'',code:''};
   var arts=bsoArticlesForActiveDept();
+  var allDepts=(departments||[]).filter(function(d){return d.active!==false;});
+  var deptPicker='<div style="margin-bottom:14px;padding:12px 14px;background:linear-gradient(135deg,'+escB((dept.color||'#94a3b8'))+'15,'+escB((dept.color||'#94a3b8'))+'05);border:1px solid '+escB((dept.color||'#94a3b8'))+'55;border-radius:var(--radius-sm)">'+
+    '<label style="font-size:12px;color:var(--text2);font-weight:700;display:block;margin-bottom:6px">📍 القسم</label>'+
+    '<select class="field-inp" onchange="setSortiesDept(Number(this.value))" style="width:100%;font-size:14px;font-weight:700;padding:10px 12px">'+
+      allDepts.map(function(d){return '<option value="'+d.id+'" '+(d.id===sortiesActiveDept?'selected':'')+'>'+escB((d.icon||'')+' '+d.name)+'</option>';}).join('')+
+    '</select>'+
+  '</div>';
   var lineRows=bsoLines.map(function(l, i){
     var aid=Number(l.articleId||0); var q=Number(l.qty||0);
     var avail=bsoAvailForRow(i, aid);
@@ -13687,11 +13694,18 @@ function renderSortiesNewTab(){
     '</tr>';
   }).join('');
   if(arts.length===0){
-    return '<div style="padding:24px;text-align:center;color:var(--text3);background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">'+
-      'ما كاين حتى سلعة taggée f قسم <b style="color:var(--text)">'+escB(dept.name)+'</b>.<br>'+
-      '<small>سير ل سلعة، حلها w zid قسم daba.</small></div>';
+    return deptPicker+'<div style="padding:24px;text-align:center;color:var(--text3);background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">'+
+      '⚠️ ما كاين حتى سلعة taggée f قسم <b style="color:var(--text)">'+escB(dept.name)+'</b>.<br><br>'+
+      '<small style="display:block;margin-bottom:10px;line-height:1.7">Bach tetla3 سلعة hna:<br>'+
+      '1) Sir l <b>📦 فورنيسور و السلعة</b><br>'+
+      '2) Open chi article (click 3liha)<br>'+
+      '3) F modal, kayna section <b>"📤 الأقسام (max 3)"</b><br>'+
+      '4) Choose <b>'+escB(dept.icon||'')+' '+escB(dept.name)+'</b> mn dropdown</small>'+
+      '<button class="btn" style="margin-top:6px;padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);cursor:pointer;font-family:Cairo,sans-serif;font-weight:700" onclick="showPage(\'articles\',null)">📦 سير ل السلع</button>'+
+      '</div>';
   }
   return ''+
+    deptPicker+
     '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">'+
       '<input class="field-inp" placeholder="📍 الوجهة (chantier/projet — اختياري)" value="'+escB(bsoDestination)+'" oninput="bsoDestination=this.value" style="flex:1;min-width:240px">'+
       '<input class="field-inp" placeholder="🔍 بحث سلعة" value="'+escB(bsoArtSearch)+'" oninput="bsoArtSearch=this.value.toLowerCase();renderSortiesContent()" style="flex:1;min-width:200px">'+

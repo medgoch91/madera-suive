@@ -1132,6 +1132,9 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn" onclick="showPage('articles',this)">
       <span class="nav-icon">📦</span> <span data-i18n="nav.catalog">فورنيسور و السلعة</span>
     </button>
+    <button class="nav-btn" onclick="showPage('sorties',this)" id="nav-sorties">
+      <span class="nav-icon">📤</span> <span data-i18n="nav.sorties">الخوارج</span>
+    </button>
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
     </button>
@@ -1423,6 +1426,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- ÉLECTRICITÉ À DISTANCE PAGE -->
     <div class="page" id="page-elec-dist"></div>
+    <div class="page" id="page-sorties"></div>
 
     <!-- FACTURES PAGE -->
     <div class="page" id="page-factures"></div>
@@ -2033,6 +2037,12 @@ let nextBId=1;
 let bonLignes=[];
 let selectedBonIds=[];
 let currentPage='dashboard';
+
+// Bons de sortie par département (M1 schema applied 2026-05-04)
+var departments=[];          // [{id, code, name, icon, color, position, active}]
+var articleDepartments=[];   // [{article_id, department_id}]
+var sortiesBons=[];          // [{id, bon_number, department_id, date, destination, notes, created_at, updated_at}]
+var sortiesLines=[];         // [{id, bon_id, article_id, qty, snapshot_name, position}]
 var navHistory=[]; // page stack for back button
 var _navBack=false; // flag: true when navigating via goBack (don't re-push)
 
@@ -2187,6 +2197,19 @@ async function loadAllData(){
     dbReady=true;
     await loadSalariesData();
     try{ await loadFacturesData(); }catch(_){}
+    // Bons de sortie par département (best-effort — table may not exist on legacy installs)
+    try{
+      const [depRows, adRows, bsRows, bslRows] = await Promise.all([
+        sbFetch('departments','GET',null,'select=*&active=eq.true&order=position,id'),
+        sbFetch('article_departments','GET',null,'select=article_id,department_id&limit=10000'),
+        sbFetch('bons_sortie','GET',null,'select=*&order=created_at.desc&limit=500'),
+        sbFetch('bons_sortie_lines','GET',null,'select=*&limit=10000'),
+      ]);
+      if(Array.isArray(depRows)) departments=depRows;
+      if(Array.isArray(adRows))  articleDepartments=adRows;
+      if(Array.isArray(bsRows))  sortiesBons=bsRows;
+      if(Array.isArray(bslRows)) sortiesLines=bslRows;
+    }catch(e){ console.warn('[sortie] load failed', e); }
     hideLoader();
     renderDashboard();
     updateSidebar();
@@ -3311,7 +3334,7 @@ function toggleLang(){
   try{ if(typeof toast==='function') toast('Langue : Français','info'); }catch(e){}
 }
 
-const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance'};
+const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',sorties:'📤 الخوارج'};
 const pageActions={
   'new-bon':'',
   bons:`<button class="btn btn-accent" onclick="showPage('new-bon',document.querySelector('.nav-btn:nth-child(7)'))">➕ بون جديد</button>`,
@@ -3350,7 +3373,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,caisse:renderCaisse,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,caisse:renderCaisse,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist,sorties:renderSorties};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -8623,6 +8646,9 @@ function openArticleModal(id){
   });
   html+='</tbody></table>';
 
+  // ── Departments tagging (M3, 2026-05-04) ─────────────────────
+  html+=_articleDeptChipsHTML(id);
+
   // ── Bons containing this article ─────────────────────────────
   const _artBons = [];
   (bons||[]).forEach(b => {
@@ -13390,6 +13416,593 @@ function pcPrintWeekTable(){
   w.document.open();
   w.document.write(html);
   w.document.close();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BONS DE SORTIE PAR DÉPARTEMENT — added 2026-05-04
+// Spec: docs/superpowers/specs/2026-05-04-bons-sortie-departments-design.md
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── M2: Departments CRUD ────────────────────────────────────
+function openDepartments(){
+  renderDepartmentsModal('list');
+  document.getElementById('modal-main').classList.add('open');
+}
+function renderDepartmentsModal(mode, deptId){
+  var c=document.getElementById('modal-main-c'); if(!c) return;
+  if(mode==='list'){
+    var rows=(departments||[]).slice().sort(function(a,b){return (a.position||0)-(b.position||0)||a.id-b.id;}).map(function(d){
+      var artCount=(articleDepartments||[]).filter(function(x){return x.department_id===d.id;}).length;
+      var bsCount=(sortiesBons||[]).filter(function(x){return x.department_id===d.id;}).length;
+      return '<tr>'+
+        '<td style="font-size:18px;text-align:center">'+(escB(d.icon||''))+'</td>'+
+        '<td><b>'+escB(d.name)+'</b><br><small style="color:var(--text3);font-family:monospace">'+escB(d.code)+'</small></td>'+
+        '<td><span style="display:inline-block;width:18px;height:18px;border-radius:4px;background:'+escB(d.color||'#94a3b8')+'"></span></td>'+
+        '<td style="font-size:12px">'+artCount+'</td>'+
+        '<td style="font-size:12px">'+bsCount+'</td>'+
+        '<td>'+
+          '<button class="btn-ghost" style="padding:4px 8px;font-size:13px" onclick="renderDepartmentsModal(\'edit\','+d.id+')">✏️</button>'+
+          (d.id===1?'':'<button class="btn-ghost" style="padding:4px 8px;font-size:13px;color:var(--red)" onclick="archiveDepartment('+d.id+')">🗑️</button>')+
+        '</td>'+
+      '</tr>';
+    }).join('');
+    c.innerHTML=
+      '<div class="modal-title"><span>📤 إدارة الأقسام (Départements)</span>'+
+        '<button class="modal-close" onclick="closeMM()">✕</button></div>'+
+      '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr>'+
+        '<th></th><th>الإسم</th><th>اللون</th><th>السلع</th><th>البونات</th><th></th>'+
+      '</tr></thead><tbody>'+(rows||'<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:18px">ما كاين حتى قسم</td></tr>')+'</tbody></table>'+
+      '<div style="margin-top:14px;text-align:center"><button class="btn" style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff" onclick="renderDepartmentsModal(\'edit\',0)">➕ قسم جديد</button></div>';
+  } else {
+    var d=(departments||[]).find(function(x){return x.id===deptId;}) || {code:'',name:'',icon:'',color:'#94a3b8',position:((departments||[]).length+1)};
+    var isNew=!deptId;
+    c.innerHTML=
+      '<div class="modal-title"><span>'+(isNew?'➕ قسم جديد':'✏️ '+escB(d.name))+'</span>'+
+        '<button class="modal-close" onclick="closeMM()">✕</button></div>'+
+      '<div class="form-grid">'+
+        '<div><label class="field-lbl">Code'+(isNew?' *':'')+'</label>'+
+          '<input class="field-inp" id="dept-form-code" value="'+escB(d.code)+'" '+(isNew?'':'disabled')+' placeholder="elec, plom, peint…" style="font-family:monospace"></div>'+
+        '<div><label class="field-lbl">الأيقونة</label>'+
+          '<input class="field-inp" id="dept-form-icon" value="'+escB(d.icon||'')+'" maxlength="2" placeholder="🔧"></div>'+
+        '<div class="form-full"><label class="field-lbl">الإسم *</label>'+
+          '<input class="field-inp" id="dept-form-name" value="'+escB(d.name)+'" placeholder="🔧 السباكة"></div>'+
+        '<div><label class="field-lbl">اللون</label>'+
+          '<input class="field-inp" id="dept-form-color" type="color" value="'+escB(d.color||'#94a3b8')+'" style="height:42px;padding:4px"></div>'+
+        '<div><label class="field-lbl">الترتيب</label>'+
+          '<input class="field-inp" id="dept-form-position" type="number" value="'+(d.position||0)+'"></div>'+
+      '</div>'+
+      '<div style="margin-top:14px;display:flex;gap:10px">'+
+        '<button class="btn" style="flex:1;background:var(--bg3);border:1px solid var(--border)" onclick="renderDepartmentsModal(\'list\')">⬅️ رجوع</button>'+
+        '<button class="btn" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff" onclick="saveDepartment('+(deptId||0)+')">💾 حفظ</button>'+
+      '</div>';
+  }
+}
+async function saveDepartment(id){
+  var code=(document.getElementById('dept-form-code').value||'').trim().toLowerCase();
+  var name=(document.getElementById('dept-form-name').value||'').trim();
+  var icon=(document.getElementById('dept-form-icon').value||'').trim();
+  var color=document.getElementById('dept-form-color').value;
+  var position=Number(document.getElementById('dept-form-position').value)||0;
+  if(!code || !name){ try{toast('⚠️ Code w الإسم مطلوبين','warning');}catch(e){} return; }
+  if(!/^[a-z0-9_-]+$/.test(code)){ try{toast('⚠️ Code: ghir [a-z0-9_-]','warning');}catch(e){} return; }
+  try{
+    if(id){
+      var res=await sbFetch('departments?id=eq.'+id,'PATCH',{name:name,icon:icon,color:color,position:position});
+      if(Array.isArray(res)&&res[0]){
+        var idx=departments.findIndex(function(x){return x.id===id;});
+        if(idx>=0) departments[idx]=Object.assign({},departments[idx],res[0]);
+      }
+    } else {
+      var ins=await sbFetch('departments','POST',{code:code,name:name,icon:icon,color:color,position:position,active:true});
+      if(Array.isArray(ins)&&ins[0]) departments.push(ins[0]);
+    }
+    try{toast('✅ تم الحفظ','success');}catch(e){}
+    renderDepartmentsModal('list');
+    if(typeof renderSorties==='function' && currentPage==='sorties') renderSorties();
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل الحفظ'),'error');}catch(err){}
+  }
+}
+async function archiveDepartment(id){
+  if(id===1){ try{toast('⛔ ما يمكنش تأرشف Élec','warning');}catch(e){} return; }
+  if(!confirm('Archiver had l-قسم؟ (l-البونات li 3ndo kayb9aw f l-history)')) return;
+  try{
+    await sbFetch('departments?id=eq.'+id,'PATCH',{active:false});
+    departments=departments.filter(function(x){return x.id!==id;});
+    renderDepartmentsModal('list');
+    if(typeof renderSorties==='function' && currentPage==='sorties') renderSorties();
+    try{toast('✅ تم الأرشفة','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+
+// ─── M3: Article ↔ Department tagging (chips, max 3) ─────────
+function _articleDeptChipsHTML(articleId){
+  var ids=(articleDepartments||[]).filter(function(x){return x.article_id===articleId;}).map(function(x){return x.department_id;});
+  var chips=ids.map(function(did){
+    var d=(departments||[]).find(function(x){return x.id===did;});
+    if(!d) return '';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border:1px solid '+escB(d.color||'#94a3b8')+';background:'+escB(d.color||'#94a3b8')+'1f;border-radius:999px;font-size:12px">'+
+      escB(d.icon||'')+' '+escB(d.name)+
+      ' <button onclick="articleRemoveDept('+articleId+','+did+')" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;color:inherit;padding:0 2px">×</button>'+
+      '</span>';
+  }).join(' ');
+  var canAdd=ids.length<3;
+  var available=(departments||[]).filter(function(d){return ids.indexOf(d.id)<0;});
+  var addCtl='';
+  if(canAdd && available.length){
+    addCtl='<select onchange="if(this.value){articleAddDept('+articleId+',Number(this.value));this.value=\'\';}" style="padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:12px">'+
+      '<option value="">+ زيد قسم</option>'+
+      available.map(function(d){return '<option value="'+d.id+'">'+escB((d.icon||'')+' '+d.name)+'</option>';}).join('')+
+    '</select>';
+  } else if(ids.length>=3){
+    addCtl='<small style="color:var(--text3)">Max 3</small>';
+  }
+  return '<div style="margin:14px 0">'+
+    '<div style="font-size:13px;color:var(--text2);margin-bottom:8px;font-weight:600">📤 الأقسام (max 3)</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">'+
+      (chips||'<small style="color:var(--text3)">ما كاين حتى قسم</small>')+' '+addCtl+
+    '</div></div>';
+}
+async function articleAddDept(articleId, deptId){
+  if(!articleId || !deptId) return;
+  var existing=(articleDepartments||[]).filter(function(x){return x.article_id===articleId;}).length;
+  if(existing>=3){ try{toast('⚠️ Max 3 إدارات','warning');}catch(e){} return; }
+  try{
+    await sbFetch('article_departments','POST',{article_id:articleId,department_id:deptId});
+    articleDepartments.push({article_id:articleId,department_id:deptId});
+    try{ openArticleModal(articleId); }catch(e){}
+    try{toast('✅ تم الإضافة','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+async function articleRemoveDept(articleId, deptId){
+  try{
+    await sbFetch('article_departments?article_id=eq.'+articleId+'&department_id=eq.'+deptId,'DELETE');
+    articleDepartments=articleDepartments.filter(function(x){return !(x.article_id===articleId && x.department_id===deptId);});
+    try{ openArticleModal(articleId); }catch(e){}
+    try{toast('✅ تم الحذف','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+
+// ─── M4-M7: Hub #sorties (BS by department) ──────────────────
+var sortiesActiveDept=1;        // department_id of active tab
+var sortiesActiveSubtab='new';  // 'new' | 'history'
+var bsoLines=[];                // [{articleId, qty}]
+var bsoDestination='';
+var bsoNotes='';
+var bsoArtSearch='';
+var bsoEditState=null;          // {bon, lines}
+var bsoHistFilter={from:'',to:'',q:''};
+var bsoOpenBon=0;
+const BSO_MIN_ROWS=4;
+
+function bsoBlankLine(){ return {articleId:0, qty:0}; }
+function bsoPadLines(){ while(bsoLines.length<BSO_MIN_ROWS) bsoLines.push(bsoBlankLine()); }
+function bsoResetState(){ bsoLines=[]; bsoPadLines(); bsoDestination=''; bsoNotes=''; bsoArtSearch=''; }
+
+function renderSorties(){
+  var page=document.getElementById('page-sorties'); if(!page) return;
+  // Default to first available dept if current was archived
+  var depts=(departments||[]).filter(function(d){return d.active!==false;});
+  if(!depts.find(function(d){return d.id===sortiesActiveDept;}) && depts.length){
+    sortiesActiveDept=depts[0].id;
+  }
+  page.innerHTML=
+    '<div style="padding:18px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+        '<h1 style="margin:0">📤 الخوارج</h1>'+
+        '<button class="btn-ghost" style="padding:6px 12px" onclick="openDepartments()">⚙️ الأقسام</button>'+
+      '</div>'+
+      '<div id="sorties-tabs"></div>'+
+      '<div id="sorties-content" style="margin-top:14px"></div>'+
+    '</div>';
+  renderSortiesTabs();
+  renderSortiesContent();
+}
+function renderSortiesTabs(){
+  var c=document.getElementById('sorties-tabs'); if(!c) return;
+  var depts=(departments||[]).filter(function(d){return d.active!==false;}).slice().sort(function(a,b){return (a.position||0)-(b.position||0)||a.id-b.id;});
+  var tabs=depts.map(function(d){
+    var active=d.id===sortiesActiveDept;
+    var col=d.color||'#94a3b8';
+    return '<button onclick="setSortiesDept('+d.id+')" style="background:'+(active?col+'22':'transparent')+';border:none;border-bottom:3px solid '+(active?col:'transparent')+';padding:10px 14px;cursor:pointer;font-weight:600;color:'+(active?'var(--text)':'var(--text2)')+';font-family:Cairo,sans-serif;font-size:13px">'+
+      escB((d.icon||'')+' '+d.name)+'</button>';
+  }).join('');
+  var addBtn='<button onclick="renderDepartmentsModal(\'edit\',0);document.getElementById(\'modal-main\').classList.add(\'open\');" style="background:transparent;border:none;border-bottom:3px solid transparent;padding:10px 14px;cursor:pointer;font-weight:700;color:var(--text3);font-family:Cairo,sans-serif;font-size:14px" title="قسم جديد">➕</button>';
+  c.innerHTML='<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);flex-wrap:wrap">'+tabs+addBtn+'</div>';
+}
+function setSortiesDept(id){
+  sortiesActiveDept=id;
+  bsoResetState();
+  renderSortiesTabs();
+  renderSortiesContent();
+}
+function setSortiesSubtab(s){
+  sortiesActiveSubtab=s;
+  if(s==='new') bsoResetState();
+  renderSortiesContent();
+}
+function renderSortiesContent(){
+  var c=document.getElementById('sorties-content'); if(!c) return;
+  var subTabs=
+    '<div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px">'+
+      '<button onclick="setSortiesSubtab(\'new\')" style="background:'+(sortiesActiveSubtab==='new'?'var(--bg3)':'transparent')+';border:none;border-bottom:3px solid '+(sortiesActiveSubtab==='new'?'var(--accent)':'transparent')+';padding:10px 14px;cursor:pointer;font-weight:600;color:var(--text);font-family:Cairo,sans-serif;font-size:13px">📋 بون جديد</button>'+
+      '<button onclick="setSortiesSubtab(\'history\')" style="background:'+(sortiesActiveSubtab==='history'?'var(--bg3)':'transparent')+';border:none;border-bottom:3px solid '+(sortiesActiveSubtab==='history'?'var(--accent)':'transparent')+';padding:10px 14px;cursor:pointer;font-weight:600;color:var(--text);font-family:Cairo,sans-serif;font-size:13px">📜 السجل</button>'+
+    '</div>';
+  c.innerHTML=subTabs+(sortiesActiveSubtab==='new' ? renderSortiesNewTab() : renderSortiesHistoryTab());
+}
+
+// ─── M5: BS creation form ─────────────────────────────────────
+function bsoArticlesForActiveDept(){
+  var ids=(articleDepartments||[]).filter(function(x){return x.department_id===sortiesActiveDept;}).map(function(x){return x.article_id;});
+  return (articles||[]).filter(function(a){
+    if(ids.indexOf(a.id)<0) return false;
+    if(bsoArtSearch && (a.nom||'').toLowerCase().indexOf(bsoArtSearch)<0 && (a.ref||'').toLowerCase().indexOf(bsoArtSearch)<0) return false;
+    return true;
+  });
+}
+function bsoAvailForRow(rowIdx, articleId){
+  var aid=Number(articleId||0);
+  if(!aid) return 0;
+  var s=getArtStock(aid);
+  var stk=(s==null?0:Number(s));
+  var planned=0;
+  for(var i=0;i<bsoLines.length;i++){
+    if(i===rowIdx) continue;
+    if(Number(bsoLines[i].articleId)===aid) planned+=Number(bsoLines[i].qty||0);
+  }
+  return Math.max(0, stk - planned);
+}
+function bsoUpdateLine(i, field, val){
+  if(!bsoLines[i]) return;
+  if(field==='articleId') bsoLines[i].articleId=Number(val||0);
+  if(field==='qty') bsoLines[i].qty=Math.max(0, Math.floor(Number(val||0)));
+  renderSortiesContent();
+}
+function bsoAddLine(){ bsoLines.push(bsoBlankLine()); renderSortiesContent(); }
+function bsoRemoveLine(i){ bsoLines.splice(i,1); bsoPadLines(); renderSortiesContent(); }
+function renderSortiesNewTab(){
+  bsoPadLines();
+  var dept=(departments||[]).find(function(x){return x.id===sortiesActiveDept;}) || {name:'',code:''};
+  var arts=bsoArticlesForActiveDept();
+  var lineRows=bsoLines.map(function(l, i){
+    var aid=Number(l.articleId||0); var q=Number(l.qty||0);
+    var avail=bsoAvailForRow(i, aid);
+    var artOpts='<option value="0">—</option>'+arts.map(function(a){
+      var sel=(a.id===aid)?'selected':'';
+      return '<option value="'+a.id+'" '+sel+'>'+escB(a.nom)+'</option>';
+    }).join('');
+    var availClass=(aid && q>avail)?'color:var(--red);font-weight:700':'';
+    return '<tr>'+
+      '<td style="text-align:center;color:var(--text3)">'+(i+1)+'</td>'+
+      '<td><select class="field-inp" onchange="bsoUpdateLine('+i+',\'articleId\',this.value)" style="width:100%">'+artOpts+'</select></td>'+
+      '<td><input class="field-inp" type="number" min="0" value="'+q+'" onchange="bsoUpdateLine('+i+',\'qty\',this.value)" style="width:100px;text-align:center"></td>'+
+      '<td style="text-align:center;font-size:12px;'+availClass+'">'+(aid?(avail+' متبقي'):'—')+'</td>'+
+      '<td style="text-align:center"><button class="btn-ghost" style="padding:4px 8px;color:var(--red)" onclick="bsoRemoveLine('+i+')">🗑️</button></td>'+
+    '</tr>';
+  }).join('');
+  if(arts.length===0){
+    return '<div style="padding:24px;text-align:center;color:var(--text3);background:var(--bg3);border-radius:var(--radius-sm);border:1px dashed var(--border)">'+
+      'ما كاين حتى سلعة taggée f قسم <b style="color:var(--text)">'+escB(dept.name)+'</b>.<br>'+
+      '<small>سير ل سلعة، حلها w zid قسم daba.</small></div>';
+  }
+  return ''+
+    '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">'+
+      '<input class="field-inp" placeholder="📍 الوجهة (chantier/projet — اختياري)" value="'+escB(bsoDestination)+'" oninput="bsoDestination=this.value" style="flex:1;min-width:240px">'+
+      '<input class="field-inp" placeholder="🔍 بحث سلعة" value="'+escB(bsoArtSearch)+'" oninput="bsoArtSearch=this.value.toLowerCase();renderSortiesContent()" style="flex:1;min-width:200px">'+
+    '</div>'+
+    '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr>'+
+      '<th style="width:40px">#</th><th>السلعة</th><th style="width:120px">الكمية</th><th style="width:110px">المتوفر</th><th style="width:60px"></th>'+
+    '</tr></thead><tbody>'+lineRows+'</tbody></table>'+
+    '<div style="margin-top:8px"><button class="btn-ghost" style="padding:6px 12px" onclick="bsoAddLine()">➕ ligne</button></div>'+
+    '<textarea placeholder="📝 ملاحظات" oninput="bsoNotes=this.value" style="width:100%;margin-top:12px;padding:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;border-radius:var(--radius-sm);min-height:60px;resize:vertical">'+escB(bsoNotes)+'</textarea>'+
+    '<div style="margin-top:14px;text-align:center"><button class="btn" style="background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:10px 24px;font-weight:700" onclick="bsoSave()">💾 حفظ البون</button></div>';
+}
+function bsoGenBonNumber(deptId){
+  var d=(departments||[]).find(function(x){return x.id===deptId;});
+  var code=(d&&d.code?d.code:'X').toUpperCase();
+  var dt=new Date();
+  var ymd=dt.getFullYear()+String(dt.getMonth()+1).padStart(2,'0')+String(dt.getDate()).padStart(2,'0');
+  var prefix='BS-'+code+'-'+ymd+'-';
+  var max=0;
+  (sortiesBons||[]).forEach(function(b){
+    if(b.department_id===deptId && b.bon_number && b.bon_number.indexOf(prefix)===0){
+      var n=Number(b.bon_number.slice(prefix.length));
+      if(n>max) max=n;
+    }
+  });
+  return prefix+String(max+1).padStart(3,'0');
+}
+function bsoValidateStock(){
+  var bad=[];
+  for(var i=0;i<bsoLines.length;i++){
+    var l=bsoLines[i]; var aid=Number(l.articleId||0); var q=Number(l.qty||0);
+    if(!aid || !q) continue;
+    var avail=bsoAvailForRow(i, aid);
+    if(q>avail){
+      var a=(articles||[]).find(function(x){return x.id===aid;});
+      bad.push({i:i, name:a?a.nom:'#'+aid, qty:q, avail:avail});
+    }
+  }
+  return {ok:bad.length===0, bad:bad};
+}
+async function bsoSave(){
+  var lines=bsoLines.filter(function(l){return Number(l.articleId)&&Number(l.qty);});
+  if(!lines.length){ try{toast('⚠️ ما كاين حتى ligne','warning');}catch(e){} return; }
+  var v=bsoValidateStock();
+  if(!v.ok){ try{toast('⛔ مخزون غير كافٍ ('+v.bad.length+' lignes)','error');}catch(e){} return; }
+  var bonNumber=bsoGenBonNumber(sortiesActiveDept);
+  var payload={
+    bon_number:bonNumber,
+    department_id:sortiesActiveDept,
+    date:new Date().toISOString().slice(0,10),
+    destination:bsoDestination||null,
+    notes:bsoNotes||null
+  };
+  var lineList=lines.map(function(l, idx){return {article_id:Number(l.articleId), qty:Number(l.qty), position:idx};});
+  try{
+    var res=await sbRpc('bons_sortie_save', {p_bon:payload, p_lines:lineList});
+    if(res && res.__sbError){ throw new Error(res.msg||'RPC failed'); }
+    var newId=Number(res);
+    if(newId){
+      sortiesBons.unshift(Object.assign({id:newId, created_at:new Date().toISOString()}, payload));
+      lineList.forEach(function(l, idx){
+        var a=(articles||[]).find(function(x){return x.id===l.article_id;});
+        sortiesLines.push({id:0, bon_id:newId, article_id:l.article_id, qty:l.qty, snapshot_name:a?a.nom:'#'+l.article_id, position:idx});
+        try{
+          var stk=getArtStock(l.article_id);
+          if(stk!=null) localStorage.setItem('art_stock_'+l.article_id, String(Math.max(0, Number(stk)-l.qty)));
+        }catch(e){}
+      });
+      bsoResetState();
+      try{toast('✅ '+bonNumber,'success');}catch(e){}
+      try{ bsoBroadcastNew(newId); }catch(e){}
+      sortiesActiveSubtab='history';
+      bsoOpenBon=newId;
+      renderSortiesContent();
+    }
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+
+// ─── M6: BS history + edit/delete/photo-share/print ───────────
+function bsoToggleBon(id){ bsoOpenBon=(bsoOpenBon===id?0:id); renderSortiesContent(); }
+function renderSortiesHistoryTab(){
+  var bons=(sortiesBons||[]).filter(function(b){return b.department_id===sortiesActiveDept;}).slice().sort(function(a,b){return (b.created_at||'').localeCompare(a.created_at||'');});
+  if(bsoHistFilter.from) bons=bons.filter(function(b){return (b.date||'')>=bsoHistFilter.from;});
+  if(bsoHistFilter.to)   bons=bons.filter(function(b){return (b.date||'')<=bsoHistFilter.to;});
+  if(bsoHistFilter.q){
+    var q=bsoHistFilter.q.toLowerCase();
+    bons=bons.filter(function(b){return (b.bon_number||'').toLowerCase().indexOf(q)>=0 || (b.destination||'').toLowerCase().indexOf(q)>=0;});
+  }
+  var rows=bons.map(function(b){
+    var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===b.id;});
+    var open=(bsoOpenBon===b.id);
+    var head=
+      '<tr onclick="bsoToggleBon('+b.id+')" style="cursor:pointer">'+
+        '<td style="font-weight:700;color:var(--accent);font-family:monospace">'+escB(b.bon_number)+'</td>'+
+        '<td style="font-size:12px">'+escB(b.date||'')+'</td>'+
+        '<td style="font-size:12px">'+escB(b.destination||'—')+'</td>'+
+        '<td style="text-align:center;font-weight:600">'+lines.length+'</td>'+
+        '<td onclick="event.stopPropagation()" style="white-space:nowrap">'+
+          '<button class="btn-ghost" style="padding:4px 8px" onclick="bsoOpenEdit('+b.id+')" title="تعديل">✏️</button>'+
+          '<button class="btn-ghost" style="padding:4px 8px" onclick="bsoPhotoShare('+b.id+')" title="إرسال صورة">📨</button>'+
+          '<button class="btn-ghost" style="padding:4px 8px" onclick="bsoPrint('+b.id+')" title="طباعة">📥</button>'+
+          '<button class="btn-ghost" style="padding:4px 8px;color:var(--red)" onclick="bsoDelete('+b.id+')" title="حذف">🗑️</button>'+
+        '</td>'+
+      '</tr>';
+    var detail=open
+      ? '<tr><td colspan="5" style="background:var(--bg3);padding:8px"><table style="width:100%;font-size:12px"><thead><tr style="color:var(--text3)"><th style="text-align:right">السلعة</th><th style="text-align:center;width:80px">الكمية</th></tr></thead><tbody>'+
+        lines.map(function(l){return '<tr><td>'+escB(l.snapshot_name||'#'+l.article_id)+'</td><td style="text-align:center">'+l.qty+'</td></tr>';}).join('')+
+        '</tbody></table>'+(b.notes?'<div style="margin-top:6px;font-size:12px;color:var(--text2)">📝 '+escB(b.notes)+'</div>':'')+'</td></tr>'
+      : '';
+    return head+detail;
+  }).join('');
+  return ''+
+    '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'+
+      '<input class="field-inp" type="date" value="'+escB(bsoHistFilter.from)+'" onchange="bsoHistFilter.from=this.value;renderSortiesContent()" style="flex:0 0 auto">'+
+      '<input class="field-inp" type="date" value="'+escB(bsoHistFilter.to)+'" onchange="bsoHistFilter.to=this.value;renderSortiesContent()" style="flex:0 0 auto">'+
+      '<input class="field-inp" placeholder="🔍 رقم/وجهة" value="'+escB(bsoHistFilter.q)+'" oninput="bsoHistFilter.q=this.value;renderSortiesContent()" style="flex:1;min-width:160px">'+
+      '<button class="btn-ghost" style="padding:8px 14px" onclick="bsoHistFilter={from:\'\',to:\'\',q:\'\'};renderSortiesContent()">إعادة</button>'+
+    '</div>'+
+    '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr>'+
+      '<th>الرقم</th><th>التاريخ</th><th>الوجهة</th><th style="text-align:center;width:80px">السطور</th><th style="text-align:center;width:160px"></th>'+
+    '</tr></thead><tbody>'+(rows||'<tr><td colspan="5" style="text-align:center;color:var(--text3);padding:24px">ما كاين حتى بون</td></tr>')+'</tbody></table>';
+}
+function bsoOpenEdit(id){
+  var b=(sortiesBons||[]).find(function(x){return x.id===id;}); if(!b) return;
+  var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===id;}).map(function(l, idx){return {articleId:l.article_id, qty:l.qty, position:idx};});
+  bsoEditState={ bon:Object.assign({}, b), lines:lines };
+  bsoRenderEditModal();
+  document.getElementById('modal-main').classList.add('open');
+}
+function bsoCloseEdit(){
+  bsoEditState=null;
+  closeMM();
+}
+function bsoRenderEditModal(){
+  var c=document.getElementById('modal-main-c'); if(!c || !bsoEditState) return;
+  var st=bsoEditState;
+  var deptArts=bsoArticlesForActiveDept();
+  var rows=st.lines.map(function(l, i){
+    var artOpts='<option value="0">—</option>'+deptArts.map(function(a){return '<option value="'+a.id+'" '+(a.id===Number(l.articleId)?'selected':'')+'>'+escB(a.nom)+'</option>';}).join('');
+    return '<tr>'+
+      '<td><select class="field-inp" onchange="bsoEditState.lines['+i+'].articleId=Number(this.value);bsoRenderEditModal()" style="width:100%">'+artOpts+'</select></td>'+
+      '<td><input class="field-inp" type="number" min="0" value="'+l.qty+'" onchange="bsoEditState.lines['+i+'].qty=Math.max(0,Math.floor(Number(this.value)||0));bsoRenderEditModal()" style="width:100px;text-align:center"></td>'+
+      '<td style="text-align:center"><button class="btn-ghost" style="padding:4px 8px;color:var(--red)" onclick="bsoEditState.lines.splice('+i+',1);bsoRenderEditModal()">🗑️</button></td>'+
+    '</tr>';
+  }).join('');
+  c.innerHTML=
+    '<div class="modal-title"><span>✏️ '+escB(st.bon.bon_number)+'</span><button class="modal-close" onclick="bsoCloseEdit()">✕</button></div>'+
+    '<input class="field-inp" placeholder="📍 الوجهة" value="'+escB(st.bon.destination||'')+'" oninput="bsoEditState.bon.destination=this.value" style="width:100%;margin-bottom:10px">'+
+    '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr><th>السلعة</th><th style="width:120px">الكمية</th><th style="width:60px"></th></tr></thead><tbody>'+(rows||'')+'</tbody></table>'+
+    '<div style="margin-top:8px"><button class="btn-ghost" style="padding:6px 12px" onclick="bsoEditState.lines.push({articleId:0,qty:0});bsoRenderEditModal()">➕ ligne</button></div>'+
+    '<textarea placeholder="📝 ملاحظات" oninput="bsoEditState.bon.notes=this.value" style="width:100%;margin-top:10px;padding:10px;border:1px solid var(--border);background:var(--bg2);color:var(--text);font-family:Cairo,sans-serif;font-size:13px;border-radius:var(--radius-sm);min-height:60px">'+escB(st.bon.notes||'')+'</textarea>'+
+    '<div style="margin-top:14px;display:flex;gap:10px">'+
+      '<button class="btn" style="flex:1;background:var(--bg3);border:1px solid var(--border)" onclick="bsoCloseEdit()">إلغاء</button>'+
+      '<button class="btn" style="flex:1;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff" onclick="bsoSaveEdit()">💾 حفظ</button>'+
+    '</div>';
+}
+async function bsoSaveEdit(){
+  if(!bsoEditState) return;
+  var st=bsoEditState;
+  var clean=st.lines.filter(function(l){return Number(l.articleId)&&Number(l.qty);});
+  try{
+    var res=await sbRpc('bons_sortie_update', {
+      p_bon_id: st.bon.id,
+      p_bon: {date:st.bon.date, destination:st.bon.destination||null, notes:st.bon.notes||null},
+      p_lines: clean.map(function(l, i){return {article_id:Number(l.articleId), qty:Number(l.qty), position:i};})
+    });
+    if(res && res.__sbError){ throw new Error(res.msg||'RPC failed'); }
+    var idx=sortiesBons.findIndex(function(x){return x.id===st.bon.id;});
+    if(idx>=0) sortiesBons[idx]=Object.assign(sortiesBons[idx], {destination:st.bon.destination, notes:st.bon.notes, updated_at:new Date().toISOString()});
+    sortiesLines=sortiesLines.filter(function(l){return l.bon_id!==st.bon.id;});
+    clean.forEach(function(l, i){
+      var a=(articles||[]).find(function(x){return x.id===Number(l.articleId);});
+      sortiesLines.push({id:0, bon_id:st.bon.id, article_id:Number(l.articleId), qty:Number(l.qty), snapshot_name:a?a.nom:'#'+l.articleId, position:i});
+    });
+    var bonId=st.bon.id;
+    bsoCloseEdit();
+    renderSortiesContent();
+    try{toast('✅ تم التعديل','success');}catch(e){}
+    try{ bsoBroadcastEdit(bonId); }catch(e){}
+    // Re-fetch articles to refresh stock cache (delta may have changed many rows)
+    try{
+      var freshArts=await sbFetch('articles','GET',null,'select=id,stock&limit=10000');
+      if(Array.isArray(freshArts)){
+        freshArts.forEach(function(a){
+          if(a.stock!=null) localStorage.setItem('art_stock_'+a.id, String(Math.max(0, Math.floor(Number(a.stock)||0))));
+        });
+      }
+    }catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+async function bsoDelete(id){
+  var b=(sortiesBons||[]).find(function(x){return x.id===id;}); if(!b) return;
+  if(!confirm('Supprimer '+b.bon_number+' ? Stock kayrjeu.')) return;
+  try{
+    var res=await sbRpc('bons_sortie_delete', {p_bon_id:id});
+    if(res && res.__sbError){ throw new Error(res.msg||'RPC failed'); }
+    var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===id;});
+    var bSnapshot=Object.assign({}, b);
+    bSnapshot._lines=lines.slice();
+    sortiesBons=sortiesBons.filter(function(x){return x.id!==id;});
+    sortiesLines=sortiesLines.filter(function(l){return l.bon_id!==id;});
+    lines.forEach(function(l){
+      try{
+        var s=getArtStock(l.article_id);
+        if(s!=null) localStorage.setItem('art_stock_'+l.article_id, String(Number(s)+Number(l.qty)));
+      }catch(e){}
+    });
+    renderSortiesContent();
+    try{toast('🗑️ تم الحذف','success');}catch(e){}
+    try{ bsoBroadcastDelete(bSnapshot); }catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+function bsoBuildPrintHTML(bonId){
+  var b=(sortiesBons||[]).find(function(x){return x.id===bonId;}); if(!b) return '';
+  var d=(departments||[]).find(function(x){return x.id===b.department_id;}) || {name:'',icon:''};
+  var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===bonId;});
+  var rows=lines.map(function(l,i){
+    return '<tr>'+
+      '<td style="border:1px solid #000;padding:6px;text-align:center">'+(i+1)+'</td>'+
+      '<td style="border:1px solid #000;padding:6px">'+escB(l.snapshot_name||'#'+l.article_id)+'</td>'+
+      '<td style="border:1px solid #000;padding:6px;text-align:center">'+l.qty+'</td>'+
+    '</tr>';
+  }).join('');
+  return ''+
+    '<div class="bso-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#000;padding:24px;width:780px;box-sizing:border-box">'+
+      '<h2 style="text-align:center;margin:0 0 14px">📤 بون خرج</h2>'+
+      '<div style="display:flex;justify-content:space-between;margin:14px 0;font-size:13px">'+
+        '<div><b>الإدارة:</b> '+escB((d.icon||'')+' '+d.name)+'</div>'+
+        '<div><b>الرقم:</b> '+escB(b.bon_number)+'</div>'+
+        '<div><b>التاريخ:</b> '+escB(b.date||'')+'</div>'+
+      '</div>'+
+      (b.destination?'<div style="margin-bottom:10px;font-size:13px"><b>الوجهة:</b> '+escB(b.destination)+'</div>':'')+
+      '<table style="width:100%;border-collapse:collapse;margin-top:14px;border:1px solid #000;font-size:13px">'+
+        '<thead><tr style="background:#f3f4f6"><th style="border:1px solid #000;padding:6px;width:40px">#</th><th style="border:1px solid #000;padding:6px">السلعة</th><th style="border:1px solid #000;padding:6px;width:100px">الكمية</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+      '</table>'+
+      (b.notes?'<div style="margin-top:14px;font-size:12px"><b>ملاحظات:</b><br>'+escB(b.notes)+'</div>':'')+
+    '</div>';
+}
+async function bsoPhotoShare(bonId){
+  var b=(sortiesBons||[]).find(function(x){return x.id===bonId;}); if(!b) return;
+  var html=bsoBuildPrintHTML(bonId); if(!html) return;
+  if(typeof html2canvas==='undefined'){ try{toast('❌ html2canvas not loaded','error');}catch(e){} return; }
+  var iframe=document.createElement('iframe');
+  iframe.style.cssText='position:fixed;left:-9999px;top:0;width:820px;height:1200px;border:0';
+  document.body.appendChild(iframe);
+  iframe.srcdoc='<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#fff">'+html+'</body></html>';
+  await new Promise(function(r){iframe.onload=r;});
+  try{
+    var target=iframe.contentDocument.querySelector('.bso-print');
+    var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2});
+    canvas.toBlob(async function(blob){
+      try{
+        await sendTelegramPhotoBroadcast(blob, b.bon_number+'.png', '📤 '+b.bon_number);
+        try{toast('📨 تم الإرسال','success');}catch(e){}
+      }catch(e){
+        try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+      }
+      try{iframe.remove();}catch(e){}
+    },'image/png');
+  }catch(e){
+    try{iframe.remove();}catch(_){}
+    try{toast('❌ '+(e&&e.message||'فشل التصوير'),'error');}catch(err){}
+  }
+}
+function bsoPrint(bonId){
+  var html=bsoBuildPrintHTML(bonId); if(!html) return;
+  var w=window.open('','_blank'); if(!w) return;
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>BS</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
+  w.document.close();
+}
+
+// ─── M7: Telegram notifs (save / edit / delete) ───────────────
+function bsoBuildNotifText(bonId, kind){
+  var b=(sortiesBons||[]).find(function(x){return x.id===bonId;}); if(!b) return '';
+  var d=(departments||[]).find(function(x){return x.id===b.department_id;}) || {name:'',icon:''};
+  var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===bonId;});
+  var head = kind==='edit' ? '✏️ تعديل بون خرج' : (kind==='delete' ? '🗑️ حذف بون خرج' : '📤 بون خرج جديد');
+  var slice = lines.slice(0, 10);
+  var lineList = slice.map(function(l){return '• '+(l.snapshot_name||'#'+l.article_id)+' × '+l.qty;}).join('\n');
+  if(lines.length>10) lineList += '\n…(+'+(lines.length-10)+')';
+  var who = (typeof currentUser!=='undefined' && currentUser && (currentUser.name||currentUser.email)) || '';
+  return head+'\n\n'+
+    '🏷️ الإدارة: '+(d.icon||'')+' '+d.name+'\n'+
+    '📋 الرقم: '+b.bon_number+'\n'+
+    '📅 التاريخ: '+(b.date||'')+'\n'+
+    (b.destination?'📍 الوجهة: '+b.destination+'\n':'')+
+    (who?'👤 من طرف: '+who+'\n':'')+
+    (lines.length?'\n🛒 السلع ('+lines.length+'):\n'+lineList:'');
+}
+function bsoBroadcastNew(id){    try{ sendTelegramBroadcast(bsoBuildNotifText(id,'new')); }catch(e){} }
+function bsoBroadcastEdit(id){   try{ sendTelegramBroadcast(bsoBuildNotifText(id,'edit')); }catch(e){} }
+function bsoBroadcastDelete(b){
+  try{
+    var d=(departments||[]).find(function(x){return x.id===b.department_id;}) || {name:'',icon:''};
+    var lines=(b._lines||[]);
+    var slice=lines.slice(0,10);
+    var lineList=slice.map(function(l){return '• '+(l.snapshot_name||'#'+l.article_id)+' × '+l.qty;}).join('\n');
+    if(lines.length>10) lineList += '\n…(+'+(lines.length-10)+')';
+    var msg='🗑️ حذف بون خرج\n\n'+
+      '🏷️ الإدارة: '+(d.icon||'')+' '+d.name+'\n'+
+      '📋 الرقم: '+b.bon_number+'\n'+
+      (b.destination?'📍 الوجهة: '+b.destination+'\n':'')+
+      (lines.length?'\n🛒 السلع المحذوفة ('+lines.length+'):\n'+lineList:'');
+    sendTelegramBroadcast(msg);
+  }catch(e){}
 }
 
 // ─── ÉLECTRICITÉ À DISTANCE ──────────────────────────────────

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v114-first-activity-notif';
+const CACHE = 'suivi-v115-bs-hub-departments';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

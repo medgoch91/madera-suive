@@ -1133,7 +1133,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
       <span class="nav-icon">📦</span> <span data-i18n="nav.catalog">فورنيسور و السلعة</span>
     </button>
     <button class="nav-btn" onclick="showPage('sorties',this)" id="nav-sorties">
-      <span class="nav-icon">📤</span> <span data-i18n="nav.sorties">الخوارج</span>
+      <span class="nav-icon">📤</span> <span data-i18n="nav.sorties">بونات الخروج</span>
     </button>
     <button class="nav-btn" onclick="showPage('salaries',this)" id="nav-salaries">
       <span class="nav-icon">👥</span> <span data-i18n="nav.salaries">الأجراء</span>
@@ -2732,6 +2732,7 @@ var I18N={
     'nav.fournisseurs':'الفورنيسورات','nav.articles':'السلع','nav.catalog':'فورنيسور و السلعة','nav.salaries':'الأجراء',
     'nav.caisse':'صندوق',
     'nav.elec':'électricité à distance','nav.factures':'الفواتير','nav.newBon':'بون جديد',
+    'nav.sorties':'بونات الخروج',
     'nav.newCheque':'تسوية جديدة','nav.printCheque':'طباعة الشيك','nav.admin':'إدارة المستخدمين',
     'sec.gestion':'الإدارة','sec.add':'إضافة','sec.tools':'أدوات','sec.admin':'الإدارة',
     'pt.admin':'⚙️ إدارة المستخدمين','pt.dashboard':'الداشبورد','pt.bons':'البونات',
@@ -2745,6 +2746,7 @@ var I18N={
     'nav.fournisseurs':'Fournisseurs','nav.articles':'Articles','nav.catalog':'Fournisseurs & Articles','nav.salaries':'Salariés',
     'nav.caisse':'Caisse',
     'nav.elec':'Électricité à distance','nav.factures':'Factures','nav.newBon':'Nouveau bon',
+    'nav.sorties':'Bons de sortie',
     'nav.newCheque':'Nouveau règlement','nav.printCheque':'Imprimer chèque','nav.admin':'Utilisateurs',
     'sec.gestion':'Gestion','sec.add':'Ajouter','sec.tools':'Outils','sec.admin':'Administration',
     'pt.admin':'⚙️ Gestion utilisateurs','pt.dashboard':'Tableau de bord','pt.bons':'Bons',
@@ -3338,7 +3340,7 @@ function toggleLang(){
   try{ if(typeof toast==='function') toast('Langue : Français','info'); }catch(e){}
 }
 
-const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',sorties:'📤 الخوارج'};
+const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',sorties:'📤 بونات الخروج'};
 const pageActions={
   'new-bon':'',
   bons:`<button class="btn btn-accent" onclick="showPage('new-bon',document.querySelector('.nav-btn:nth-child(7)'))">➕ بون جديد</button>`,
@@ -13667,7 +13669,7 @@ function renderSorties(){
   page.innerHTML=
     '<div style="padding:18px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-        '<h1 style="margin:0">📤 الخوارج</h1>'+
+        '<h1 style="margin:0">📤 بونات الخروج</h1>'+
         '<button class="btn-ghost" style="padding:6px 12px" onclick="openDepartments()">⚙️ الأقسام</button>'+
       '</div>'+
       '<div id="sorties-tabs"></div>'+

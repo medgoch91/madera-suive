@@ -11,7 +11,7 @@ import {
 import { startNewBon, startCheque, handleConvMessage } from './conversations.ts';
 import {
   jobChequesDueMorning, jobChequesTodayPing,
-  jobWorkersEod, jobMonthlyReport,
+  jobWorkersEod, jobMonthlyReport, jobDailyReport,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
 } from './jobs.ts';
 import { handleChequeCallback } from './callbacks.ts';
@@ -30,6 +30,7 @@ Deno.serve(async (req: Request) => {
       case 'cheques_due_morning': return await jobChequesDueMorning();
       case 'cheques_today_ping':  return await jobChequesTodayPing();
       case 'workers_eod':         return await jobWorkersEod();
+      case 'daily_report':        return await jobDailyReport();
       case 'monthly_report':      return await jobMonthlyReport();
       case 'backup':              return await jobBackupAll();          // Telegram + Drive + FTP
       case 'backup_telegram':     return await jobBackupTelegram();     // for ad-hoc testing

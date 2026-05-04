@@ -177,6 +177,229 @@ export async function jobWorkersEod(): Promise<Response> {
   }));
 }
 
+// ── daily_report — 20:30 Casa, full business-day digest ───────
+// Comprehensive end-of-day digest covering every meaningful transaction
+// for today: spending (bons d'entrée), inflow (cheques + factures),
+// stock movement (bons_sortie + legacy material_dispatches), caisse
+// ledger, low-stock alerts, and a brief workers headline (the detailed
+// per-worker digest stays in jobWorkersEod, fired at 20:00 Casa).
+export async function jobDailyReport(): Promise<Response> {
+  const today = todayCasa();
+
+  // Run all reads in parallel so the function stays well under the 60s
+  // edge-function budget even on a very busy day.
+  const [
+    bonsRes, cheRes, factRes, bsRes, bsLinesRes,
+    caisseRes, mdRes, soRes, alertsRes,
+    presRes, pcPresRes,
+  ] = await Promise.all([
+    sb.from('bons').select('id,total,total_net,fournisseur').eq('date', today),
+    sb.from('cheques').select('id,montant,type,fournisseur,status').eq('date', today),
+    sb.from('factures').select('id,total_ttc,total_ht,client').eq('date', today),
+    sb.from('bons_sortie').select('id,bon_number,department_id,destination').eq('date', today),
+    sb.from('bons_sortie_lines').select('bon_id,qty'),
+    sb.from('caisse_movements').select('type,montant').eq('date', today),
+    sb.from('material_dispatches').select('id,quantity').gte('created_at', today + 'T00:00:00').lte('created_at', today + 'T23:59:59'),
+    sb.from('subcontracting_orders').select('id,quantity_received,labor_cost_per_piece_ttc,technician_name').gte('created_at', today + 'T00:00:00').lte('created_at', today + 'T23:59:59'),
+    sb.from('articles').select('id,nom,stock,stock_min').not('stock_min', 'is', null),
+    sb.from('salarie_presences').select('statut,heures_supp,taux_horaire').eq('date', today),
+    sb.from('ouvrier_pc_presences').select('qte,prix').eq('date', today),
+  ]);
+
+  const bons   = bonsRes.data  ?? [];
+  const cheq   = cheRes.data   ?? [];
+  const fact   = factRes.data  ?? [];
+  const bs     = bsRes.data    ?? [];
+  const bsLn   = bsLinesRes.data ?? [];
+  const caisse = caisseRes.data ?? [];
+  const md     = mdRes.data    ?? [];
+  const so     = soRes.data    ?? [];
+  const arts   = alertsRes.data ?? [];
+  const pres   = presRes.data  ?? [];
+  const pcPres = pcPresRes.data ?? [];
+
+  // Build per-department BS roll-ups (resolve dept name once).
+  const bsByDept: Record<number, { count: number; qty: number; lines: number }> = {};
+  const linesByBon: Record<number, number> = {};
+  for (const l of bsLn) {
+    const bid = Number((l as { bon_id: number }).bon_id);
+    linesByBon[bid] = (linesByBon[bid] ?? 0) + Number((l as { qty: number }).qty || 0);
+  }
+  for (const b of bs) {
+    const did = Number((b as { department_id: number }).department_id);
+    const bid = Number((b as { id: number }).id);
+    if (!bsByDept[did]) bsByDept[did] = { count: 0, qty: 0, lines: 0 };
+    bsByDept[did].count++;
+    bsByDept[did].qty += linesByBon[bid] ?? 0;
+    // line-count per bon: count rows in bsLn that match this bon
+    bsByDept[did].lines += bsLn.filter((l) => Number((l as { bon_id: number }).bon_id) === bid).length;
+  }
+  const deptIds = Object.keys(bsByDept).map((k) => Number(k));
+  let depts: Array<{ id: number; name: string; icon: string }> = [];
+  if (deptIds.length) {
+    const { data: depRows } = await sb.from('departments').select('id,name,icon').in('id', deptIds);
+    depts = (depRows ?? []) as Array<{ id: number; name: string; icon: string }>;
+  }
+
+  // Spending
+  const totBonsHT  = bons.reduce((s, b) => s + Number((b as { total: number }).total || 0), 0);
+  const totBonsNet = bons.reduce((s, b) => s + Number((b as { total_net: number }).total_net || 0), 0);
+  // Inflow
+  const totFactTTC = fact.reduce((s, f) => s + Number((f as { total_ttc: number }).total_ttc || 0), 0);
+  const totFactHT  = fact.reduce((s, f) => s + Number((f as { total_ht: number }).total_ht || 0), 0);
+  // Cheques (net of paid)
+  const totCheqAll  = cheq.reduce((s, c) => s + Number((c as { montant: number }).montant || 0), 0);
+  const totCheqPaid = cheq.filter((c) => (c as { status: string }).status === 'مدفوع')
+                          .reduce((s, c) => s + Number((c as { montant: number }).montant || 0), 0);
+  // Caisse net
+  let caisseIn = 0, caisseOut = 0;
+  for (const m of caisse) {
+    const v = Number((m as { montant: number }).montant || 0);
+    if (String((m as { type: string }).type) === 'in') caisseIn += v;
+    else caisseOut += v;
+  }
+  // Workers brief
+  let presentCount = 0, absentCount = 0, demiCount = 0, congeCount = 0;
+  let totalHsup = 0, totalHsupCost = 0;
+  for (const p of pres) {
+    const st = String((p as { statut: string }).statut);
+    if (st === 'present') presentCount++;
+    else if (st === 'absent') absentCount++;
+    else if (st === 'conge') congeCount++;
+    else if (st === 'demi') demiCount++;
+    const hs = Number((p as { heures_supp: number }).heures_supp || 0);
+    const tx = Number((p as { taux_horaire: number }).taux_horaire || 0);
+    totalHsup += hs;
+    totalHsupCost += hs * tx;
+  }
+  let pcQte = 0, pcCost = 0;
+  for (const r of pcPres) {
+    const q = Number((r as { qte: number }).qte || 0);
+    const p = Number((r as { prix: number }).prix || 0);
+    pcQte += q;
+    pcCost += q * p;
+  }
+  // Subcontracting
+  let soDelivered = 0, soLaborCost = 0;
+  for (const r of so) {
+    const q = Number((r as { quantity_received: number }).quantity_received || 0);
+    const lc = Number((r as { labor_cost_per_piece_ttc: number }).labor_cost_per_piece_ttc || 0);
+    soDelivered += q;
+    soLaborCost += q * lc;
+  }
+  // Low-stock alerts
+  const lowStock = arts.filter((a) => {
+    const stk = Number((a as { stock: number }).stock || 0);
+    const min = Number((a as { stock_min: number }).stock_min || 0);
+    return min > 0 && stk < min;
+  });
+
+  // ── Build the Markdown digest ─────────────────────────────────
+  const lines: string[] = [];
+  lines.push(`📊 *خلاصة النهار — ${today}*`);
+  lines.push('');
+
+  // Spending block
+  if (bons.length) {
+    lines.push(`💸 *المصاريف (بونات)*`);
+    lines.push(`📋 ${bons.length} بون · المجموع: *${fmtMoney(totBonsNet || totBonsHT)} د.م.*`);
+    lines.push('');
+  }
+
+  // Inflow block
+  if (fact.length) {
+    lines.push(`💰 *المداخيل (فواتير)*`);
+    lines.push(`🧾 ${fact.length} فاتورة · TTC: *${fmtMoney(totFactTTC)} د.م.* (HT: ${fmtMoney(totFactHT)})`);
+    lines.push('');
+  }
+  if (cheq.length) {
+    lines.push(`💳 *الشيكات (مسجلة اليوم)*`);
+    lines.push(`📝 ${cheq.length} شيك · المجموع: *${fmtMoney(totCheqAll)} د.م.*` +
+      (totCheqPaid ? ` · مدفوع: ${fmtMoney(totCheqPaid)}` : ''));
+    lines.push('');
+  }
+
+  // Stock outflow (BS hub + legacy elec dispatches)
+  if (bs.length || md.length) {
+    lines.push(`📤 *خروج المخزون*`);
+    if (bs.length) {
+      lines.push(`بونات الخروج: *${bs.length}* بون · ${Object.values(bsByDept).reduce((s, d) => s + d.lines, 0)} سطر`);
+      for (const did of deptIds) {
+        const r = bsByDept[did];
+        const d = depts.find((x) => Number(x.id) === did);
+        const label = d ? `${d.icon || ''} ${d.name}` : `#${did}`;
+        lines.push(`  • ${label}: ${r.count} بون · ${r.lines} سطر · ${r.qty} قطعة`);
+      }
+    }
+    if (md.length) {
+      const mdQty = md.reduce((s, m) => s + Number((m as { quantity: number }).quantity || 0), 0);
+      lines.push(`⚡ Élec dispatches (legacy): ${md.length} · ${mdQty} قطعة`);
+    }
+    lines.push('');
+  }
+
+  // Caisse net
+  if (caisseIn || caisseOut) {
+    const net = caisseIn - caisseOut;
+    lines.push(`💵 *الصندوق*`);
+    lines.push(`⬆️ ${fmtMoney(caisseIn)} · ⬇️ ${fmtMoney(caisseOut)} · صافي: *${fmtMoney(net)} د.م.*`);
+    lines.push('');
+  }
+
+  // Workers brief (detailed view stays in workers_eod)
+  if (pres.length || pcPres.length) {
+    lines.push(`🧑‍🔧 *الخدامة (نظرة سريعة)*`);
+    if (pres.length) {
+      const parts: string[] = [];
+      if (presentCount) parts.push(`${presentCount} حاضر`);
+      if (absentCount)  parts.push(`${absentCount} غائب`);
+      if (congeCount)   parts.push(`${congeCount} عطلة`);
+      if (demiCount)    parts.push(`${demiCount} نص نهار`);
+      lines.push(`👥 ${pres.length} تسجيل (${parts.join(' · ') || '—'})` +
+        (totalHsup ? ` · ⏱ ${totalHsup}h × ${fmtMoney(totalHsupCost)} د.م.` : ''));
+    }
+    if (pcPres.length) {
+      lines.push(`👷 PCs: ${pcQte} قطعة · *${fmtMoney(pcCost)} د.م.*`);
+    }
+    lines.push('');
+  }
+
+  // Subcontracting (techs)
+  if (so.length) {
+    lines.push(`🤝 *المقاولة (تقنيون)*`);
+    lines.push(`${so.length} تسليم · ${soDelivered} قطعة · يد عاملة: *${fmtMoney(soLaborCost)} د.م.*`);
+    lines.push('');
+  }
+
+  // Low-stock alerts
+  if (lowStock.length) {
+    lines.push(`⚠️ *تنبيهات المخزون (${lowStock.length})*`);
+    for (const a of lowStock.slice(0, 10)) {
+      const stk = Number((a as { stock: number }).stock || 0);
+      const min = Number((a as { stock_min: number }).stock_min || 0);
+      const nom = String((a as { nom: string }).nom || '?');
+      lines.push(`  • ${nom} · باقي ${stk} (الحد ${min})`);
+    }
+    if (lowStock.length > 10) lines.push(`  …(+${lowStock.length - 10} okhrin)`);
+    lines.push('');
+  }
+
+  // Empty-state (don't broadcast a content-less ping)
+  if (lines.length <= 2) {
+    return new Response(JSON.stringify({ ok: true, job: 'daily_report', skipped: 'empty' }));
+  }
+
+  const sent = await broadcastTelegram(lines.join('\n'));
+  return new Response(JSON.stringify({
+    ok: true, job: 'daily_report', telegram: sent,
+    bons: bons.length, cheq: cheq.length, fact: fact.length,
+    bs: bs.length, md: md.length, so: so.length,
+    caisse_in: caisseIn, caisse_out: caisseOut,
+    low_stock: lowStock.length,
+    pres: pres.length, pc_pres: pcPres.length,
+  }));
+}
+
 // ── monthly_report — day 1 @ 09h ────────────────────────────────
 export async function jobMonthlyReport(): Promise<Response> {
   const today = new Date();

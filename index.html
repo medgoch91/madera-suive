@@ -17747,10 +17747,16 @@ function renderSalPcs(){
       assignList+='</div>';
     }
     var addForm='<div style="display:grid;grid-template-columns:1fr 120px auto;gap:6px;align-items:center">'
-      +'<input class="field-inp" id="pca-nom-'+o.id+'" placeholder="اسم PC..." style="font-size:12px;padding:6px 10px">'
+      +'<input class="field-inp" id="pca-nom-'+o.id+'" list="pca-cat-list-'+o.id+'" oninput="_pcaFillPrix('+o.id+',this.value)" placeholder="اسم PC..." autocomplete="off" style="font-size:12px;padding:6px 10px">'
       +'<input type="number" class="field-inp" id="pca-prix-'+o.id+'" placeholder="0.00" min="0" step="0.01" style="font-size:12px;padding:6px 8px;text-align:center">'
       +'<button onclick="pcAddAssign('+o.id+')" style="padding:6px 12px;background:rgba(46,204,122,0.12);border:1px solid rgba(46,204,122,0.3);color:var(--green);border-radius:var(--radius-sm);font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">➕</button>'
     +'</div>'
+    +'<datalist id="pca-cat-list-'+o.id+'">'
+      +(salCatalogue||[]).map(function(c){ return '<option value="'+escB(c.nom)+'">'+fmtN(c.prix)+' DH</option>'; }).join('')
+    +'</datalist>'
+    +'<label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text3);margin-top:6px;cursor:pointer">'
+      +'<input type="checkbox" id="pca-add-cat-'+o.id+'" style="margin:0">زيد فالكتالوغ ('+(salCatalogue||[]).length+')'
+    +'</label>'
     +'<div id="pca-msg-'+o.id+'" style="font-size:11px;min-height:12px;margin-top:4px;color:var(--red)"></div>';
     // Outstanding avances for this PC worker — editable so the user can
     // adjust the credit before settlement, with caisse mirror staying in sync.
@@ -17824,12 +17830,26 @@ async function pcSaveEdit(id){
   renderSalaries();
 }
 
+// Auto-fill price input when the user picks a PC from the catalogue datalist.
+// Called from oninput on pca-nom-X — looks up sal_catalogue by exact name match.
+function _pcaFillPrix(ouvrierId, name){
+  if(!name) return;
+  var hit=(salCatalogue||[]).find(function(c){ return String(c.nom||'').trim()===String(name||'').trim(); });
+  if(!hit) return;
+  var prixEl=document.getElementById('pca-prix-'+ouvrierId);
+  if(prixEl && (!prixEl.value || Number(prixEl.value)===0)){
+    prixEl.value=Number(hit.prix||0);
+  }
+}
+
 async function pcAddAssign(ouvrierId){
   const nomEl=document.getElementById('pca-nom-'+ouvrierId);
   const prixEl=document.getElementById('pca-prix-'+ouvrierId);
   const msgEl=document.getElementById('pca-msg-'+ouvrierId);
+  const addCatEl=document.getElementById('pca-add-cat-'+ouvrierId);
   const pc_nom=(nomEl||{value:''}).value.trim();
   const prix=parseFloat((prixEl||{value:''}).value)||0;
+  const wantAddCat=!!(addCatEl && addCatEl.checked);
   if(!pc_nom){if(msgEl)msgEl.textContent='اسم PC مطلوب';return;}
   if(!prix){if(msgEl)msgEl.textContent='الثمن مطلوب';return;}
   showLoader('💾');
@@ -17839,6 +17859,18 @@ async function pcAddAssign(ouvrierId){
   if(saved&&saved.id){
     ouvrierPcAssigns.push({id:saved.id,ouvrier_id:ouvrierId,pc_nom,prix});
     localStorage.setItem('ouvrier_pc_assign_v1',JSON.stringify(ouvrierPcAssigns));
+    // Optionally also push the PC into the shared sal_catalogue so other workers
+    // can pick it from the dropdown without re-typing.
+    if(wantAddCat){
+      var already=(salCatalogue||[]).some(function(c){ return String(c.nom||'').trim()===pc_nom; });
+      if(!already){
+        try{
+          var catRes=await sbFetch('sal_catalogue','POST',{nom:pc_nom,unite:'قطعة',prix});
+          if(Array.isArray(catRes) && catRes[0]) salCatalogue.push(catRes[0]);
+          try{ localStorage.setItem('sal_cat_v1', JSON.stringify(salCatalogue)); }catch(e){}
+        }catch(e){ console.warn('catalogue add failed:', e); }
+      }
+    }
     // Telegram: PC details added — name + worker + price.
     const o=ouvriersPc.find(function(x){return x.id===ouvrierId;});
     sendTelegramBroadcast(
@@ -17846,6 +17878,7 @@ async function pcAddAssign(ouvrierId){
       +'👷 العامل: '+(o?o.nom:('#'+ouvrierId))+'\n'
       +'🧱 PC: '+pc_nom+'\n'
       +'💰 الثمن: '+fmtN(prix)+' DH / قطعة'
+      +(wantAddCat?'\n📚 زيدت فالكتالوغ':'')
     );
     renderSalaries();
   } else {

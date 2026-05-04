@@ -14035,11 +14035,24 @@ function bsoBuildPrintHTML(bonId){
     rows += '<tr style="background:'+padBg+'"><td style="border:1px solid #d1d5db;padding:10px;color:#d1d5db">·</td><td style="border:1px solid #d1d5db;padding:10px"></td><td style="border:1px solid #d1d5db;padding:10px"></td></tr>';
   }
   var who = (typeof currentUser!=='undefined' && currentUser && (currentUser.name||currentUser.email)) || '';
+  // Logo source: factSociete.logo if set (admin-uploaded data URL), else live URL
+  var logoSrc=(soc.logo && String(soc.logo).length>50)
+    ? soc.logo
+    : (location.protocol==='file:' ? 'logo.svg' : 'https://maderadeco.app/logo.svg');
+  var watermarkText=String(soc.nom||'MADERA DECO').toUpperCase();
   return ''+
-    '<div class="bso-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#1f2937;padding:32px 28px;width:780px;box-sizing:border-box">'+
+    '<div class="bso-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#1f2937;padding:32px 28px;width:780px;box-sizing:border-box;position:relative;overflow:hidden">'+
+      // ── Watermark (diagonal, very faded text behind everything) ─
+      '<div aria-hidden="true" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;overflow:hidden">'+
+        '<div style="font-family:Cairo,sans-serif;font-size:120px;font-weight:900;color:'+escB(col)+';opacity:0.055;transform:rotate(-30deg);white-space:nowrap;letter-spacing:8px">'+escB(watermarkText)+'</div>'+
+      '</div>'+
+      // ── Foreground content wrapper ─────────────────────
+      '<div style="position:relative;z-index:1">'+
       // ── Company header ─────────────────────────────────
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+escB(col)+';padding-bottom:14px;margin-bottom:20px">'+
-        '<div>'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+escB(col)+';padding-bottom:14px;margin-bottom:20px;gap:14px">'+
+        '<div style="display:flex;align-items:center;gap:14px">'+
+          '<img src="'+escB(logoSrc)+'" alt="logo" crossorigin="anonymous" style="width:72px;height:72px;object-fit:contain;flex-shrink:0" onerror="this.style.display=\'none\'">'+
+          '<div>'+
           '<div style="font-size:24px;font-weight:900;color:'+escB(col)+';letter-spacing:0.5px">'+escB(soc.nom||'MADERA DECO')+'</div>'+
           '<div style="font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6">'+
             (soc.adresse?escB(soc.adresse)+(soc.ville && soc.adresse.indexOf(soc.ville)<0?' — '+escB(soc.ville):''):escB(soc.ville||''))+'<br>'+
@@ -14051,7 +14064,8 @@ function bsoBuildPrintHTML(bonId){
             (soc.rc?(soc.ice||soc.if_num?' · ':'')+'RC: '+escB(soc.rc):'')+
             (soc.patente?(soc.ice||soc.if_num||soc.rc?' · ':'')+'Patente: '+escB(soc.patente):'')+
           '</div>':'')+
-        '</div>'+
+          '</div>'+ // close text block
+        '</div>'+ // close logo+text flex wrapper
         // dept badge top-right
         '<div style="text-align:left;background:'+escB(col)+'15;border:1px solid '+escB(col)+'55;border-radius:8px;padding:8px 14px;min-width:180px">'+
           '<div style="font-size:9px;color:#6b7280;font-weight:700;letter-spacing:0.5px">DÉPARTEMENT</div>'+
@@ -14109,6 +14123,7 @@ function bsoBuildPrintHTML(bonId){
         '<div>تم الإصدار: '+new Date().toLocaleString('fr-MA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div>'+
         '<div>'+escB(soc.web||soc.nom||'')+'</div>'+
       '</div>'+
+      '</div>'+ // close foreground wrapper
     '</div>';
 }
 async function bsoPhotoShare(bonId){
@@ -14122,7 +14137,7 @@ async function bsoPhotoShare(bonId){
   await new Promise(function(r){iframe.onload=r;});
   try{
     var target=iframe.contentDocument.querySelector('.bso-print');
-    var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2});
+    var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2, useCORS:true, allowTaint:true, logging:false});
     canvas.toBlob(async function(blob){
       try{
         await sendTelegramPhotoBroadcast(blob, b.bon_number+'.png', '📤 '+b.bon_number);

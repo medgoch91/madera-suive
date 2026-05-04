@@ -14010,29 +14010,105 @@ async function bsoDelete(id){
 }
 function bsoBuildPrintHTML(bonId){
   var b=(sortiesBons||[]).find(function(x){return x.id===bonId;}); if(!b) return '';
-  var d=(departments||[]).find(function(x){return x.id===b.department_id;}) || {name:'',icon:''};
+  var d=(departments||[]).find(function(x){return x.id===b.department_id;}) || {name:'',icon:'',color:'#94a3b8'};
   var lines=(sortiesLines||[]).filter(function(l){return l.bon_id===bonId;});
+  var totalQty=lines.reduce(function(s,l){return s+Number(l.qty||0);},0);
+  var col=d.color||'#94a3b8';
+  // Company info from factSociete (set up in factures module); fall back to literals
+  var soc=(typeof factSociete!=='undefined' && factSociete) ? factSociete : {
+    nom:'MADERA DECO', adresse:'COMMUNE DRARGA AGADIR', ville:'AGADIR',
+    tel:'0676637608', email:'maderadeco.ma@gmail.com', web:'maderadeco.ma',
+    ice:'002733643000006', if_num:'48573755', rc:'46235', patente:'93100364'
+  };
   var rows=lines.map(function(l,i){
-    return '<tr>'+
-      '<td style="border:1px solid #000;padding:6px;text-align:center">'+(i+1)+'</td>'+
-      '<td style="border:1px solid #000;padding:6px">'+escB(l.snapshot_name||'#'+l.article_id)+'</td>'+
-      '<td style="border:1px solid #000;padding:6px;text-align:center">'+l.qty+'</td>'+
+    var stripeBg=(i%2)?'#fafafa':'#fff';
+    return '<tr style="background:'+stripeBg+'">'+
+      '<td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:700;color:#6b7280">'+(i+1)+'</td>'+
+      '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:600">'+escB(l.snapshot_name||'#'+l.article_id)+'</td>'+
+      '<td style="border:1px solid #d1d5db;padding:8px 10px;text-align:center;font-weight:800;font-size:14px">'+l.qty+'</td>'+
     '</tr>';
   }).join('');
+  // Pad lines to a minimum so the bon looks "filled" (esp. when only 1-2 lines)
+  var padCount=Math.max(0, 8-lines.length);
+  for(var k=0;k<padCount;k++){
+    var padBg=((lines.length+k)%2)?'#fafafa':'#fff';
+    rows += '<tr style="background:'+padBg+'"><td style="border:1px solid #d1d5db;padding:10px;color:#d1d5db">·</td><td style="border:1px solid #d1d5db;padding:10px"></td><td style="border:1px solid #d1d5db;padding:10px"></td></tr>';
+  }
+  var who = (typeof currentUser!=='undefined' && currentUser && (currentUser.name||currentUser.email)) || '';
   return ''+
-    '<div class="bso-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#000;padding:24px;width:780px;box-sizing:border-box">'+
-      '<h2 style="text-align:center;margin:0 0 14px">📤 بون خرج</h2>'+
-      '<div style="display:flex;justify-content:space-between;margin:14px 0;font-size:13px">'+
-        '<div><b>الإدارة:</b> '+escB((d.icon||'')+' '+d.name)+'</div>'+
-        '<div><b>الرقم:</b> '+escB(b.bon_number)+'</div>'+
-        '<div><b>التاريخ:</b> '+escB(b.date||'')+'</div>'+
+    '<div class="bso-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#1f2937;padding:32px 28px;width:780px;box-sizing:border-box">'+
+      // ── Company header ─────────────────────────────────
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+escB(col)+';padding-bottom:14px;margin-bottom:20px">'+
+        '<div>'+
+          '<div style="font-size:24px;font-weight:900;color:'+escB(col)+';letter-spacing:0.5px">'+escB(soc.nom||'MADERA DECO')+'</div>'+
+          '<div style="font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6">'+
+            (soc.adresse?escB(soc.adresse)+(soc.ville && soc.adresse.indexOf(soc.ville)<0?' — '+escB(soc.ville):''):escB(soc.ville||''))+'<br>'+
+            (soc.tel?'📞 '+escB(soc.tel):'')+(soc.email?' · ✉ '+escB(soc.email):'')+(soc.web?' · 🌐 '+escB(soc.web):'')+
+          '</div>'+
+          (soc.ice||soc.if_num||soc.rc?'<div style="font-size:10px;color:#9ca3af;margin-top:4px;font-family:monospace">'+
+            (soc.ice?'ICE: '+escB(soc.ice):'')+
+            (soc.if_num?(soc.ice?' · ':'')+'IF: '+escB(soc.if_num):'')+
+            (soc.rc?(soc.ice||soc.if_num?' · ':'')+'RC: '+escB(soc.rc):'')+
+            (soc.patente?(soc.ice||soc.if_num||soc.rc?' · ':'')+'Patente: '+escB(soc.patente):'')+
+          '</div>':'')+
+        '</div>'+
+        // dept badge top-right
+        '<div style="text-align:left;background:'+escB(col)+'15;border:1px solid '+escB(col)+'55;border-radius:8px;padding:8px 14px;min-width:180px">'+
+          '<div style="font-size:9px;color:#6b7280;font-weight:700;letter-spacing:0.5px">DÉPARTEMENT</div>'+
+          '<div style="font-size:14px;font-weight:800;color:'+escB(col)+';margin-top:2px">'+escB((d.icon||'')+' '+d.name)+'</div>'+
+        '</div>'+
       '</div>'+
-      (b.destination?'<div style="margin-bottom:10px;font-size:13px"><b>الوجهة:</b> '+escB(b.destination)+'</div>':'')+
-      '<table style="width:100%;border-collapse:collapse;margin-top:14px;border:1px solid #000;font-size:13px">'+
-        '<thead><tr style="background:#f3f4f6"><th style="border:1px solid #000;padding:6px;width:40px">#</th><th style="border:1px solid #000;padding:6px">السلعة</th><th style="border:1px solid #000;padding:6px;width:100px">الكمية</th></tr></thead>'+
-        '<tbody>'+rows+'</tbody>'+
+      // ── Title ──────────────────────────────────────────
+      '<div style="text-align:center;margin-bottom:18px">'+
+        '<div style="display:inline-block;background:'+escB(col)+';color:#fff;padding:8px 28px;border-radius:6px;font-size:18px;font-weight:800;letter-spacing:1px">📤 بون خرج · BON DE SORTIE</div>'+
+      '</div>'+
+      // ── Bon meta ───────────────────────────────────────
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">'+
+        '<tr>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">الرقم N°</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-family:monospace;font-weight:800;color:'+escB(col)+'">'+escB(b.bon_number)+'</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">التاريخ</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:700">'+escB(b.date||'')+'</td>'+
+        '</tr>'+
+        (b.destination?'<tr>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700">📍 الوجهة</td>'+
+          '<td colspan="3" style="border:1px solid #d1d5db;padding:8px 10px;font-weight:700">'+escB(b.destination)+'</td>'+
+        '</tr>':'')+
       '</table>'+
-      (b.notes?'<div style="margin-top:14px;font-size:12px"><b>ملاحظات:</b><br>'+escB(b.notes)+'</div>':'')+
+      // ── Lines table ────────────────────────────────────
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:0">'+
+        '<thead><tr style="background:'+escB(col)+';color:#fff">'+
+          '<th style="border:1px solid '+escB(col)+';padding:10px;width:50px">#</th>'+
+          '<th style="border:1px solid '+escB(col)+';padding:10px">السلعة / DÉSIGNATION</th>'+
+          '<th style="border:1px solid '+escB(col)+';padding:10px;width:100px">الكمية / QTÉ</th>'+
+        '</tr></thead>'+
+        '<tbody>'+rows+'</tbody>'+
+        '<tfoot><tr style="background:'+escB(col)+'15;font-weight:800">'+
+          '<td colspan="2" style="border:1px solid #d1d5db;padding:10px;text-align:left">المجموع · TOTAL ('+lines.length+' سلعة)</td>'+
+          '<td style="border:1px solid #d1d5db;padding:10px;text-align:center;font-size:15px;color:'+escB(col)+'">'+totalQty+'</td>'+
+        '</tr></tfoot>'+
+      '</table>'+
+      // ── Notes ──────────────────────────────────────────
+      (b.notes?'<div style="margin-top:14px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:12px"><b style="color:#92400e">📝 ملاحظات:</b> '+escB(b.notes)+'</div>':'')+
+      // ── Signatures section ─────────────────────────────
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px;page-break-inside:avoid">'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📤 المسلِّم — REMIS PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937">'+(who?escB(who):'<span style="color:#9ca3af;font-style:italic">الإسم: ___________________</span>')+'</div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📥 المتسلِّم — REÇU PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937"><span style="color:#9ca3af;font-style:italic">الإسم: ___________________</span></div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+      '</div>'+
+      // ── Footer ─────────────────────────────────────────
+      '<div style="margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af">'+
+        '<div>'+escB(b.bon_number)+'</div>'+
+        '<div>تم الإصدار: '+new Date().toLocaleString('fr-MA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div>'+
+        '<div>'+escB(soc.web||soc.nom||'')+'</div>'+
+      '</div>'+
     '</div>';
 }
 async function bsoPhotoShare(bonId){

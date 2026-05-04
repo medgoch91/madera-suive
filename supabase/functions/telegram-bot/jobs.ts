@@ -195,10 +195,10 @@ export async function jobDailyReport(): Promise<Response> {
   ] = await Promise.all([
     sb.from('bons').select('id,total,total_net,fournisseur').eq('date', today),
     sb.from('cheques').select('id,montant,type,fournisseur,status').eq('date', today),
-    sb.from('factures').select('id,total_ttc,total_ht,client').eq('date', today),
+    sb.from('factures').select('id,total_ttc,total_ht,client_nom').eq('date', today),
     sb.from('bons_sortie').select('id,bon_number,department_id,destination').eq('date', today),
     sb.from('bons_sortie_lines').select('bon_id,qty'),
-    sb.from('caisse_movements').select('type,montant').eq('date', today),
+    sb.from('caisse_movements').select('type,amount').eq('date', today).is('deleted_at', null),
     sb.from('material_dispatches').select('id,quantity').gte('created_at', today + 'T00:00:00').lte('created_at', today + 'T23:59:59'),
     sb.from('subcontracting_orders').select('id,quantity_received,labor_cost_per_piece_ttc,technician_name').gte('created_at', today + 'T00:00:00').lte('created_at', today + 'T23:59:59'),
     sb.from('articles').select('id,nom,stock,stock_min').not('stock_min', 'is', null),
@@ -254,7 +254,7 @@ export async function jobDailyReport(): Promise<Response> {
   // Caisse net
   let caisseIn = 0, caisseOut = 0;
   for (const m of caisse) {
-    const v = Number((m as { montant: number }).montant || 0);
+    const v = Number((m as { amount: number }).amount || 0);
     if (String((m as { type: string }).type) === 'in') caisseIn += v;
     else caisseOut += v;
   }

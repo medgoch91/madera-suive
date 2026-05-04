@@ -9020,6 +9020,7 @@ const ALL_PAGES = [
   {key:'print-cheque', label:'🖨️ طباعة الشيك',     emoji:'🖨️', name:'طباعة الشيك'},
   {key:'fournisseurs', label:'🏢 الفورنيسورات',    emoji:'🏢', name:'الفورنيسورات'},
   {key:'articles',     label:'📦 السلع',           emoji:'📦', name:'السلع'},
+  {key:'sorties',      label:'📤 بونات الخروج',    emoji:'📤', name:'بونات الخروج'},
   {key:'salaries',     label:'👥 الأجراء',         emoji:'👥', name:'الأجراء'},
   {key:'caisse',       label:'💵 صندوق',            emoji:'💵', name:'صندوق'},
   {key:'elec-dist',    label:'⚡ التوزيع الكهربائي', emoji:'⚡', name:'التوزيع الكهربائي'},
@@ -9032,7 +9033,7 @@ const ADMIN_ONLY_PAGES = ['admin'];
 const ROLE_DEFINITIONS = {
   admin:      { label:'مدير',      icon:'👑', color:'#a78bfa', desc:'تحكم كامل فكلشي' },
   comptable:  { label:'محاسب',     icon:'📝', color:'#60a5fa', desc:'بونات + شيكات + فواتير' },
-  magasinier: { label:'مخزني',     icon:'🏪', color:'#fb923c', desc:'السلع + البونات + المخزون' },
+  magasinier: { label:'مخزني',     icon:'🏪', color:'#fb923c', desc:'السلع + البونات + بونات الخروج + المخزون' },
   commercial: { label:'تجاري',     icon:'💼', color:'#34d399', desc:'الفواتير + الزبناء' },
   technicien: { label:'تقني',      icon:'🔧', color:'#fbbf24', desc:'التوزيع الكهربائي' },
   viewer:     { label:'مشاهد فقط', icon:'👁️', color:'#94a3b8', desc:'قراءة فقط بلا تعديل' }
@@ -9047,7 +9048,7 @@ const ROLE_DEFAULTS = {
   },
   magasinier: {
     dashboard:true, bons:true, 'new-bon':true,
-    fournisseurs:true, articles:true, 'elec-dist':true
+    fournisseurs:true, articles:true, sorties:true, 'elec-dist':true
   },
   commercial: {
     dashboard:true, factures:true, fournisseurs:true, articles:true
@@ -9057,7 +9058,7 @@ const ROLE_DEFAULTS = {
   },
   viewer: {
     dashboard:true, bons:true, cheques:true, echeancier:true, factures:true,
-    fournisseurs:true, articles:true, salaries:true, 'elec-dist':true
+    fournisseurs:true, articles:true, sorties:true, salaries:true, 'elec-dist':true
   }
 };
 // Legacy fallback (old 'user' role seeds) → behaves like 'comptable'

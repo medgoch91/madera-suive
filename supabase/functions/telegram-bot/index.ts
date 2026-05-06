@@ -6,7 +6,7 @@
 import { parseCommand, answerCallbackQuery, type TgUpdate } from '../_shared/tg.ts';
 import {
   cmdStart, cmdSubscribe, cmdUnsubscribe, cmdTestPush,
-  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel,
+  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel, cmdKhlas,
 } from './commands.ts';
 import { startNewBon, startCheque, handleConvMessage } from './conversations.ts';
 import {
@@ -76,6 +76,9 @@ async function route(update: TgUpdate): Promise<void> {
       case 'testpush':    return await cmdTestPush(msg);
       case 'today':       return await cmdToday(msg);
       case 'balance':     return await cmdBalance(msg);
+      case 'khlas':       return await cmdKhlas(msg);
+      case 'baqi':        return await cmdKhlas(msg);
+      case 'wages':       return await cmdKhlas(msg);
       case 'stock':       return await cmdStock(msg, parsed.args);
       case 'listbons':    return await cmdListBons(msg);
       case 'newbon':      return await startNewBon(msg);

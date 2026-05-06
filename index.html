@@ -2162,7 +2162,16 @@ async function loadAllData(){
       return Array.isArray(r)?r:[];
     };
     const [arts, prixRows, bonsRows, chRows, fourRows, spRows, chtRows] = await Promise.all([
-      sbFetch('articles','GET',null,'select=*&order=id').then(_asArr),
+      // articles uses soft-delete via deleted_at since 2026-05-06; filter
+      // out archived rows. Falls back to no-filter when the column is
+      // missing on legacy installs (sbFetch surfaces __sbError).
+      (async () => {
+        let r = await sbFetch('articles','GET',null,'select=*&deleted_at=is.null&order=id');
+        if(r && r.__sbError && /deleted_at/.test(r.msg||'')){
+          r = await sbFetch('articles','GET',null,'select=*&order=id');
+        }
+        return Array.isArray(r) ? r : [];
+      })(),
       sbFetch('prix','GET',null,'select=*').then(_asArr),
       _sbFetchSoft('bons','order=created_at.desc'),
       _sbFetchSoft('cheques','order=created_at.desc'),
@@ -2568,7 +2577,11 @@ async function sbDeleteFournisseur(id){
   saveCacheLS();
 }
 async function sbDeleteArticle(id){
-  await sbFetch('articles?id=eq.'+id,'DELETE');
+  // Soft-delete: articles can be referenced by bons_sortie_lines (and
+  // historical bons.lignes jsonb), so a hard DELETE breaks the FK on
+  // bons_sortie_lines. Mark deleted_at instead — loaders filter it out
+  // and BS history keeps its snapshot_name.
+  await sbFetch('articles?id=eq.'+id,'PATCH',{deleted_at:new Date().toISOString()});
   saveCacheLS();
 }
 function fmt(n){return '\u2066'+Number(n).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})+' DH'+'\u2069';}
@@ -13786,7 +13799,10 @@ var bsoCatFilter='';
 function bsoSetCatFilter(v){ bsoCatFilter=v||''; renderSortiesContent(); }
 async function bsoReloadArticles(){
   try{
-    var res=await sbFetch('articles','GET',null,'select=*&order=id&limit=10000');
+    var res=await sbFetch('articles','GET',null,'select=*&deleted_at=is.null&order=id&limit=10000');
+    if(res && res.__sbError && /deleted_at/.test(res.msg||'')){
+      res=await sbFetch('articles','GET',null,'select=*&order=id&limit=10000');
+    }
     if(Array.isArray(res)){
       articles.length=0;
       res.forEach(function(a){articles.push({id:a.id,nom:a.nom,unite:a.unite,cat:a.cat,ref:a.ref||''});});

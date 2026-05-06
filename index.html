@@ -1501,7 +1501,11 @@ async function sendTelegramBroadcast(text){
     fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage`,{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({chat_id:chatId,text})
+      body:JSON.stringify({chat_id:chatId,text}),
+      // Keepalive lets the request finish even if the tab is closing.
+      // Required for the beforeunload flush of pointage notifs to actually
+      // deliver — without this, closing the tab kills the in-flight POST.
+      keepalive: true
     }).then(r => {
       if(!r.ok){ console.warn('[notif] TG send failed', chatId, r.status); return r.text().then(t => { console.warn('  body:', t.slice(0,200)); throw new Error('http '+r.status); }); }
       return true;
@@ -1599,11 +1603,17 @@ const _pointageDebounce = {};
 // _pendingPointageTimer is the single timer that flushes them all.
 //
 // Tuning: the user types pointage in bursts (open the app, mark several
-// workers, sometimes over 10-15 minutes). 20 min of silence ≈ "boss done
+// workers, sometimes over 10-15 minutes). 10 min of silence ≈ "boss done
 // for now" — fire one summary with everything, instead of multiple noisy
 // per-worker pings. The manual "📨 سيفط دابا" FAB is always available
 // for users who want to flush sooner.
-const POINTAGE_DEBOUNCE_MS = 20 * 60 * 1000; // 20 minutes
+//
+// Picked 10 min as a compromise after 20 min produced lost-notification
+// incidents on 2026-05-05: Abdollah's batch fired (he was entered alone),
+// then Khalid + Mohamed entries were closed/refreshed before the second
+// 20-min window elapsed and were never broadcast. With keepalive on
+// fetch, the beforeunload flush should now also survive tab close.
+const POINTAGE_DEBOUNCE_MS = 10 * 60 * 1000; // 10 minutes
 const _pendingPointageNotifs = new Set();
 let _pendingPointageTimer = null;
 

@@ -18,6 +18,7 @@ export async function cmdStart(msg: TgMessage): Promise<void> {
     '/today — خلاصة اليوم',
     '/balance — رصيد البونات و الشيكات',
     '/khlas — الباقي للخدامة (اجراء + PCs + تقنيون)',
+    '/caisse — حالة الصندوق + آخر الحركات',
     '/stock `<سلعة>` — مخزون سلعة',
     '/listbons — آخر البونات',
     '',
@@ -327,6 +328,54 @@ export async function cmdKhlas(msg: TgMessage): Promise<void> {
     lines.push(`📊 *المجموع المعلق: ${fmtMoney(grand)} د.م.*`);
   }
 
+  await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+}
+
+// ── /caisse — cash-box snapshot on demand ───────────────────────
+export async function cmdCaisse(msg: TgMessage): Promise<void> {
+  const today = todayCasa();
+  const [allRes, todayRes, recent7Res] = await Promise.all([
+    sb.from('caisse_movements').select('type,amount').is('deleted_at', null),
+    sb.from('caisse_movements').select('type,amount,designation').eq('date', today).is('deleted_at', null),
+    sb.from('caisse_movements').select('date,type,amount,designation').is('deleted_at', null)
+      .order('id', { ascending: false }).limit(10),
+  ]);
+  const all      = allRes.data      ?? [];
+  const todayRow = todayRes.data    ?? [];
+  const recent   = recent7Res.data  ?? [];
+
+  let inAll = 0, outAll = 0;
+  for (const m of all) {
+    const v = Number((m as { amount: number }).amount || 0);
+    if ((m as { type: string }).type === 'in') inAll += v; else outAll += v;
+  }
+  let inToday = 0, outToday = 0;
+  for (const m of todayRow) {
+    const v = Number((m as { amount: number }).amount || 0);
+    if ((m as { type: string }).type === 'in') inToday += v; else outToday += v;
+  }
+
+  const lines = [
+    '💵 *حالة الصندوق*',
+    '',
+    `💼 الرصيد الحالي: *${fmtMoney(inAll - outAll)} د.م.*`,
+    '',
+    `📅 *اليوم (${today})*`,
+    `⬆️ مداخيل: ${fmtMoney(inToday)} د.م.`,
+    `⬇️ مخارج: ${fmtMoney(outToday)} د.م.`,
+    `📊 صافي: *${fmtMoney(inToday - outToday)} د.م.*`,
+  ];
+  if (recent.length) {
+    lines.push('', '🧾 *آخر 10 حركات:*');
+    for (const m of recent) {
+      const t = (m as { type: string }).type === 'in' ? '⬆️' : '⬇️';
+      const sign = (m as { type: string }).type === 'in' ? '+' : '−';
+      const amt = Number((m as { amount: number }).amount || 0);
+      const desg = String((m as { designation: string }).designation || '—').slice(0, 40);
+      const d = String((m as { date: string }).date || '');
+      lines.push(`${t} ${sign}${fmtMoney(amt)} · ${desg} _(${d})_`);
+    }
+  }
   await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
 }
 

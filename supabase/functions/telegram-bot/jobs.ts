@@ -400,6 +400,76 @@ export async function jobDailyReport(): Promise<Response> {
   }));
 }
 
+// ── caisse_eod — 21:00 Casa, focused cash-flow recap ─────────
+// Companion to daily_report (20:30 Casa). Shorter, cash-focused: today's
+// caisse in/out/net + running balance + breakdown of settlements paid.
+export async function jobCaisseEod(): Promise<Response> {
+  const today = todayCasa();
+
+  const [caisseTodayRes, caisseAllRes, salTaswRes, pcTaswRes, techPayRes] = await Promise.all([
+    sb.from('caisse_movements')
+      .select('type,amount,designation,linked_kind').eq('date', today).is('deleted_at', null),
+    sb.from('caisse_movements')
+      .select('type,amount').is('deleted_at', null),
+    sb.from('salarie_taswiyas').select('montant,nom_salarie').eq('date_paiement', today),
+    sb.from('pc_taswiyas').select('montant,ouvrier_id').eq('date_paiement', today),
+    sb.from('technician_payments').select('amount,technician_name').eq('pay_date', today),
+  ]);
+
+  const today_movements = caisseTodayRes.data ?? [];
+  const all_movements   = caisseAllRes.data   ?? [];
+  const salT  = salTaswRes.data  ?? [];
+  const pcT   = pcTaswRes.data   ?? [];
+  const techP = techPayRes.data  ?? [];
+
+  let inToday = 0, outToday = 0;
+  for (const m of today_movements) {
+    const v = Number((m as { amount: number }).amount || 0);
+    if ((m as { type: string }).type === 'in') inToday += v; else outToday += v;
+  }
+  let inAll = 0, outAll = 0;
+  for (const m of all_movements) {
+    const v = Number((m as { amount: number }).amount || 0);
+    if ((m as { type: string }).type === 'in') inAll += v; else outAll += v;
+  }
+  const solde = inAll - outAll;
+
+  const salTotal  = salT.reduce ((s, t) => s + Number((t as { montant: number }).montant || 0), 0);
+  const pcTotal   = pcT.reduce  ((s, t) => s + Number((t as { montant: number }).montant || 0), 0);
+  const techTotal = techP.reduce((s, p) => s + Number((p as { amount: number }).amount || 0), 0);
+  const settleTotal = salTotal + pcTotal + techTotal;
+  const settleCount = salT.length + pcT.length + techP.length;
+
+  // Empty-state: no cash movement and no settlement → don't ping the user
+  if (today_movements.length === 0 && settleCount === 0) {
+    return new Response(JSON.stringify({ ok: true, job: 'caisse_eod', skipped: 'empty' }));
+  }
+
+  const lines: string[] = [`💵 *خلاصة الصندوق — ${today}*`, ''];
+  if (inToday || outToday) {
+    lines.push(`⬆️ مداخيل: *${fmtMoney(inToday)} د.م.*`);
+    lines.push(`⬇️ مخارج: *${fmtMoney(outToday)} د.م.*`);
+    lines.push(`📊 صافي اليوم: *${fmtMoney(inToday - outToday)} د.م.*`);
+    lines.push('');
+  }
+  if (settleCount > 0) {
+    lines.push(`💰 *تسويات اليوم — ${settleCount} خدام:*`);
+    if (salT.length)  lines.push(`👥 الأجراء: ${salT.length} · ${fmtMoney(salTotal)} د.م.`);
+    if (pcT.length)   lines.push(`👷 PCs:    ${pcT.length} · ${fmtMoney(pcTotal)} د.م.`);
+    if (techP.length) lines.push(`🛠 تقنيون: ${techP.length} · ${fmtMoney(techTotal)} د.م.`);
+    lines.push(`المجموع: *${fmtMoney(settleTotal)} د.م.*`);
+    lines.push('');
+  }
+  lines.push(`💼 *الصندوق الحالي: ${fmtMoney(solde)} د.م.*`);
+
+  const sent = await broadcastTelegram(lines.join('\n'));
+  return new Response(JSON.stringify({
+    ok: true, job: 'caisse_eod', telegram: sent,
+    in_today: inToday, out_today: outToday, solde,
+    settlements: settleCount, settle_total: settleTotal,
+  }));
+}
+
 // ── monthly_report — day 1 @ 09h ────────────────────────────────
 export async function jobMonthlyReport(): Promise<Response> {
   const today = new Date();

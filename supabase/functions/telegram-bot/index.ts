@@ -6,12 +6,12 @@
 import { parseCommand, answerCallbackQuery, type TgUpdate } from '../_shared/tg.ts';
 import {
   cmdStart, cmdSubscribe, cmdUnsubscribe, cmdTestPush,
-  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel, cmdKhlas,
+  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel, cmdKhlas, cmdCaisse,
 } from './commands.ts';
 import { startNewBon, startCheque, handleConvMessage } from './conversations.ts';
 import {
   jobChequesDueMorning, jobChequesTodayPing,
-  jobWorkersEod, jobMonthlyReport, jobDailyReport,
+  jobWorkersEod, jobMonthlyReport, jobDailyReport, jobCaisseEod,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
 } from './jobs.ts';
 import { handleChequeCallback } from './callbacks.ts';
@@ -31,6 +31,7 @@ Deno.serve(async (req: Request) => {
       case 'cheques_today_ping':  return await jobChequesTodayPing();
       case 'workers_eod':         return await jobWorkersEod();
       case 'daily_report':        return await jobDailyReport();
+      case 'caisse_eod':          return await jobCaisseEod();
       case 'monthly_report':      return await jobMonthlyReport();
       case 'backup':              return await jobBackupAll();          // Telegram + Drive + FTP
       case 'backup_telegram':     return await jobBackupTelegram();     // for ad-hoc testing
@@ -79,6 +80,7 @@ async function route(update: TgUpdate): Promise<void> {
       case 'khlas':       return await cmdKhlas(msg);
       case 'baqi':        return await cmdKhlas(msg);
       case 'wages':       return await cmdKhlas(msg);
+      case 'caisse':      return await cmdCaisse(msg);
       case 'stock':       return await cmdStock(msg, parsed.args);
       case 'listbons':    return await cmdListBons(msg);
       case 'newbon':      return await startNewBon(msg);

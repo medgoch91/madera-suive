@@ -14801,10 +14801,11 @@ async function salPayslipShare(salId, dateFrom, dateTo, cashPaid, isOverflow, ro
     var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2, useCORS:true, allowTaint:true, logging:false});
     canvas.toBlob(async function(blob){
       try{
+        if(!blob){ console.warn('payslip toBlob returned null'); return; }
         var nm=r.s.nom+(r.s.prenom?'-'+r.s.prenom:'');
         await sendTelegramPhotoBroadcast(blob, 'paie-'+nm+'-'+dateTo+'.png', '💰 ورقة الأجر · '+nm+' · '+fmtDate(dateFrom)+'→'+fmtDate(dateTo));
       }catch(e){ console.warn('payslip share failed:',e); }
-      try{iframe.remove();}catch(e){}
+      finally{ try{iframe.remove();}catch(e){} }
     },'image/png');
   }catch(e){
     try{iframe.remove();}catch(_){}
@@ -14968,9 +14969,10 @@ async function pcPayslipShare(ouvrierId, dateFrom, dateTo, cashPaid, isOverflow,
     var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2, useCORS:true, allowTaint:true, logging:false});
     canvas.toBlob(async function(blob){
       try{
+        if(!blob){ console.warn('pc payslip toBlob returned null'); return; }
         await sendTelegramPhotoBroadcast(blob, 'paie-pc-'+(o.nom||ouvrierId)+'-'+dateTo+'.png', '💰 ورقة الأجر · '+(o.nom||'')+' (PC) · '+fmtDate(dateFrom)+'→'+fmtDate(dateTo));
       }catch(e){ console.warn('pc payslip share failed:',e); }
-      try{iframe.remove();}catch(e){}
+      finally{ try{iframe.remove();}catch(e){} }
     },'image/png');
   }catch(e){
     try{iframe.remove();}catch(_){}
@@ -17650,14 +17652,19 @@ function printTaswiyaRow(taswId){
   if(!t){ toast('التسوية غير موجودة','error'); return; }
   var r=_buildSalRowForPeriod(t.salarie_id, t.date_from, t.date_to);
   if(!r){ toast('العامل غير موجود','error'); return; }
-  // totalAvs wasn't snapshotted on the taswiya row historically; derive
-  // it as gross − cashPaid so the bulletin's 💳 السلف line still shows
-  // the right deduction.
+  // True totalAvs = sum of salarie_avances absorbed by this taswiya
+  // (settled_in_tasweya === t.id). Falls back to (gross − cashPaid) when
+  // legacy taswiyas didn't tag their absorbed avances.
   var gross=Number(r.totalJours||0)+Number(r.totalHsup||0)+Number(r.totalProd||0);
   var cashPaid=Number(t.montant||0);
-  var totalAvs=Math.max(0, gross-cashPaid);
+  var absorbed=(salarieAvances||[]).filter(function(a){return Number(a.settled_in_tasweya)===Number(t.id);})
+    .reduce(function(s,a){return s+Number(a.montant||0);},0);
+  var totalAvs=absorbed>0 ? absorbed : Math.max(0, gross-cashPaid);
+  // Overflow: avs > gross → cashPaid==0 + rollover carried forward
+  var isOverflow = totalAvs > gross + 0.01;
+  var rollover = isOverflow ? Math.round((totalAvs-gross)*100)/100 : 0;
   r.totalAvs=totalAvs;
-  var html=salBuildPayslipHTML(r, t.date_from, t.date_to, cashPaid, false, 0);
+  var html=salBuildPayslipHTML(r, t.date_from, t.date_to, cashPaid, isOverflow, rollover);
   if(!html){ toast('تعذر التحميل','error'); return; }
   var w=window.open('','_blank'); if(!w) return;
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
@@ -17669,12 +17676,16 @@ function printPcTaswiyaRow(taswId){
   if(!t){ toast('التسوية غير موجودة','error'); return; }
   var o=ouvriersPc.find(function(x){return x.id===t.ouvrier_id;});
   if(!o){ toast('العامل غير موجود','error'); return; }
-  // Re-compute production for that period (PCs don't have hsup / status)
   var myPres=(pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===Number(t.ouvrier_id) && r.date>=t.date_from && r.date<=t.date_to;});
   var totalProd=myPres.reduce(function(s,r){return s+Number(r.qte||0)*Number(r.prix||0);},0);
   var cashPaid=Number(t.montant||0);
-  var totalAvs=Math.max(0, totalProd-cashPaid);
-  var html=pcBuildPayslipHTML(o, t.date_from, t.date_to, cashPaid, false, 0, totalProd, totalAvs);
+  // True absorbed avances for THIS taswiya, with same fallback as sal
+  var absorbed=(pcAvances||[]).filter(function(a){return Number(a.settled_in_tasweya)===Number(t.id);})
+    .reduce(function(s,a){return s+Number(a.montant||0);},0);
+  var totalAvs=absorbed>0 ? absorbed : Math.max(0, totalProd-cashPaid);
+  var isOverflow = totalAvs > totalProd + 0.01;
+  var rollover = isOverflow ? Math.round((totalAvs-totalProd)*100)/100 : 0;
+  var html=pcBuildPayslipHTML(o, t.date_from, t.date_to, cashPaid, isOverflow, rollover, totalProd, totalAvs);
   if(!html){ toast('تعذر التحميل','error'); return; }
   var w=window.open('','_blank'); if(!w) return;
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie PC</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
@@ -17775,7 +17786,9 @@ async function salKhallas(salId){
     // Auto-fire payslip image (bulletin de paie) right after the text
     // notification so the boss sees the formal worker breakdown alongside
     // the cash summary. Best-effort — failures shouldn't block the settle.
-    try{ salPayslipShare(salId, salDashFrom, salDashTo, cashPaid, isOverflow, rollover); }catch(e){ console.warn('payslip share failed:', e); }
+    // Async; catch sync throws AND promise rejections so an html2canvas
+    // failure / Telegram blip can't surface as an unhandled rejection.
+    try{ Promise.resolve(salPayslipShare(salId, salDashFrom, salDashTo, cashPaid, isOverflow, rollover)).catch(function(e){ console.warn('payslip share failed:', e); }); }catch(e){ console.warn('payslip share failed (sync):', e); }
     renderSalaries();
   }
 }
@@ -17894,7 +17907,7 @@ async function pcKhallas(ouvrierId){
     }catch(e){}
     sendTelegramBroadcast(pcLines.join('\n'));
     // Auto-fire PC payslip image right after the text broadcast
-    try{ pcPayslipShare(ouvrierId, salDashFrom, salDashTo, r, isOverflow, rollover, grossPC, totalPcAvs); }catch(e){ console.warn('pc payslip share failed:', e); }
+    try{ Promise.resolve(pcPayslipShare(ouvrierId, salDashFrom, salDashTo, r, isOverflow, rollover, grossPC, totalPcAvs)).catch(function(e){ console.warn('pc payslip share failed:', e); }); }catch(e){ console.warn('pc payslip share failed (sync):', e); }
   } else {
     pcTaswiyas.push(payload); // offline fallback
   }

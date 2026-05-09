@@ -18,6 +18,7 @@ export async function cmdStart(msg: TgMessage): Promise<void> {
     '/today — خلاصة اليوم',
     '/balance — رصيد البونات و الشيكات',
     '/khlas — الباقي للخدامة (اجراء + PCs + تقنيون)',
+    '/khlas `<اسم>` — تفصيل لعامل واحد',
     '/caisse — حالة الصندوق + آخر الحركات',
     '/stock `<سلعة>` — مخزون سلعة',
     '/listbons — آخر البونات',
@@ -152,7 +153,8 @@ export async function cmdBalance(msg: TgMessage): Promise<void> {
 //
 // Elec techs: SUM(quantity_received × labor_cost_per_piece_ttc) over
 // subcontracting_orders since last technician_payment, minus payments.
-export async function cmdKhlas(msg: TgMessage): Promise<void> {
+export async function cmdKhlas(msg: TgMessage, args?: string[]): Promise<void> {
+  if (args && args.length) return await cmdKhlasOne(msg, args.join(' ').trim());
   type StatusFactor = Record<string, number>;
   const STATUS_FACTOR: StatusFactor = { present: 1, demi: 0.5, absent: 0, conge: 0 };
 
@@ -329,6 +331,170 @@ export async function cmdKhlas(msg: TgMessage): Promise<void> {
   }
 
   await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+}
+
+// ── /khlas <name> — drill-down for one worker ───────────────────
+async function cmdKhlasOne(msg: TgMessage, query: string): Promise<void> {
+  const STATUS_LBL: Record<string, { ic: string; lbl: string; mult: number }> = {
+    present: { ic: '✅', lbl: 'حاضر', mult: 1 },
+    demi:    { ic: '🟠', lbl: 'نص نهار', mult: 0.5 },
+    absent:  { ic: '🔴', lbl: 'غائب', mult: 0 },
+    conge:   { ic: '🟡', lbl: 'عطلة', mult: 0 },
+  };
+  const q = query.toLowerCase();
+
+  // Try to match a salarié, an ouvrier_pc, or a technician.
+  const [salRes, ouvRes, techRes] = await Promise.all([
+    sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup'),
+    sb.from('ouvriers_pc').select('id,nom'),
+    sb.from('technicians').select('id,nom'),
+  ]);
+  const sals = salRes.data ?? [];
+  const ouvs = ouvRes.data ?? [];
+  const techs = techRes.data ?? [];
+
+  const matchSal = sals.find((s) => {
+    const full = (String((s as { nom: string }).nom || '') + ' ' + String((s as { prenom?: string }).prenom || '')).toLowerCase();
+    return full.includes(q);
+  });
+  const matchPc  = ouvs.find((o) => String((o as { nom: string }).nom || '').toLowerCase().includes(q));
+  const matchTec = techs.find((t) => String((t as { nom: string }).nom || '').toLowerCase().includes(q));
+
+  if (!matchSal && !matchPc && !matchTec) {
+    await sendMessage(msg.chat.id, `❌ ما لقيت حتى عامل فيه "${query}". جرّب \`/khlas\` بلا اسم لقائمة الكل.`,
+      { parseMode: 'Markdown' });
+    return;
+  }
+
+  // ── Salarié branch ──────────────────────────────────────────────
+  if (matchSal) {
+    const s = matchSal as { id: number; nom: string; prenom?: string; salaire_base: number; taux_hsup: number };
+    const fullName = (String(s.nom || '?') + (s.prenom ? ' ' + s.prenom : '')).trim();
+    const [presRes, taswRes, ratesRes, avsRes] = await Promise.all([
+      sb.from('salarie_presences').select('date,statut,heures_supp,taux_horaire,notes').eq('salarie_id', s.id),
+      sb.from('salarie_taswiyas').select('date_to').eq('salarie_id', s.id),
+      sb.from('salary_rates').select('effective_from,salaire_base,taux_hsup').eq('salarie_id', s.id),
+      sb.from('salarie_avances').select('date,montant,rembourse,notes').eq('salarie_id', s.id).eq('rembourse', false),
+    ]);
+    const pres  = (presRes.data  ?? []) as Array<{ date: string; statut: string; heures_supp: number; taux_horaire: number; notes?: string }>;
+    const tasw  = (taswRes.data  ?? []) as Array<{ date_to: string }>;
+    const rates = (ratesRes.data ?? []) as Array<{ effective_from: string; salaire_base: number; taux_hsup: number }>;
+    const avs   = (avsRes.data   ?? []) as Array<{ date: string; montant: number; notes?: string }>;
+    const since = tasw.length
+      ? tasw.map((t) => String(t.date_to)).sort().reverse()[0]
+      : '0000-01-01';
+    const myPres = pres.filter((p) => String(p.date) > since).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const rateAt = (date: string) => {
+      const matching = rates.filter((r) => String(r.effective_from) <= date)
+        .sort((a, b) => String(b.effective_from).localeCompare(String(a.effective_from)));
+      if (matching.length) return { base: Number(matching[0].salaire_base), hsup: Number(matching[0].taux_hsup) };
+      return { base: Number(s.salaire_base || 0), hsup: Number(s.taux_hsup || 0) };
+    };
+
+    let totalBase = 0, totalHsup = 0;
+    const lines = [
+      `👤 *${fullName}* — تفصيل`,
+      `📅 منذ آخر تسوية: ${since === '0000-01-01' ? '(لا تسوية بعد)' : since}`,
+      '',
+    ];
+    if (myPres.length) {
+      lines.push('*الأيام:*');
+      for (const p of myPres) {
+        const st = STATUS_LBL[p.statut] || { ic: '·', lbl: p.statut || '?', mult: 0 };
+        const rate = rateAt(p.date);
+        const dayWage = st.mult * rate.base;
+        const hsup = Number(p.heures_supp || 0);
+        const taux = Number(p.taux_horaire || 0);
+        const hsupCost = hsup * taux;
+        totalBase += dayWage;
+        totalHsup += hsupCost;
+        let line = `${st.ic} ${p.date.slice(5)} · ${st.lbl}`;
+        if (dayWage > 0) line += ` · ${fmtMoney(dayWage)}`;
+        if (hsup > 0) line += ` · ⏱ ${hsup}h × ${fmtMoney(taux)} = ${fmtMoney(hsupCost)}`;
+        lines.push(line);
+      }
+    } else {
+      lines.push('_— ما كاين شي يوم مسجل منذ آخر تسوية —_');
+    }
+    const totalAvs = avs.reduce((t, a) => t + Number(a.montant || 0), 0);
+    if (avs.length) {
+      lines.push('', '*السلف المعلقة:*');
+      for (const a of avs) lines.push(`💳 ${a.date} · ${fmtMoney(a.montant)}${a.notes ? ' — ' + a.notes : ''}`);
+    }
+    const net = totalBase + totalHsup - totalAvs;
+    lines.push('',
+      `💼 الأجر الأساسي: ${fmtMoney(totalBase)} د.م.`,
+      `⏱ الإضافي: ${fmtMoney(totalHsup)} د.م.`,
+      `💳 السلف: −${fmtMoney(totalAvs)} د.م.`,
+      `💰 *الصافي: ${fmtMoney(net)} د.م.*`,
+    );
+    await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+    return;
+  }
+
+  // ── PC branch ───────────────────────────────────────────────────
+  if (matchPc) {
+    const o = matchPc as { id: number; nom: string };
+    const [presRes, taswRes, avsRes] = await Promise.all([
+      sb.from('ouvrier_pc_presences').select('date,pc_nom,qte,prix').eq('ouvrier_id', o.id),
+      sb.from('pc_taswiyas').select('date_to').eq('ouvrier_id', o.id),
+      sb.from('pc_avances').select('date,montant,rembourse').eq('ouvrier_id', o.id).eq('rembourse', false),
+    ]);
+    const pres = (presRes.data ?? []) as Array<{ date: string; pc_nom: string; qte: number; prix: number }>;
+    const tasw = (taswRes.data ?? []) as Array<{ date_to: string }>;
+    const avs  = (avsRes.data  ?? []) as Array<{ date: string; montant: number }>;
+    const since = tasw.length ? tasw.map((t) => String(t.date_to)).sort().reverse()[0] : '0000-01-01';
+    const myPres = pres.filter((p) => String(p.date) > since && Number(p.qte || 0) > 0)
+                       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const totalProd = myPres.reduce((s, p) => s + Number(p.qte || 0) * Number(p.prix || 0), 0);
+    const totalAvs  = avs.reduce((s, a) => s + Number(a.montant || 0), 0);
+    const lines = [
+      `👷 *${o.nom}* (PC) — تفصيل`,
+      `📅 منذ آخر تسوية: ${since === '0000-01-01' ? '(لا تسوية بعد)' : since}`,
+      '',
+    ];
+    if (myPres.length) {
+      lines.push('*الإنتاج:*');
+      for (const p of myPres) {
+        lines.push(`✅ ${p.date.slice(5)} · ${p.pc_nom} · ${p.qte} × ${fmtMoney(p.prix)} = *${fmtMoney(p.qte * p.prix)}*`);
+      }
+    } else {
+      lines.push('_— ما كاين شي إنتاج منذ آخر تسوية —_');
+    }
+    if (avs.length) {
+      lines.push('', '*السلف المعلقة:*');
+      for (const a of avs) lines.push(`💳 ${a.date} · ${fmtMoney(a.montant)}`);
+    }
+    lines.push('',
+      `🛠 الإنتاج: ${fmtMoney(totalProd)} د.م.`,
+      `💳 السلف: −${fmtMoney(totalAvs)} د.م.`,
+      `💰 *الصافي: ${fmtMoney(totalProd - totalAvs)} د.م.*`,
+    );
+    await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+    return;
+  }
+
+  // ── Tech branch ─────────────────────────────────────────────────
+  if (matchTec) {
+    const t = matchTec as { id: number; nom: string };
+    const [soRes, payRes] = await Promise.all([
+      sb.from('subcontracting_orders').select('quantity_received,labor_cost_per_piece_ttc,product_id,created_at').eq('technician_name', t.nom),
+      sb.from('technician_payments').select('amount,pay_date,note').eq('technician_name', t.nom),
+    ]);
+    const so  = (soRes.data ?? []) as Array<{ quantity_received: number; labor_cost_per_piece_ttc: number; product_id: number; created_at: string }>;
+    const pay = (payRes.data ?? []) as Array<{ amount: number; pay_date: string; note?: string }>;
+    const earned = so.reduce((s, r) => s + Number(r.quantity_received || 0) * Number(r.labor_cost_per_piece_ttc || 0), 0);
+    const paid   = pay.reduce((s, p) => s + Number(p.amount || 0), 0);
+    const lines = [
+      `⚡ *${t.nom}* (تقني) — تفصيل`,
+      '',
+      `🛠 يد عاملة محصلة: ${fmtMoney(earned)} د.م. (${so.length} تسليم)`,
+      `💵 خلاصات: −${fmtMoney(paid)} د.م. (${pay.length})`,
+      `💰 *الصافي: ${fmtMoney(earned - paid)} د.م.*`,
+    ];
+    await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+    return;
+  }
 }
 
 // ── /caisse — cash-box snapshot on demand ───────────────────────

@@ -14379,6 +14379,168 @@ function bsoPrint(bonId){
   w.document.close();
 }
 
+// ─── Worker payslip (bulletin hebdomadaire) ──────────────────
+// Reuses the BS print template style: company header, watermark, lines
+// table, signatures. Per-day breakdown shows status + hsup + pieces.
+function salBuildPayslipHTML(r, dateFrom, dateTo, cashPaid, isOverflow, rollover){
+  if(!r || !r.s) return '';
+  var s=r.s;
+  var nomSal=s.nom+(s.prenom?' '+s.prenom:'');
+  var col='#10b981'; // emerald — distinct from BS colors
+  var soc=(typeof factSociete!=='undefined' && factSociete) ? factSociete : {
+    nom:'MADERA DECO', adresse:'COMMUNE DRARGA AGADIR', ville:'AGADIR',
+    tel:'0676637608', email:'maderadeco.ma@gmail.com', web:'maderadeco.ma',
+    ice:'002733643000006', if_num:'48573755', rc:'46235', patente:'93100364'
+  };
+  var logoSrc=(soc.logo && String(soc.logo).length>50) ? soc.logo
+    : (location.protocol==='file:' ? 'logo.svg' : 'https://maderadeco.app/logo.svg');
+  var watermarkText=String(soc.nom||'MADERA DECO').toUpperCase();
+
+  // Per-day breakdown: walk every date in range, find presence row
+  var pres=(salariePresences||[]).filter(function(p){return p.salarie_id===s.id && p.date>=dateFrom && p.date<=dateTo;});
+  var presByDate={};
+  pres.forEach(function(p){ presByDate[p.date]=p; });
+  var days=[]; var d=new Date(dateFrom); var end=new Date(dateTo);
+  while(d<=end){ days.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  var statusLbl={present:{ic:'✅',lbl:'حاضر',mult:1},demi:{ic:'🟠',lbl:'نص نهار',mult:0.5},absent:{ic:'🔴',lbl:'غائب',mult:0},conge:{ic:'🟡',lbl:'عطلة',mult:0}};
+  var dayRows=days.map(function(date){
+    var p=presByDate[date];
+    var st=p?(statusLbl[p.statut]||{ic:'·',lbl:p.statut||'?',mult:0}):{ic:'—',lbl:'',mult:0};
+    var rate=(typeof getRateAtDate==='function')?getRateAtDate(s.id,date).salaire_base:Number(s.salaire_base||0);
+    var dayWage=p?(st.mult*rate):0;
+    var hsup=p?Number(p.heures_supp||0):0;
+    var taux=p?Number(p.taux_horaire||0):0;
+    var hsupCost=hsup*taux;
+    // Pieces from notes
+    var pieces=0;
+    if(p&&p.notes){ try{ var ls=JSON.parse(p.notes); pieces=ls.reduce(function(s2,l){return s2+Number(l.qte||0)*Number(l.prix||0);},0); }catch(e){} }
+    var dayName=new Date(date+'T00:00:00').toLocaleDateString('ar-MA',{weekday:'short'});
+    return '<tr style="border-bottom:1px solid #e5e7eb">'+
+      '<td style="padding:6px 8px;font-size:11px;color:#6b7280">'+escB(dayName)+'<br><small style="font-family:monospace">'+escB(date.slice(5))+'</small></td>'+
+      '<td style="padding:6px 8px;text-align:center">'+st.ic+' '+escB(st.lbl)+'</td>'+
+      '<td style="padding:6px 8px;text-align:center;font-weight:600">'+(dayWage?fmtN(dayWage):'—')+'</td>'+
+      '<td style="padding:6px 8px;text-align:center">'+(hsup?hsup+'h × '+fmtN(taux):'—')+'</td>'+
+      '<td style="padding:6px 8px;text-align:center">'+(hsupCost?fmtN(hsupCost):'—')+'</td>'+
+      '<td style="padding:6px 8px;text-align:center">'+(pieces?fmtN(pieces):'—')+'</td>'+
+    '</tr>';
+  }).join('');
+
+  return ''+
+    '<div class="payslip-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#1f2937;padding:32px 28px;width:780px;box-sizing:border-box;position:relative;overflow:hidden">'+
+      // Watermark
+      '<div aria-hidden="true" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;overflow:hidden">'+
+        '<div style="font-family:Cairo,sans-serif;font-size:120px;font-weight:900;color:'+col+';opacity:0.055;transform:rotate(-30deg);white-space:nowrap;letter-spacing:8px">'+escB(watermarkText)+'</div>'+
+      '</div>'+
+      '<div style="position:relative;z-index:1">'+
+      // Header
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+col+';padding-bottom:14px;margin-bottom:20px;gap:14px">'+
+        '<div style="display:flex;align-items:center;gap:14px">'+
+          '<img src="'+escB(logoSrc)+'" alt="logo" crossorigin="anonymous" style="width:72px;height:72px;object-fit:contain;flex-shrink:0" onerror="this.style.display=\'none\'">'+
+          '<div>'+
+            '<div style="font-size:24px;font-weight:900;color:'+col+';letter-spacing:0.5px">'+escB(soc.nom||'MADERA DECO')+'</div>'+
+            '<div style="font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6">'+
+              (soc.adresse?escB(soc.adresse):'')+(soc.ville && soc.adresse && soc.adresse.indexOf(soc.ville)<0?' — '+escB(soc.ville):(soc.ville?escB(soc.ville):''))+'<br>'+
+              (soc.tel?'📞 '+escB(soc.tel):'')+(soc.email?' · ✉ '+escB(soc.email):'')+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="text-align:left;background:'+col+'15;border:1px solid '+col+'55;border-radius:8px;padding:8px 14px;min-width:180px">'+
+          '<div style="font-size:9px;color:#6b7280;font-weight:700;letter-spacing:0.5px">FICHE DE PAIE</div>'+
+          '<div style="font-size:14px;font-weight:800;color:'+col+';margin-top:2px">'+escB(nomSal)+'</div>'+
+        '</div>'+
+      '</div>'+
+      // Title
+      '<div style="text-align:center;margin-bottom:18px">'+
+        '<div style="display:inline-block;background:'+col+';color:#fff;padding:8px 28px;border-radius:6px;font-size:18px;font-weight:800;letter-spacing:1px">💰 ورقة الأجر · BULLETIN DE PAIE</div>'+
+      '</div>'+
+      // Period meta
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">'+
+        '<tr>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">العامل</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:800;color:'+col+'">'+escB(nomSal)+'</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">الفترة</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:700">'+escB(fmtDate(dateFrom))+' → '+escB(fmtDate(dateTo))+'</td>'+
+        '</tr>'+
+      '</table>'+
+      // Per-day table
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">'+
+        '<thead><tr style="background:'+col+';color:#fff">'+
+          '<th style="padding:8px;text-align:right;width:80px">اليوم</th>'+
+          '<th style="padding:8px">الحالة</th>'+
+          '<th style="padding:8px;width:90px">الأجر اليومي</th>'+
+          '<th style="padding:8px;width:120px">س. إضافية</th>'+
+          '<th style="padding:8px;width:90px">قيمة س.إض.</th>'+
+          '<th style="padding:8px;width:90px">قطعة</th>'+
+        '</tr></thead>'+
+        '<tbody>'+dayRows+'</tbody>'+
+      '</table>'+
+      // Totals
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
+        '<tr><td style="padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb">📅 أيام الشغل</td><td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:700">'+r.joursTotal+'</td></tr>'+
+        '<tr><td style="padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb">💼 الأجر الأساسي</td><td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:700">'+fmtN(r.totalJours)+' DH</td></tr>'+
+        (r.totalHsup>0?'<tr><td style="padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb">⏱ ساعات إضافية</td><td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:700">'+fmtN(r.totalHsup)+' DH</td></tr>':'')+
+        (r.totalProd>0?'<tr><td style="padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb">🔨 إنتاج بالقطعة</td><td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:700">'+fmtN(r.totalProd)+' DH</td></tr>':'')+
+        (r.totalAvs>0?'<tr><td style="padding:6px 10px;background:#fef3c7;border:1px solid #fde68a;color:#92400e">💳 السلف ـ</td><td style="padding:6px 10px;border:1px solid #fde68a;text-align:left;font-weight:700;color:#92400e">−'+fmtN(r.totalAvs)+' DH</td></tr>':'')+
+        '<tr><td style="padding:10px;background:'+col+';color:#fff;font-weight:800;font-size:14px">💰 الصافي</td><td style="padding:10px;background:'+col+'15;color:'+col+';text-align:left;font-weight:900;font-size:16px">'+fmtN(cashPaid)+' DH</td></tr>'+
+        (isOverflow?'<tr><td style="padding:6px 10px;background:#fee2e2;border:1px solid #fecaca;color:#991b1b">🔄 ترصيد للأسبوع الجاي</td><td style="padding:6px 10px;border:1px solid #fecaca;text-align:left;font-weight:700;color:#991b1b">'+fmtN(rollover)+' DH</td></tr>':'')+
+      '</table>'+
+      // Signatures
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px;page-break-inside:avoid">'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📤 المؤدِّي — PAYÉ PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937">MADERA DECO</div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📥 المتسلِّم — REÇU PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937">'+escB(nomSal)+'</div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+      '</div>'+
+      // Footer
+      '<div style="margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af">'+
+        '<div>Bulletin de paie</div>'+
+        '<div>تم الإصدار: '+new Date().toLocaleString('fr-MA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div>'+
+        '<div>'+escB(soc.web||soc.nom||'')+'</div>'+
+      '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+async function salPayslipShare(salId, dateFrom, dateTo, cashPaid, isOverflow, rollover){
+  var r=(salLastRows||[]).find(function(x){return x.s.id===salId;});
+  if(!r) return;
+  var html=salBuildPayslipHTML(r, dateFrom, dateTo, cashPaid, isOverflow, rollover); if(!html) return;
+  if(typeof html2canvas==='undefined'){ try{toast('❌ html2canvas not loaded','error');}catch(e){} return; }
+  var iframe=document.createElement('iframe');
+  iframe.style.cssText='position:fixed;left:-9999px;top:0;width:820px;height:1400px;border:0';
+  document.body.appendChild(iframe);
+  iframe.srcdoc='<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#fff">'+html+'</body></html>';
+  await new Promise(function(res){iframe.onload=res;});
+  try{
+    var target=iframe.contentDocument.querySelector('.payslip-print');
+    var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2, useCORS:true, allowTaint:true, logging:false});
+    canvas.toBlob(async function(blob){
+      try{
+        var nm=r.s.nom+(r.s.prenom?'-'+r.s.prenom:'');
+        await sendTelegramPhotoBroadcast(blob, 'paie-'+nm+'-'+dateTo+'.png', '💰 ورقة الأجر · '+nm+' · '+fmtDate(dateFrom)+'→'+fmtDate(dateTo));
+      }catch(e){ console.warn('payslip share failed:',e); }
+      try{iframe.remove();}catch(e){}
+    },'image/png');
+  }catch(e){
+    try{iframe.remove();}catch(_){}
+    try{toast('❌ '+(e&&e.message||'فشل التصوير'),'error');}catch(err){}
+  }
+}
+function salPayslipPrint(salId, dateFrom, dateTo, cashPaid, isOverflow, rollover){
+  var r=(salLastRows||[]).find(function(x){return x.s.id===salId;});
+  if(!r) return;
+  var html=salBuildPayslipHTML(r, dateFrom, dateTo, cashPaid, isOverflow, rollover); if(!html) return;
+  var w=window.open('','_blank'); if(!w) return;
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
+  w.document.close();
+}
+
 // ─── M7: Telegram notifs (save / edit / delete) ───────────────
 function bsoBuildNotifText(bonId, kind){
   var b=(sortiesBons||[]).find(function(x){return x.id===bonId;}); if(!b) return '';
@@ -16819,6 +16981,10 @@ async function salKhallas(salId){
       if(avs > 0) lines.push('🛈 (الأجر '+fmtN(gross)+' − سلف '+fmtN(avs)+')');
     }
     sendTelegramBroadcast(lines.join('\n'));
+    // Auto-fire payslip image (bulletin de paie) right after the text
+    // notification so the boss sees the formal worker breakdown alongside
+    // the cash summary. Best-effort — failures shouldn't block the settle.
+    try{ salPayslipShare(salId, salDashFrom, salDashTo, cashPaid, isOverflow, rollover); }catch(e){ console.warn('payslip share failed:', e); }
     renderSalaries();
   }
 }

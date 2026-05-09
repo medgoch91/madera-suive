@@ -16879,6 +16879,30 @@ function salCardShowDetails(salId){
   // Settlement history (all taswiyas for this worker, newest first)
   const tasws = (salTaswiyas||[]).filter(function(t){return Number(t.salarie_id)===Number(salId);})
     .slice().sort(function(a,b){return String(b.date_paiement||'').localeCompare(String(a.date_paiement||''));});
+  // Year summary — group taswiyas by year+month for an executive overview
+  var taswByMonth={};
+  tasws.forEach(function(t){
+    var d=String(t.date_paiement||'');
+    if(d.length<7) return;
+    var ym=d.slice(0,7); // YYYY-MM
+    if(!taswByMonth[ym]) taswByMonth[ym]={count:0, total:0};
+    taswByMonth[ym].count++;
+    taswByMonth[ym].total += Number(t.montant||0);
+  });
+  var taswMonthsKeys = Object.keys(taswByMonth).sort().reverse();
+  var summaryHTML = taswMonthsKeys.length
+    ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:10px">'+
+        taswMonthsKeys.slice(0, 12).map(function(ym){
+          var v=taswByMonth[ym];
+          var label = new Date(ym+'-01T00:00:00').toLocaleDateString('ar-MA',{month:'short', year:'2-digit'});
+          return '<div style="background:rgba(39,174,96,0.06);border:1px solid rgba(39,174,96,0.25);border-radius:8px;padding:6px 8px;text-align:center">'+
+            '<div style="font-size:10px;color:var(--text3);font-weight:700">'+escB(label)+'</div>'+
+            '<div style="font-size:13px;font-weight:800;color:var(--green)">'+fmtN(v.total)+'</div>'+
+            '<div style="font-size:9px;color:var(--text3)">'+v.count+' خلاص</div>'+
+          '</div>';
+        }).join('')+
+      '</div>'
+    : '';
   const taswHTML = tasws.length
     ? tasws.map(function(t){
         return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(39,174,96,0.06);border:1px solid rgba(39,174,96,0.25);border-radius:8px">'+
@@ -16912,6 +16936,7 @@ function salCardShowDetails(salId){
       +'<span>📜 سجل التسويات ('+tasws.length+')</span>'
       +(tasws.length?'<span style="font-size:11px;color:var(--green);font-weight:800">إجمالي: '+fmtN(taswsTotal)+' DH</span>':'')
     +'</div>'
+    +summaryHTML
     +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;max-height:240px;overflow-y:auto">'+taswHTML+'</div>'
     +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
   document.getElementById('modal-main-c').innerHTML = html;
@@ -17036,6 +17061,28 @@ function pcCardShowDetails(ouvrierId){
     +(function(){
       var pcTasws=(pcTaswiyas||[]).filter(function(t){return Number(t.ouvrier_id)===Number(ouvrierId);})
         .slice().sort(function(a,b){return String(b.date_paiement||'').localeCompare(String(a.date_paiement||''));});
+      // Per-month roll-up
+      var pcByMonth={};
+      pcTasws.forEach(function(t){
+        var d=String(t.date_paiement||''); if(d.length<7) return;
+        var ym=d.slice(0,7);
+        if(!pcByMonth[ym]) pcByMonth[ym]={count:0,total:0};
+        pcByMonth[ym].count++; pcByMonth[ym].total+=Number(t.montant||0);
+      });
+      var monthKeys=Object.keys(pcByMonth).sort().reverse();
+      var pcSummaryHTML = monthKeys.length
+        ? '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:10px">'+
+            monthKeys.slice(0,12).map(function(ym){
+              var v=pcByMonth[ym];
+              var label=new Date(ym+'-01T00:00:00').toLocaleDateString('ar-MA',{month:'short',year:'2-digit'});
+              return '<div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:8px;padding:6px 8px;text-align:center">'+
+                '<div style="font-size:10px;color:var(--text3);font-weight:700">'+escB(label)+'</div>'+
+                '<div style="font-size:13px;font-weight:800;color:#10b981">'+fmtN(v.total)+'</div>'+
+                '<div style="font-size:9px;color:var(--text3)">'+v.count+' خلاص</div>'+
+              '</div>';
+            }).join('')+
+          '</div>'
+        : '';
       var pcTaswsHTML=pcTasws.length
         ? pcTasws.map(function(t){
             return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:8px">'+
@@ -17053,6 +17100,7 @@ function pcCardShowDetails(ouvrierId){
         '<span>📜 سجل التسويات ('+pcTasws.length+')</span>'+
         (pcTasws.length?'<span style="font-size:11px;color:var(--green);font-weight:800">إجمالي: '+fmtN(pcTaswsTotal)+' DH</span>':'')+
       '</div>'+
+      pcSummaryHTML+
       '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;max-height:240px;overflow-y:auto">'+pcTaswsHTML+'</div>';
     })()
     +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
@@ -17365,6 +17413,43 @@ function renderSalDashboard(){
     +'<div class="kpi" style="border-color:rgba(245,166,35,0.4);background:rgba(245,166,35,0.04)" title="السلف اللي مزال ما تخلصاتش — كتنتقل للتسوية الجاية"><div class="kpi-icon">⏳</div><div class="kpi-val" style="color:var(--amber)">'+fmtN(outstandingAll)+'</div><div class="kpi-lbl">سلف معلقة</div><div class="kpi-sub">'+(outstandingSal>0?'👤'+fmtN(outstandingSal):'')+(outstandingSal>0&&outstandingPc>0?' · ':'')+(outstandingPc>0?'👷'+fmtN(outstandingPc):'')+(outstandingAll===0?'كاملة محسومة':'')+'</div></div>'
     +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi+edTechDueAll)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
+
+  // ── Monthly recap card — current month vs previous month ──
+  (function(){
+    var now=new Date();
+    var thisMonthStart=new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+    var thisMonthEnd  =new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+    var prevMonthStart=new Date(now.getFullYear(), now.getMonth()-1, 1).toISOString().slice(0,10);
+    var prevMonthEnd  =new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0,10);
+    function sumIn(from, to){
+      var sal=(salTaswiyas||[]).filter(function(t){var d=String(t.date_paiement||'');return d>=from && d<=to;}).reduce(function(s,t){return s+Number(t.montant||0);},0);
+      var pc =(pcTaswiyas ||[]).filter(function(t){var d=String(t.date_paiement||'');return d>=from && d<=to;}).reduce(function(s,t){return s+Number(t.montant||0);},0);
+      var tch=(typeof edPayments!=='undefined'?edPayments:[]).filter(function(p){var d=String(p.pay_date||'');return d>=from && d<=to;}).reduce(function(s,p){return s+Number(p.amount||0);},0);
+      var cnt=(salTaswiyas||[]).filter(function(t){var d=String(t.date_paiement||'');return d>=from && d<=to;}).length
+            +(pcTaswiyas ||[]).filter(function(t){var d=String(t.date_paiement||'');return d>=from && d<=to;}).length
+            +(typeof edPayments!=='undefined'?edPayments:[]).filter(function(p){var d=String(p.pay_date||'');return d>=from && d<=to;}).length;
+      return {total:sal+pc+tch, count:cnt};
+    }
+    var cur=sumIn(thisMonthStart, thisMonthEnd);
+    var prv=sumIn(prevMonthStart, prevMonthEnd);
+    if(cur.count===0 && prv.count===0) return;
+    var delta=prv.total>0 ? Math.round(((cur.total-prv.total)/prv.total)*100) : null;
+    var deltaTxt = delta===null ? '' : (delta>=0?'▲ +'+delta+'%':'▼ '+delta+'%');
+    var deltaColor = delta===null ? 'var(--text3)' : (delta>=0?'var(--green)':'var(--red)');
+    var monthName=now.toLocaleDateString('ar-MA',{month:'long', year:'numeric'});
+    html+='<div style="background:linear-gradient(135deg,rgba(167,139,250,0.08),rgba(79,142,247,0.04));border:1px solid rgba(167,139,250,0.3);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">'
+      +'<div>'
+        +'<div style="font-size:11px;color:var(--text3);font-weight:700">📅 '+escB(monthName)+'</div>'
+        +'<div style="font-size:22px;font-weight:900;color:#a78bfa;margin-top:2px">'+fmtN(cur.total)+' <span style="font-size:11px;color:var(--text3);font-weight:600">DH</span></div>'
+        +'<div style="font-size:11px;color:var(--text2);margin-top:2px">'+cur.count+' خلاص</div>'
+      +'</div>'
+      +'<div style="text-align:left">'
+        +'<div style="font-size:11px;color:var(--text3);font-weight:700">الشهر السابق</div>'
+        +'<div style="font-size:14px;font-weight:700;color:var(--text2)">'+fmtN(prv.total)+' <span style="font-size:10px;color:var(--text3)">DH</span></div>'
+        +(deltaTxt?'<div style="font-size:12px;font-weight:800;color:'+deltaColor+';margin-top:2px">'+escB(deltaTxt)+'</div>':'')
+      +'</div>'
+    +'</div>';
+  })();
 
   // (Team activity heatmap removed per user request 2026-05-09 — kept the
   // per-card 14-day strips + the 60-day calendar in details modal; only the
@@ -17794,9 +17879,22 @@ async function salKhallas(salId){
 }
 
 async function salAnnulerTasw(salId){
-  if(!confirm('إلغاء التسوية؟'))return;
+  // Capture a reason so accounting can audit cancellations later. Audit row
+  // is best-effort — failure shouldn't block the cancel path.
+  var reason = prompt('إلغاء التسوية؟\nعلاش؟ (اختياري — يتسجل ف audit_log)');
+  if(reason === null) return; // user clicked cancel on the prompt
   const t=salTaswiyas.find(function(x){return x.salarie_id===salId&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
   if(t&&t.id){
+    // Audit row before destructive ops so we have the trail even if delete fails halfway
+    try{
+      var s=salariesData.find(function(x){return x.id===salId;});
+      var who=(typeof currentUser!=='undefined' && currentUser && (currentUser.email||currentUser.id))||'';
+      await sbFetch('audit_log','POST',{
+        table_name:'salarie_taswiyas', action:'CANCEL', row_id:t.id,
+        user_email:who,
+        details:JSON.stringify({montant:t.montant, date_from:t.date_from, date_to:t.date_to, salarie:s?(s.nom+(s.prenom?' '+s.prenom:'')):('#'+salId), reason:reason||''})
+      });
+    }catch(e){ console.warn('audit log on cancel failed:', e); }
     await sbFetch('salarie_taswiyas?id=eq.'+t.id,'DELETE');
     await unlinkCaisseMovement('sal_payment', t.id);
     // Reopen any avances that were absorbed by this specific tasweya so they
@@ -17916,9 +18014,19 @@ async function pcKhallas(ouvrierId){
 }
 
 async function pcAnnulerTasw(ouvrierId){
-  if(!confirm('إلغاء التسوية؟'))return;
+  var reason = prompt('إلغاء التسوية؟\nعلاش؟ (اختياري — يتسجل ف audit_log)');
+  if(reason === null) return;
   const t=pcTaswiyas.find(function(x){return x.ouvrier_id===ouvrierId&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
   if(t&&t.id){
+    try{
+      var o=(ouvriersPc||[]).find(function(x){return x.id===ouvrierId;});
+      var who=(typeof currentUser!=='undefined' && currentUser && (currentUser.email||currentUser.id))||'';
+      await sbFetch('audit_log','POST',{
+        table_name:'pc_taswiyas', action:'CANCEL', row_id:t.id,
+        user_email:who,
+        details:JSON.stringify({montant:t.montant, date_from:t.date_from, date_to:t.date_to, ouvrier:o?o.nom:('#'+ouvrierId), reason:reason||''})
+      });
+    }catch(e){ console.warn('audit log on cancel failed:', e); }
     try{ await sbFetch('pc_taswiyas?id=eq.'+t.id,'DELETE'); }catch(e){ console.warn('pc_taswiyas delete failed:',e); }
     await unlinkCaisseMovement('pc_payment', t.id);
     // Reopen PC avances absorbed by this tasweya so the credit is restored.
@@ -18589,7 +18697,20 @@ function renderSalHistorique(){
       html+='</tbody></table></div></div>';
     }
   } else {
-    if(!taswF.length && !pcTaswF.length) return html + emptyBlock('✅','ما كاين حتى تسوية');
+    // Tech payments — included in the taswiyas roll-up. Filtered by date_paiement
+    // window when a date filter is set (matches existing taswiyas behavior).
+    var techPayF = (typeof edPayments!=='undefined' && Array.isArray(edPayments)) ? edPayments.slice() : [];
+    if(salHistFrom) techPayF = techPayF.filter(function(p){ return String(p.pay_date||'') >= salHistFrom; });
+    if(salHistTo)   techPayF = techPayF.filter(function(p){ return String(p.pay_date||'') <= salHistTo; });
+    techPayF.sort(function(a,b){ return String(b.pay_date||'').localeCompare(String(a.pay_date||'')); });
+
+    if(!taswF.length && !pcTaswF.length && !techPayF.length) return html + emptyBlock('✅','ما كاين حتى تسوية');
+
+    // Export CSV button
+    html+='<div style="display:flex;justify-content:flex-end;margin-bottom:8px;gap:6px">'
+      +'<button onclick="salExportTaswiyasCSV()" title="تصدير قائمة التسويات إلى CSV" style="padding:6px 12px;background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.4);color:#10b981;border-radius:6px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer">📥 صدّر CSV</button>'
+    +'</div>';
+
     if(taswF.length){
     html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👤 تسويات الأجراء بالنهار</div>';
     html+='<div class="dash-panel" style="margin-bottom:14px"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>الأجير</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
@@ -18599,27 +18720,78 @@ function renderSalHistorique(){
         +'<td style="font-weight:700">'+escB(t.nom_salarie||getSalNom(t.salarie_id))+'</td>'
         +'<td style="font-size:12px;color:var(--text2)">'+fmtDate(t.date_from)+' → '+fmtDate(t.date_to)+'</td>'
         +'<td><span style="font-weight:800;color:var(--green);font-size:15px">'+fmtN(t.montant)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
-        +'<td>'+(t.id?'<button onclick="printTaswiyaRow('+t.id+')" title="طبع الشيك" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
+        +'<td>'+(t.id?'<button onclick="printTaswiyaRow('+t.id+')" title="طبع ورقة الأجر" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
       +'</tr>';
     });
     html+='</tbody></table></div></div>';
-    } // end if(taswF.length)
+    }
     if(pcTaswF.length){
       html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">👷 تسويات PCs</div>';
-      html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>العامل</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
+      html+='<div class="dash-panel" style="margin-bottom:14px"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>العامل</th><th>الفترة</th><th>المبلغ</th><th>🖨️</th></tr></thead><tbody>';
       pcTaswF.forEach(function(t,i){
         html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
           +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(t.date_paiement||t.created_at||'')+'</td>'
           +'<td style="font-weight:700">👷 '+escB(getPcNom(t.ouvrier_id))+'</td>'
           +'<td style="font-size:12px;color:var(--text2)">'+fmtDate(t.date_from)+' → '+fmtDate(t.date_to)+'</td>'
           +'<td><span style="font-weight:800;color:var(--green);font-size:15px">'+fmtN(t.montant)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
-          +'<td>'+(t.id?'<button onclick="printPcTaswiyaRow('+t.id+')" title="طبع الشيك" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
+          +'<td>'+(t.id?'<button onclick="printPcTaswiyaRow('+t.id+')" title="طبع ورقة الأجر" style="padding:4px 10px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">🖨️</button>':'')+'</td>'
+        +'</tr>';
+      });
+      html+='</tbody></table></div></div>';
+    }
+    if(techPayF.length){
+      html+='<div style="font-size:11px;font-weight:700;color:var(--text3);margin-bottom:6px">⚡ خلاص التقنيين</div>';
+      html+='<div class="dash-panel"><div style="overflow-x:auto"><table class="data-table"><thead><tr><th>التاريخ</th><th>التقني</th><th>المبلغ</th><th>ملاحظة</th></tr></thead><tbody>';
+      techPayF.forEach(function(p,i){
+        html+='<tr style="background:'+(i%2===0?'transparent':'rgba(255,255,255,0.02)')+'">'
+          +'<td style="color:var(--text2);white-space:nowrap;font-weight:600">'+fmtDate(p.pay_date||'')+'</td>'
+          +'<td style="font-weight:700">⚡ '+escB(p.technician_name||'')+'</td>'
+          +'<td><span style="font-weight:800;color:var(--green);font-size:15px">'+fmtN(p.amount)+'</span> <span style="font-size:11px;color:var(--text3)">DH</span></td>'
+          +'<td style="font-size:11px;color:var(--text3)">'+escB(p.note||'—')+'</td>'
         +'</tr>';
       });
       html+='</tbody></table></div></div>';
     }
   }
   return html;
+}
+
+// Export the active taswiyas filter as CSV (sal + pc + tech combined)
+function salExportTaswiyasCSV(){
+  var rows=[['type','date_paiement','worker','date_from','date_to','montant_DH','notes']];
+  (salTaswiyas||[]).filter(function(t){return (!salHistSalId||t.salarie_id===Number(salHistSalId));}).forEach(function(t){
+    var s=salariesData.find(function(x){return x.id===t.salarie_id;});
+    var nm=t.nom_salarie || (s ? (s.nom+(s.prenom?' '+s.prenom:'')) : '#'+t.salarie_id);
+    rows.push(['sal', t.date_paiement||'', nm, t.date_from||'', t.date_to||'', String(Number(t.montant||0)), '']);
+  });
+  if(!salHistSalId){
+    (pcTaswiyas||[]).forEach(function(t){
+      var o=(ouvriersPc||[]).find(function(x){return Number(x.id)===Number(t.ouvrier_id);});
+      rows.push(['pc', t.date_paiement||'', o?o.nom:'#'+t.ouvrier_id, t.date_from||'', t.date_to||'', String(Number(t.montant||0)), '']);
+    });
+    (typeof edPayments!=='undefined'?edPayments:[]).forEach(function(p){
+      if(salHistFrom && String(p.pay_date||'') < salHistFrom) return;
+      if(salHistTo   && String(p.pay_date||'') > salHistTo)   return;
+      rows.push(['tech', p.pay_date||'', p.technician_name||'', '', '', String(Number(p.amount||0)), p.note||'']);
+    });
+  }
+  // Build CSV — quote fields containing commas/quotes/newlines
+  var csv = rows.map(function(r){
+    return r.map(function(v){
+      var s=String(v==null?'':v);
+      if(/[",\n]/.test(s)) s='"'+s.replace(/"/g,'""')+'"';
+      return s;
+    }).join(',');
+  }).join('\n');
+  // Add UTF-8 BOM so Excel reads Arabic correctly
+  var blob=new Blob(['﻿'+csv], {type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='taswiyas-'+(salHistFrom||'all')+'_to_'+(salHistTo||'all')+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ a.remove(); URL.revokeObjectURL(a.href); }, 0);
+  try{toast('📥 CSV نزل','success');}catch(e){}
 }
 
 // ─── AJOUT ────────────────────────────────────────────────────

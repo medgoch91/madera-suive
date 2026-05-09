@@ -18961,9 +18961,9 @@ function renderFactSideBody(){
   +'</div>';
 
   return list.slice(0,60).map(function(f){
-    var num=(f.date?f.date.substring(0,4):new Date().getFullYear())+'-'+String(f.num||1).padStart(4,'0');
+    var num=_factDocLabel(f);
     var isPaid=f.statut==='مدفوعة';
-    var isDevis=f.statut==='ديفي';
+    var isDevis=(f.serie==='devis')||f.statut==='ديفي';
     var badge=isDevis
       ?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(147,51,234,0.15);color:#a78bfa;font-weight:700">📝 ديفي</span>'
       :(isPaid
@@ -18975,7 +18975,7 @@ function renderFactSideBody(){
     return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:all 0.15s;cursor:default" '
       +'onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
-        +'<div style="font-family:monospace;font-size:11px;font-weight:800;color:var(--accent)">#'+num+'</div>'
+        +'<div style="font-family:monospace;font-size:11px;font-weight:800;color:'+(isDevis?'#a78bfa':'var(--accent)')+'">'+num+'</div>'
         +badge
       +'</div>'
       +'<div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escB(f.client_nom||'—')+'</div>'
@@ -19017,8 +19017,9 @@ function openFacturePhoto(id){
   var c=document.getElementById('modal-main-c'); if(!c) return;
   var hasPhoto=!!f.photo_path;
   var url=hasPhoto?docPhotoUrl(f.photo_path):'';
-  var num=(f.date?f.date.substring(0,4):'')+'-'+String(f.num||'').padStart(4,'0');
-  c.innerHTML='<div class="modal-title"><span>📷 صورة الفاتورة #'+escB(num)+'</span><button class="modal-close" onclick="closeMM()">✕</button></div>'+
+  var num=_factDocLabel(f);
+  var isDevis=(f.serie==='devis')||f.statut==='ديفي';
+  c.innerHTML='<div class="modal-title"><span>📷 صورة '+(isDevis?'الديفي':'الفاتورة')+' '+escB(num)+'</span><button class="modal-close" onclick="closeMM()">✕</button></div>'+
     '<div style="text-align:center;padding:12px">'+
       (hasPhoto
         ? '<a href="'+escB(url)+'" target="_blank" rel="noopener"><img src="'+escB(url)+'" style="max-width:100%;max-height:60vh;border-radius:8px;border:1px solid var(--border);object-fit:contain"></a>'
@@ -19035,15 +19036,31 @@ function openFacturePhoto(id){
     '</div>';
 }
 
+// Conversion re-numbers the row in the destination serie so DEV-* and
+// FAC-* sequences both stay clean from 1.
+async function _nextNumForSerie(serie, year){
+  try{
+    var srv=await sbFetch('factures','GET',null,'select=num&serie=eq.'+serie+'&date=gte.'+year+'-01-01&date=lte.'+year+'-12-31&order=num.desc&limit=1');
+    var srvMax=(Array.isArray(srv) && srv[0] && Number(srv[0].num))||0;
+    var locMax=factures.filter(function(f){
+      if(!f.date || !String(f.date).startsWith(String(year))) return false;
+      var s=f.serie || (f.statut==='ديفي'?'devis':'fact');
+      return s===serie;
+    }).reduce(function(m,f){return Math.max(m, Number(f.num)||0);},0);
+    return Math.max(srvMax, locMax)+1;
+  }catch(e){ return 1; }
+}
 async function factConvertDevis(id){
   var f=factures.find(function(x){return x.id===id;}); if(!f) return;
-  if(!confirm('تحويل هاد الديفي إلى فاتورة؟ الستاتو غادي يولي "معلقة".')) return;
+  if(!confirm('تحويل هاد الديفي إلى فاتورة؟ الرقم غادي يتحول للسلسلة دلفواتير.')) return;
   try{
-    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'معلقة'});
+    var year=Number((f.date||'').slice(0,4))||new Date().getFullYear();
+    var newNum=await _nextNumForSerie('fact', year);
+    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'معلقة', serie:'fact', num:newNum});
     if(res && res.__sbError) throw new Error(res.msg||'فشل');
-    f.statut='معلقة';
+    f.statut='معلقة'; f.serie='fact'; f.num=newNum;
     saveCacheLS();
-    try{toast('✅ تحول لفاتورة','success');}catch(e){}
+    try{toast('✅ تحول لفاتورة #'+newNum,'success');}catch(e){}
     if(typeof renderFactures==='function') renderFactures();
   }catch(e){
     try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
@@ -19051,17 +19068,26 @@ async function factConvertDevis(id){
 }
 async function factToDevis(id){
   var f=factures.find(function(x){return x.id===id;}); if(!f) return;
-  if(!confirm('تحويل هاد الفاتورة إلى ديفي؟')) return;
+  if(!confirm('تحويل هاد الفاتورة إلى ديفي؟ الرقم غادي يتحول للسلسلة دلديفي.')) return;
   try{
-    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'ديفي'});
+    var year=Number((f.date||'').slice(0,4))||new Date().getFullYear();
+    var newNum=await _nextNumForSerie('devis', year);
+    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'ديفي', serie:'devis', num:newNum});
     if(res && res.__sbError) throw new Error(res.msg||'فشل');
-    f.statut='ديفي';
+    f.statut='ديفي'; f.serie='devis'; f.num=newNum;
     saveCacheLS();
-    try{toast('📝 تحول ل ديفي','success');}catch(e){}
+    try{toast('📝 تحول ل ديفي #'+newNum,'success');}catch(e){}
     if(typeof renderFactures==='function') renderFactures();
   }catch(e){
     try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
   }
+}
+// Display label — single source of truth for FAC- vs DEV-
+function _factDocLabel(f){
+  var serie=f.serie || (f.statut==='ديفي'?'devis':'fact');
+  var year=(f.date||'').substring(0,4) || new Date().getFullYear();
+  var num=String(f.num||1).padStart(4,'0');
+  return (serie==='devis'?'DEV':'FAC')+'-'+year+'-'+num;
 }
 var factNewAsDevis=false;
 function factToggleAsDevis(checked){ factNewAsDevis=!!checked; }
@@ -19518,14 +19544,20 @@ async function _factSaveNewImpl(){
       tva=ttc-ht;
     }
 
-    // Next sequential number — query SERVER for max(num) this year (avoids stale local state / concurrent tabs)
+    // Next sequential number — query SERVER for max(num) this year, scoped to
+    // the current serie ('fact' | 'devis') so each series numbers from 1
+    // independently.
     const _factYear=new Date().getFullYear();
+    const _factSerie=factNewAsDevis?'devis':'fact';
     async function _computeNextNum(){
-      // Query server for max num this year
-      var srv=await sbFetch('factures','GET',null,'select=num&date=gte.'+_factYear+'-01-01&date=lte.'+_factYear+'-12-31&order=num.desc&limit=1');
+      var srv=await sbFetch('factures','GET',null,'select=num&serie=eq.'+_factSerie+'&date=gte.'+_factYear+'-01-01&date=lte.'+_factYear+'-12-31&order=num.desc&limit=1');
       var srvMax=(Array.isArray(srv) && srv[0] && Number(srv[0].num))||0;
-      // Also consider local (may have unsynced items)
-      var _yearFacts=factures.filter(function(f){ return f.date && String(f.date).startsWith(String(_factYear)); });
+      // Also consider local rows of the same serie (may have unsynced items)
+      var _yearFacts=factures.filter(function(f){
+        if(!f.date || !String(f.date).startsWith(String(_factYear))) return false;
+        var s=f.serie || (f.statut==='ديفي'?'devis':'fact');
+        return s===_factSerie;
+      });
       var locMax=_yearFacts.length?Math.max.apply(null,_yearFacts.map(function(f){return Number(f.num)||0;})):0;
       return Math.max(srvMax, locMax)+1;
     }
@@ -19554,7 +19586,9 @@ async function _factSaveNewImpl(){
         total_ht:Math.round(ht*100)/100,
         total_tva:Math.round(tva*100)/100,
         total_ttc:Math.round(ttc*100)/100,
-        statut:(factNewAsDevis?'ديفي':'معلقة'),notes:factNewNotes,
+        statut:(factNewAsDevis?'ديفي':'معلقة'),
+        serie:_factSerie,
+        notes:factNewNotes,
       };
       const res=await sbFetch('factures','POST',payload);
       if(res && res.__sbError){

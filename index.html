@@ -17224,10 +17224,9 @@ function renderSalDashboard(){
     +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi+edTechDueAll)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
 
-  // Team activity heatmap — last 14 days across all active workers + PCs
-  // ("swivi dyal khdam imta khdm imta la"). Goes between KPIs and the
-  // per-section card grids so the boss sees attendance at a glance.
-  try{ html+=_dashTeamActivitySection(); }catch(e){ console.warn('team activity section failed:', e); }
+  // (Team activity heatmap removed per user request 2026-05-09 — kept the
+  // per-card 14-day strips + the 60-day calendar in details modal; only the
+  // standalone "نشاط الخدامة" section was unwanted.)
 
   // Don't early-return when salariés rows are empty — PCs may still have
   // data and we want to render their table below. Just emit a thin notice
@@ -18063,7 +18062,11 @@ function renderCaisse(){
       +'<td style="text-align:end;font-weight:700;color:var(--green)">'+inAmt+'</td>'
       +'<td style="text-align:end;font-weight:700;color:var(--red)">'+outAmt+'</td>'
       +'<td style="text-align:end;font-weight:800;color:'+(m._run>=0?'var(--accent)':'var(--red)')+'">'+fmtN(m._run)+'</td>'
-      +'<td style="text-align:center">'+(canDel?'<button onclick="caisseDeleteMovement('+m.id+')" title="حذف" style="background:transparent;border:1px solid rgba(232,64,64,0.3);color:var(--red);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:11px">🗑️</button>':'<span title="مربوط — يتحذف من المصدر" style="color:var(--text3);font-size:11px">🔗</span>')+'</td>'
+      +'<td style="text-align:center;white-space:nowrap">'+(canDel
+          ? '<button onclick="caisseEditMovement('+m.id+')" title="تعديل" style="background:transparent;border:1px solid rgba(79,142,247,0.4);color:var(--accent);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:11px;margin-inline-end:4px">✏️</button>'+
+            '<button onclick="caisseDeleteMovement('+m.id+')" title="حذف" style="background:transparent;border:1px solid rgba(232,64,64,0.3);color:var(--red);border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:11px">🗑️</button>'
+          : '<span title="مربوط — يتحذف من المصدر" style="color:var(--text3);font-size:11px">🔗</span>'
+        )+'</td>'
     +'</tr>';
   });
   html += '</tbody></table></div></div>';
@@ -18130,6 +18133,93 @@ async function caisseDeleteMovement(id){
   localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
   hideLoader();
   renderCaisse();
+}
+
+// Edit modal — only for free entries (no linked_kind). Mirrored movements
+// must be edited at their source (taswiya, avance, etc.) so the ledger
+// stays consistent.
+function caisseEditMovement(id){
+  const m = (caisseMovements||[]).find(function(x){return Number(x.id)===Number(id);});
+  if(!m){ try{toast('ما لقيناهاش','warning');}catch(e){} return; }
+  if(m.linked_kind){
+    alert('هاد الحركة مربوطة ب '+m.linked_kind+' — التعديل كيتم من المصدر.');
+    return;
+  }
+  const isIn = m.type === 'in';
+  const html = '<div class="modal-title"><span>✏️ تعديل '+(isIn?'دخول':'خرج')+'</span>'
+    +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
+    +'<input type="hidden" id="caisse-edit-id" value="'+m.id+'">'
+    +'<div class="form-grid" style="gap:12px">'
+      +'<div class="form-full"><label class="field-lbl">النوع *</label>'
+        +'<div style="display:flex;gap:6px">'
+          +'<button type="button" class="pill'+(isIn?' active':'')+'" data-edit-type="in"  onclick="_caisseEditSetType(\'in\')"  style="flex:1;'+(isIn?'border-color:var(--green);background:rgba(46,204,122,0.18);color:var(--green);font-weight:800':'')+'">➕ دخول</button>'
+          +'<button type="button" class="pill'+(!isIn?' active':'')+'" data-edit-type="out" onclick="_caisseEditSetType(\'out\')" style="flex:1;'+(!isIn?'border-color:var(--red);background:rgba(232,64,64,0.18);color:var(--red);font-weight:800':'')+'">➖ خرج</button>'
+        +'</div>'
+      +'</div>'
+      +'<div class="form-full"><label class="field-lbl">التاريخ *</label><input class="field-inp" type="date" id="caisse-edit-date" value="'+escB(m.date||'')+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">البيان *</label><input class="field-inp" id="caisse-edit-desig" value="'+escB(m.designation||'')+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" type="number" id="caisse-edit-amount" min="0" step="0.01" value="'+(Number(m.amount)||0)+'"></div>'
+      +'<div class="form-full"><label class="field-lbl">ملاحظة (اختياري)</label><input class="field-inp" id="caisse-edit-notes" value="'+escB(m.notes||'')+'"></div>'
+    +'</div>'
+    +'<div style="display:flex;gap:10px;margin-top:18px">'
+      +'<button class="btn btn-accent" style="flex:1;padding:12px" onclick="caisseSubmitEdit()">💾 حفظ التعديل</button>'
+      +'<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
+    +'</div>'
+    +'<div id="caisse-edit-msg" style="text-align:center;font-size:12px;margin-top:10px;min-height:16px"></div>';
+  const c=document.getElementById('modal-main-c');
+  c.innerHTML = html;
+  c.dataset.editType = m.type;
+  document.getElementById('modal-main').classList.add('open');
+}
+function _caisseEditSetType(t){
+  const c=document.getElementById('modal-main-c'); if(!c) return;
+  c.dataset.editType = t;
+  document.querySelectorAll('[data-edit-type]').forEach(function(b){
+    const k=b.getAttribute('data-edit-type');
+    const active=k===t;
+    if(k==='in'){
+      b.style.cssText = 'flex:1;'+(active?'border-color:var(--green);background:rgba(46,204,122,0.18);color:var(--green);font-weight:800':'');
+    } else {
+      b.style.cssText = 'flex:1;'+(active?'border-color:var(--red);background:rgba(232,64,64,0.18);color:var(--red);font-weight:800':'');
+    }
+    b.classList.toggle('active', active);
+  });
+}
+async function caisseSubmitEdit(){
+  const id     = Number((document.getElementById('caisse-edit-id')||{value:0}).value);
+  const c      = document.getElementById('modal-main-c');
+  const type   = (c && c.dataset.editType) || 'out';
+  const date   = (document.getElementById('caisse-edit-date')||{value:''}).value;
+  const desig  = (document.getElementById('caisse-edit-desig')||{value:''}).value.trim();
+  const amount = parseFloat((document.getElementById('caisse-edit-amount')||{value:'0'}).value)||0;
+  const notes  = (document.getElementById('caisse-edit-notes')||{value:''}).value.trim();
+  const msg    = document.getElementById('caisse-edit-msg');
+  const setMsg = (t,col) => { if(msg){ msg.style.color=col||'var(--text2)'; msg.textContent=t||''; } };
+  if(!id){ setMsg('ID ضائع','var(--red)'); return; }
+  if(!desig){ setMsg('البيان مطلوب','var(--red)'); return; }
+  if(!amount){ setMsg('المبلغ مطلوب','var(--red)'); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')){ setMsg('تاريخ غير صالح','var(--red)'); return; }
+  setMsg('⏳ جاري الحفظ...');
+  try{
+    const res = await sbFetch('caisse_movements?id=eq.'+id,'PATCH',{
+      date: date, type: type, amount: amount, designation: desig, notes: notes
+    });
+    if(res && res.__sbError) throw new Error(res.msg||'فشل');
+    // Update local cache
+    const idx = caisseMovements.findIndex(function(x){return Number(x.id)===id;});
+    if(idx>=0){
+      caisseMovements[idx].date = date;
+      caisseMovements[idx].type = type;
+      caisseMovements[idx].amount = amount;
+      caisseMovements[idx].designation = desig;
+      caisseMovements[idx].notes = notes;
+    }
+    localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+    setMsg('✅ تم','var(--green)');
+    setTimeout(function(){ document.getElementById('modal-main').classList.remove('open'); renderCaisse(); }, 600);
+  }catch(e){
+    setMsg('❌ '+(e&&e.message||'فشل'),'var(--red)');
+  }
 }
 
 // ─── HISTORIQUE ───────────────────────────────────────────────

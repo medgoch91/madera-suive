@@ -8593,6 +8593,7 @@ function renderArticles(){
       +viewToggle
       +'<button class="btn btn-outline" onclick="document.getElementById(\'csv-art-input\').click()" title="استيراد من CSV (nom,unite,cat,ref,stock)">📥 CSV</button>'
       +'<input type="file" id="csv-art-input" accept=".csv,text/csv" style="display:none" onchange="importArticlesCSV(event)">'
+      +'<button class="btn btn-outline" onclick="openArticleArchives()" title="السلع المؤرشفة">🗄️ المؤرشف</button>'
       +'<button class="btn btn-accent" onclick="openAddArticleModal()">➕ سلعة جديدة</button>'
       +'</div>'
       + renderArticleKPIs()
@@ -13578,6 +13579,66 @@ async function archiveDepartment(id){
     try{toast('✅ تم الأرشفة','success');}catch(e){}
   }catch(e){
     try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+
+// ─── Article archives (soft-deleted recovery UI) ─────────────
+async function openArticleArchives(){
+  document.getElementById('modal-main').classList.add('open');
+  var c=document.getElementById('modal-main-c');
+  if(!c) return;
+  c.innerHTML='<div class="modal-title"><span>🗄️ السلع المؤرشفة</span><button class="modal-close" onclick="closeMM()">✕</button></div>'
+    +'<div style="text-align:center;color:var(--text3);padding:24px">⏳ جاري التحميل...</div>';
+  try{
+    var rows=await sbFetch('articles','GET',null,'select=id,nom,ref,unite,cat,deleted_at&deleted_at=not.is.null&order=deleted_at.desc');
+    if(!Array.isArray(rows)) rows=[];
+    var listHtml=rows.map(function(a){
+      var when=a.deleted_at ? new Date(a.deleted_at).toLocaleDateString('fr-MA') : '—';
+      return '<tr>'+
+        '<td><b>'+escB(a.nom||'')+'</b>'+(a.ref?' <small style="color:var(--text3);font-family:monospace">· '+escB(a.ref)+'</small>':'')+
+          (a.cat?'<br><small style="color:var(--text3)">'+escB(a.cat)+'</small>':'')+'</td>'+
+        '<td style="font-size:11px;color:var(--text3)">'+escB(when)+'</td>'+
+        '<td style="text-align:left">'+
+          '<button class="btn-ghost" style="padding:4px 10px;color:var(--green)" onclick="restoreArticle('+a.id+')">↩️ استرجع</button>'+
+        '</td>'+
+      '</tr>';
+    }).join('');
+    c.innerHTML='<div class="modal-title"><span>🗄️ السلع المؤرشفة ('+rows.length+')</span><button class="modal-close" onclick="closeMM()">✕</button></div>'
+      +(rows.length
+        ? '<table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm)"><thead><tr><th>السلعة</th><th>تاريخ الأرشفة</th><th></th></tr></thead><tbody>'+listHtml+'</tbody></table>'
+        : '<div style="padding:30px;text-align:center;color:var(--text3);font-size:13px;background:var(--bg3);border:1px dashed var(--border);border-radius:var(--radius-sm)">— ما كاين شي سلعة مؤرشفة —</div>'
+      );
+  }catch(e){
+    c.innerHTML='<div class="modal-title"><span>🗄️ المؤرشف</span><button class="modal-close" onclick="closeMM()">✕</button></div>'
+      +'<div style="padding:20px;color:var(--red);text-align:center">❌ '+escB(e&&e.message||'فشل التحميل')+'</div>';
+  }
+}
+async function restoreArticle(id){
+  if(!confirm('استرجاع هاد السلعة؟ غادي ترجع تتل9ا ف الكتالوغ.')) return;
+  try{
+    var res=await sbFetch('articles?id=eq.'+id,'PATCH',{deleted_at:null});
+    if(res && res.__sbError){ throw new Error(res.msg||'فشل'); }
+    // Re-fetch the restored row + add it to local cache so the user sees it
+    // immediately without a full reload.
+    try{
+      var fresh=await sbFetch('articles?id=eq.'+id,'GET',null,'select=*');
+      if(Array.isArray(fresh)&&fresh[0]){
+        var a=fresh[0];
+        var idx=articles.findIndex(function(x){return x.id===a.id;});
+        var row={id:a.id,nom:a.nom,unite:a.unite,cat:a.cat,ref:a.ref||''};
+        if(idx>=0) articles[idx]=row; else articles.push(row);
+        try{
+          if(a.stock!=null) localStorage.setItem('art_stock_'+a.id, String(Math.max(0,Math.floor(Number(a.stock)||0))));
+          if(a.stock_min!=null && a.stock_min!=='') localStorage.setItem('art_stockmin_'+a.id, String(Math.max(0, Number(a.stock_min))));
+        }catch(e){}
+      }
+    }catch(e){}
+    try{ saveCacheLS(); }catch(e){}
+    try{toast('↩️ تم الاسترجاع','success');}catch(e){}
+    openArticleArchives(); // re-render archives list
+    if(typeof renderArticles==='function') renderArticles();
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
   }
 }
 

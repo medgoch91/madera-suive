@@ -17627,41 +17627,58 @@ async function edDashKhallasTech(name){
 }
 
 // ── Print cheque prefilled from a taswiya (salary settlement) ──
+// Re-build a salary "row" (the same shape salDashboard makes per worker)
+// from a stored taswiya's period. Used by print/share flows that operate
+// on past settlements where salLastRows may not match the active period.
+function _buildSalRowForPeriod(salId, dateFrom, dateTo){
+  var s=(salariesData||[]).find(function(x){return x.id===salId;});
+  if(!s) return null;
+  var myPres=(salariePresences||[]).filter(function(p){return p.salarie_id===salId && p.date>=dateFrom && p.date<=dateTo;});
+  var joursP=myPres.filter(function(p){return p.statut==='present';}).length;
+  var demiJ =myPres.filter(function(p){return p.statut==='demi';}).length*0.5;
+  var totalJours=(typeof _sumDayWageBase==='function') ? _sumDayWageBase(salId, myPres) : 0;
+  var totalHsup=myPres.reduce(function(t,p){return t+(Number(p.heures_supp||0)*Number(p.taux_horaire||0));},0);
+  var totalProd=myPres.reduce(function(t,p){
+    if(!p.notes) return t;
+    try{ var ls=JSON.parse(p.notes); return t + ls.reduce(function(s2,l){return s2+Number(l.qte)*Number(l.prix);},0); }catch(e){ return t; }
+  },0);
+  return {s:s, joursTotal:joursP+demiJ, totalJours:totalJours, totalHsup:totalHsup, totalProd:totalProd, totalAvs:0};
+}
+
 function printTaswiyaRow(taswId){
-  const t = salTaswiyas.find(function(x){return x.id===taswId;});
+  var t=salTaswiyas.find(function(x){return x.id===taswId;});
   if(!t){ toast('التسوية غير موجودة','error'); return; }
-  const s = salariesData.find(function(x){return x.id===t.salarie_id;});
-  const ordre = t.nom_salarie || (s ? (s.nom+(s.prenom?' '+s.prenom:'')) : '');
-  printMode = 'cheque';
-  _setPendingPrintData({
-    ordre:    ordre,
-    montant:  t.montant || '',
-    date:     t.date_paiement || new Date().toISOString().split('T')[0],
-    echeance: '',
-    ville:    'Agadir',
-    num:      '',
-    type:     'cheque'
-  });
-  const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
-  showPage('print-cheque', navBtn);
+  var r=_buildSalRowForPeriod(t.salarie_id, t.date_from, t.date_to);
+  if(!r){ toast('العامل غير موجود','error'); return; }
+  // totalAvs wasn't snapshotted on the taswiya row historically; derive
+  // it as gross − cashPaid so the bulletin's 💳 السلف line still shows
+  // the right deduction.
+  var gross=Number(r.totalJours||0)+Number(r.totalHsup||0)+Number(r.totalProd||0);
+  var cashPaid=Number(t.montant||0);
+  var totalAvs=Math.max(0, gross-cashPaid);
+  r.totalAvs=totalAvs;
+  var html=salBuildPayslipHTML(r, t.date_from, t.date_to, cashPaid, false, 0);
+  if(!html){ toast('تعذر التحميل','error'); return; }
+  var w=window.open('','_blank'); if(!w) return;
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
+  w.document.close();
 }
 
 function printPcTaswiyaRow(taswId){
-  const t = pcTaswiyas.find(function(x){return x.id===taswId;});
+  var t=pcTaswiyas.find(function(x){return x.id===taswId;});
   if(!t){ toast('التسوية غير موجودة','error'); return; }
-  const o = ouvriersPc.find(function(x){return x.id===t.ouvrier_id;});
-  printMode = 'cheque';
-  _setPendingPrintData({
-    ordre:    o ? o.nom : '',
-    montant:  t.montant || '',
-    date:     t.date_paiement || new Date().toISOString().split('T')[0],
-    echeance: '',
-    ville:    'Agadir',
-    num:      '',
-    type:     'cheque'
-  });
-  const navBtn = document.querySelector(".nav-btn[onclick*=\"'print-cheque'\"]");
-  showPage('print-cheque', navBtn);
+  var o=ouvriersPc.find(function(x){return x.id===t.ouvrier_id;});
+  if(!o){ toast('العامل غير موجود','error'); return; }
+  // Re-compute production for that period (PCs don't have hsup / status)
+  var myPres=(pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===Number(t.ouvrier_id) && r.date>=t.date_from && r.date<=t.date_to;});
+  var totalProd=myPres.reduce(function(s,r){return s+Number(r.qte||0)*Number(r.prix||0);},0);
+  var cashPaid=Number(t.montant||0);
+  var totalAvs=Math.max(0, totalProd-cashPaid);
+  var html=pcBuildPayslipHTML(o, t.date_from, t.date_to, cashPaid, false, 0, totalProd, totalAvs);
+  if(!html){ toast('تعذر التحميل','error'); return; }
+  var w=window.open('','_blank'); if(!w) return;
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie PC</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
+  w.document.close();
 }
 
 async function salKhallas(salId){

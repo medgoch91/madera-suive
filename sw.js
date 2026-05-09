@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v116-activity-payslip-pc';
+const CACHE = 'suivi-v117-pwa-mobile-bot';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

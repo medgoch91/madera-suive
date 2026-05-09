@@ -2212,6 +2212,7 @@ async function loadAllData(){
         lignes:Array.isArray(b.lignes)?b.lignes:(b.lignes?JSON.parse(b.lignes):[]),
         total:parseFloat(b.total)||0,
         totalNet:parseFloat(b.total_net)||0,
+        photoPath:b.photo_path||null,
       };
     });
 
@@ -5415,6 +5416,25 @@ function openBonModal(id){
         <tr style="background:var(--bg4)"><td colspan="4" style="font-weight:700">المجموع</td><td style="color:var(--accent);font-weight:800;font-size:15px">${fmt(b.total)}</td></tr>
       </tbody>
     </table>
+    ${(function(){
+      var hasPhoto=!!b.photoPath;
+      var url=hasPhoto?bonPhotoUrl(b.photoPath):'';
+      return '<div style="margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:'+(hasPhoto?'10px':'0')+'">'+
+          '<div style="font-size:12px;color:var(--text2);font-weight:700">📷 صورة الورقة</div>'+
+          '<div style="display:flex;gap:6px">'+
+            (hasPhoto
+              ? '<button class="btn-ghost" style="padding:5px 10px;font-size:11px;color:#06b6d4" onclick="shareBonPhotoTelegram('+b.id+')" title="إرسال للتيليجرام">📨</button>'+
+                '<button class="btn-ghost" style="padding:5px 10px;font-size:11px" onclick="_triggerBonPhotoUpload('+b.id+')" title="بدّل الصورة">🔄</button>'+
+                '<button class="btn-ghost" style="padding:5px 10px;font-size:11px;color:var(--red)" onclick="removeBonPhoto('+b.id+')" title="حذف">🗑️</button>'
+              : '<button class="btn" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700" onclick="_triggerBonPhotoUpload('+b.id+')">📷 زيد صورة</button>')+
+          '</div>'+
+        '</div>'+
+        (hasPhoto
+          ? '<a href="'+escB(url)+'" target="_blank" rel="noopener" style="display:block;text-align:center"><img src="'+escB(url)+'" alt="بون" style="max-width:100%;max-height:280px;border-radius:8px;border:1px solid var(--border);object-fit:contain;cursor:zoom-in"></a>'
+          : '<small style="color:var(--text3);font-size:10px">snap photo dyal l-bon w-r9i bach yt-archive m3a record</small>')+
+      '</div>';
+    })()}
     <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn btn-accent" style="flex:1;min-width:100px" onclick="printBon(${b.id})">🖨️ طباعة</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)" onclick="cloneBon(${b.id})" title="نسخ كقالب جديد">📑 استنساخ</button>
@@ -13579,6 +13599,94 @@ async function archiveDepartment(id){
     try{toast('✅ تم الأرشفة','success');}catch(e){}
   }catch(e){
     try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+
+// ─── Bon d'entrée photo upload (Storage bucket: bon-photos) ──
+function bonPhotoUrl(path){
+  if(!path) return '';
+  return SB_URL+'/storage/v1/object/public/bon-photos/'+path;
+}
+async function uploadBonPhoto(bonId, file){
+  if(!file || !bonId) return null;
+  if(file.size > 9 * 1024 * 1024){ try{toast('⚠️ الصورة كبيرة بزاف (>9MB)','warning');}catch(e){} return null; }
+  var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
+  var path='bon-'+bonId+'-'+Date.now()+'.'+ext;
+  showLoader('📷 جاري رفع الصورة...');
+  try{
+    var url=SB_URL+'/storage/v1/object/bon-photos/'+encodeURIComponent(path);
+    var res=await fetch(url, {
+      method:'POST',
+      headers:{
+        'apikey':SB_KEY,
+        'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY),
+        'Content-Type':file.type||'image/jpeg',
+        'x-upsert':'true'
+      },
+      body:file
+    });
+    if(!res.ok){ var t=await res.text(); throw new Error('Upload '+res.status+': '+t.slice(0,200)); }
+    // Persist photo_path on the bon row
+    await sbFetch('bons?id=eq.'+bonId,'PATCH',{photo_path:path});
+    var b=bons.find(function(x){return x.id===bonId;});
+    if(b) b.photoPath=path;
+    saveCacheLS();
+    hideLoader();
+    try{toast('📷 تم الحفظ','success');}catch(e){}
+    return path;
+  }catch(e){
+    hideLoader();
+    try{toast('❌ '+(e&&e.message||'فشل الرفع'),'error');}catch(err){}
+    return null;
+  }
+}
+async function removeBonPhoto(bonId){
+  var b=bons.find(function(x){return x.id===bonId;}); if(!b || !b.photoPath) return;
+  if(!confirm('حذف الصورة؟')) return;
+  try{
+    // Delete from storage (best-effort)
+    try{
+      await fetch(SB_URL+'/storage/v1/object/bon-photos/'+encodeURIComponent(b.photoPath), {
+        method:'DELETE',
+        headers:{
+          'apikey':SB_KEY,
+          'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY)
+        }
+      });
+    }catch(e){ console.warn('storage delete failed:', e); }
+    // Clear photo_path
+    await sbFetch('bons?id=eq.'+bonId,'PATCH',{photo_path:null});
+    b.photoPath=null;
+    saveCacheLS();
+    try{toast('🗑️ تحذفات الصورة','success');}catch(e){}
+    if(typeof openBonModal==='function') openBonModal(bonId);
+  }catch(e){
+    try{toast('❌ فشل','error');}catch(err){}
+  }
+}
+function _triggerBonPhotoUpload(bonId){
+  var inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*';
+  inp.capture='environment';
+  inp.onchange=async function(ev){
+    var file=ev.target.files && ev.target.files[0]; if(!file) return;
+    var path=await uploadBonPhoto(bonId, file);
+    if(path && typeof openBonModal==='function') openBonModal(bonId);
+  };
+  inp.click();
+}
+async function shareBonPhotoTelegram(bonId){
+  var b=bons.find(function(x){return x.id===bonId;}); if(!b || !b.photoPath) return;
+  try{
+    var url=bonPhotoUrl(b.photoPath);
+    var caption='📋 BON-'+b.num+' · '+(b.fournisseur||'')+' · '+fmtN(b.total||0)+' DH';
+    // Fetch the public URL to a blob, then forward as photo
+    var blob=await fetch(url).then(function(r){return r.blob();});
+    await sendTelegramPhotoBroadcast(blob, 'bon-'+b.num+'.jpg', caption);
+    try{toast('📨 صيفطات','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
   }
 }
 

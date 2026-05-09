@@ -12027,6 +12027,21 @@ async function pushCaisseMovement(date, type, amount, designation, linkedKind, l
   if(res && Array.isArray(res) && res[0]){
     caisseMovements.push(res[0]);
     localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
+    // Telegram broadcast — explicit cash-flow notif (distinct from any
+    // upstream event notif fired by the caller). Brief, includes running
+    // running solde so the user sees the cash position at a glance.
+    try{
+      var solde=getCaisseSolde();
+      var icon=payload.type==='in'?'⬆️ دخول الصندوق':'⬇️ خروج الصندوق';
+      var sign=payload.type==='in'?'+':'-';
+      var lines=[
+        icon,
+        sign+fmtN(payload.amount)+' د.م. · '+(payload.designation||'—'),
+        '💵 الصندوق: '+fmtN(solde.solde)+' د.م.'
+      ];
+      if(payload.notes) lines.push('📝 '+payload.notes);
+      sendTelegramBroadcast(lines.join('\n'));
+    }catch(e){ console.warn('[caisse] notif failed:', e); }
     return res[0];
   }
   // The unique index can reject a duplicate insert (linked_kind+linked_id
@@ -12036,6 +12051,23 @@ async function pushCaisseMovement(date, type, amount, designation, linkedKind, l
     return null;
   }
   return null;
+}
+
+// Today's running settlement total (salarie_taswiyas + pc_taswiyas +
+// technician_payments paid today). Returned as a small object so the
+// caller can format it into existing notif messages.
+function _todaySettlementsSummary(){
+  var today=new Date().toISOString().slice(0,10);
+  var sal=(salTaswiyas||[]).filter(function(t){return String(t.date_paiement||'')===today;});
+  var pc =(pcTaswiyas ||[]).filter(function(t){return String(t.date_paiement||'')===today;});
+  // tech payments live in edPayments (loaded via loadEdData)
+  var techRows=(typeof edPayments!=='undefined' && Array.isArray(edPayments)) ? edPayments : [];
+  var tech=techRows.filter(function(p){return String(p.pay_date||'')===today;});
+  var total=0, count=0;
+  sal.forEach(function(t){ total+=Number(t.montant||0); count++; });
+  pc.forEach(function(t){ total+=Number(t.montant||0); count++; });
+  tech.forEach(function(p){ total+=Number(p.amount||0); count++; });
+  return {total:total, count:count, sal:sal.length, pc:pc.length, tech:tech.length};
 }
 
 // Hard-delete the caisse movement that mirrors a given source row, if any.
@@ -16366,12 +16398,23 @@ async function edPaySubmit(){
     // Mirror to caisse (real cash out for the technician's labor) + Telegram.
     if(savedRow && savedRow.id){
       try{ await pushCaisseMovement(payDate, 'out', amount, '🛠️ تقني — '+edPayTech, 'tech_payment', savedRow.id, note); }catch(e){}
-      try{ sendTelegramBroadcast([
-        '💰 *خلاص تقني*',
-        '🛠️ التقني: '+edPayTech,
-        '📅 التاريخ: '+fmtDate(payDate),
-        '💵 المبلغ: '+fmtN(amount)+' DH',
-      ].concat(note?['📝 '+note]:[]).join('\n')); }catch(e){}
+      try{
+        var techLines=[
+          '💰 *خلاص تقني*',
+          '🛠️ التقني: '+edPayTech,
+          '📅 التاريخ: '+fmtDate(payDate),
+          '💵 المبلغ: '+fmtN(amount)+' DH',
+        ];
+        if(note) techLines.push('📝 '+note);
+        try{
+          var techSum=_todaySettlementsSummary();
+          if(techSum.count>0){
+            techLines.push('');
+            techLines.push('📊 إجمالي تسويات اليوم: '+fmtN(techSum.total)+' د.م. ('+techSum.count+' خدامة)');
+          }
+        }catch(e){}
+        sendTelegramBroadcast(techLines.join('\n'));
+      }catch(e){}
     }
     try{toast('✅ تسجل خلاص '+fmtN(amount)+' DH لـ '+edPayTech,'success');}catch(e){}
     renderElecDist();
@@ -16975,12 +17018,20 @@ async function edDashKhallasTech(name){
     edPayments.unshift(savedRow);
     if(savedRow.id){
       await pushCaisseMovement(today,'out',due,'🛠️ تقني — '+name,'tech_payment',savedRow.id,'');
-      sendTelegramBroadcast([
+      var dashLines=[
         '💰 *خلاص تقني*',
         '🛠️ التقني: '+name,
         '📅 التاريخ: '+fmtDate(today),
         '💵 المبلغ: '+fmtN(due)+' DH',
-      ].join('\n'));
+      ];
+      try{
+        var dashSum=_todaySettlementsSummary();
+        if(dashSum.count>0){
+          dashLines.push('');
+          dashLines.push('📊 إجمالي تسويات اليوم: '+fmtN(dashSum.total)+' د.م. ('+dashSum.count+' خدامة)');
+        }
+      }catch(e){}
+      sendTelegramBroadcast(dashLines.join('\n'));
     }
   }
   try{toast('✅ تخلص '+name,'success');}catch(_){}
@@ -17106,6 +17157,15 @@ async function salKhallas(salId){
       lines.push('💵 المبلغ: '+fmtN(cashPaid)+' DH');
       if(avs > 0) lines.push('🛈 (الأجر '+fmtN(gross)+' − سلف '+fmtN(avs)+')');
     }
+    // Append today's running settlement total so the user sees the
+    // cumulative cash-out for the day after every khlas.
+    try{
+      var sum=_todaySettlementsSummary();
+      if(sum.count>0){
+        lines.push('');
+        lines.push('📊 إجمالي تسويات اليوم: '+fmtN(sum.total)+' د.م. ('+sum.count+' خدامة)');
+      }
+    }catch(e){}
     sendTelegramBroadcast(lines.join('\n'));
     // Auto-fire payslip image (bulletin de paie) right after the text
     // notification so the boss sees the formal worker breakdown alongside
@@ -17220,6 +17280,13 @@ async function pcKhallas(ouvrierId){
       pcLines.push('💵 المبلغ: '+fmtN(r)+' DH');
       if(totalPcAvs > 0) pcLines.push('🛈 (الأجر '+fmtN(grossPC)+' − سلف '+fmtN(totalPcAvs)+')');
     }
+    try{
+      var pcSum=_todaySettlementsSummary();
+      if(pcSum.count>0){
+        pcLines.push('');
+        pcLines.push('📊 إجمالي تسويات اليوم: '+fmtN(pcSum.total)+' د.م. ('+pcSum.count+' خدامة)');
+      }
+    }catch(e){}
     sendTelegramBroadcast(pcLines.join('\n'));
   } else {
     pcTaswiyas.push(payload); // offline fallback

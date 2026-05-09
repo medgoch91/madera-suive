@@ -2244,6 +2244,7 @@ async function loadAllData(){
         paid_at:c.paid_at||null,
         chantierId:c.chantier_id||null,
         bonIds:Array.isArray(c.bon_ids)?c.bon_ids:(c.bon_ids?JSON.parse(c.bon_ids):[]),
+        photoPath:c.photo_path||null,
       };
     });
 
@@ -6124,6 +6125,25 @@ function openEditChequeModal(id){
         +'</div>'
       +'</div>'
     +'</div>'
+    +(function(){
+      var hasPhoto=!!c.photoPath;
+      var url=hasPhoto?docPhotoUrl(c.photoPath):'';
+      return '<div style="margin-top:14px;padding:12px 14px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">'+
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:'+(hasPhoto?'10px':'0')+'">'+
+          '<div style="font-size:12px;color:var(--text2);font-weight:700">📷 صورة الشيك</div>'+
+          '<div style="display:flex;gap:6px">'+
+            (hasPhoto
+              ? '<button class="btn-ghost" style="padding:5px 10px;font-size:11px;color:#06b6d4" onclick="shareChequePhotoTelegram('+id+')">📨</button>'+
+                '<button class="btn-ghost" style="padding:5px 10px;font-size:11px" onclick="_triggerChequePhotoUpload('+id+')">🔄</button>'+
+                '<button class="btn-ghost" style="padding:5px 10px;font-size:11px;color:var(--red)" onclick="removeChequePhoto('+id+')">🗑️</button>'
+              : '<button class="btn" style="padding:6px 14px;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700" onclick="_triggerChequePhotoUpload('+id+')">📷 زيد صورة</button>')+
+          '</div>'+
+        '</div>'+
+        (hasPhoto
+          ? '<a href="'+escB(url)+'" target="_blank" rel="noopener" style="display:block;text-align:center"><img src="'+escB(url)+'" style="max-width:100%;max-height:240px;border-radius:8px;border:1px solid var(--border);object-fit:contain;cursor:zoom-in"></a>'
+          : '')+
+      '</div>';
+    })()
     +'<div style="display:flex;gap:8px;margin-top:18px">'
       +'<button class="btn btn-accent" style="flex:1;padding:12px" onclick="saveEditCheque('+id+')">💾 حفظ</button>'
       +'<button class="btn btn-outline" style="padding:12px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إلغاء</button>'
@@ -13652,16 +13672,19 @@ async function archiveDepartment(id){
   }
 }
 
-// ─── Bon d'entrée photo upload (Storage bucket: bon-photos) ──
-function bonPhotoUrl(path){
+// ─── Document photos (bon-photos bucket, shared by bons + cheques + factures) ──
+function bonPhotoUrl(path){ return docPhotoUrl(path); }
+function docPhotoUrl(path){
   if(!path) return '';
   return SB_URL+'/storage/v1/object/public/bon-photos/'+path;
 }
-async function uploadBonPhoto(bonId, file){
-  if(!file || !bonId) return null;
+// Generic upload: writes to Storage with `<prefix>-<id>-<ts>.<ext>` naming and
+// PATCHes the table's photo_path column. Returns the new path or null on error.
+async function _uploadDocPhotoGeneric(table, id, file, prefix){
+  if(!file || !id) return null;
   if(file.size > 9 * 1024 * 1024){ try{toast('⚠️ الصورة كبيرة بزاف (>9MB)','warning');}catch(e){} return null; }
   var ext=(file.name.split('.').pop()||'jpg').toLowerCase();
-  var path='bon-'+bonId+'-'+Date.now()+'.'+ext;
+  var path=prefix+'-'+id+'-'+Date.now()+'.'+ext;
   showLoader('📷 جاري رفع الصورة...');
   try{
     var url=SB_URL+'/storage/v1/object/bon-photos/'+encodeURIComponent(path);
@@ -13676,11 +13699,7 @@ async function uploadBonPhoto(bonId, file){
       body:file
     });
     if(!res.ok){ var t=await res.text(); throw new Error('Upload '+res.status+': '+t.slice(0,200)); }
-    // Persist photo_path on the bon row
-    await sbFetch('bons?id=eq.'+bonId,'PATCH',{photo_path:path});
-    var b=bons.find(function(x){return x.id===bonId;});
-    if(b) b.photoPath=path;
-    saveCacheLS();
+    await sbFetch(table+'?id=eq.'+id,'PATCH',{photo_path:path});
     hideLoader();
     try{toast('📷 تم الحفظ','success');}catch(e){}
     return path;
@@ -13690,28 +13709,123 @@ async function uploadBonPhoto(bonId, file){
     return null;
   }
 }
-async function removeBonPhoto(bonId){
-  var b=bons.find(function(x){return x.id===bonId;}); if(!b || !b.photoPath) return;
-  if(!confirm('حذف الصورة؟')) return;
+async function _removeDocPhotoGeneric(table, id, currentPath){
+  if(!confirm('حذف الصورة؟')) return false;
   try{
-    // Delete from storage (best-effort)
-    try{
-      await fetch(SB_URL+'/storage/v1/object/bon-photos/'+encodeURIComponent(b.photoPath), {
-        method:'DELETE',
-        headers:{
-          'apikey':SB_KEY,
-          'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY)
-        }
-      });
-    }catch(e){ console.warn('storage delete failed:', e); }
-    // Clear photo_path
-    await sbFetch('bons?id=eq.'+bonId,'PATCH',{photo_path:null});
-    b.photoPath=null;
-    saveCacheLS();
+    if(currentPath){
+      try{
+        await fetch(SB_URL+'/storage/v1/object/bon-photos/'+encodeURIComponent(currentPath), {
+          method:'DELETE',
+          headers:{
+            'apikey':SB_KEY,
+            'Authorization':'Bearer '+((typeof window!=='undefined' && window._sbAccessToken) || SB_KEY)
+          }
+        });
+      }catch(e){ console.warn('storage delete failed:', e); }
+    }
+    await sbFetch(table+'?id=eq.'+id,'PATCH',{photo_path:null});
     try{toast('🗑️ تحذفات الصورة','success');}catch(e){}
-    if(typeof openBonModal==='function') openBonModal(bonId);
+    return true;
   }catch(e){
     try{toast('❌ فشل','error');}catch(err){}
+    return false;
+  }
+}
+
+// ─── Bon d'entrée photo upload ───────────────────────────────
+async function uploadBonPhoto(bonId, file){
+  var path=await _uploadDocPhotoGeneric('bons', bonId, file, 'bon');
+  if(!path) return null;
+  var b=bons.find(function(x){return x.id===bonId;});
+  if(b) b.photoPath=path;
+  saveCacheLS();
+  return path;
+}
+async function removeBonPhoto(bonId){
+  var b=bons.find(function(x){return x.id===bonId;}); if(!b || !b.photoPath) return;
+  var ok=await _removeDocPhotoGeneric('bons', bonId, b.photoPath);
+  if(!ok) return;
+  b.photoPath=null; saveCacheLS();
+  if(typeof openBonModal==='function') openBonModal(bonId);
+}
+
+// Cheque photo wrappers
+async function uploadChequePhoto(id, file){
+  var path=await _uploadDocPhotoGeneric('cheques', id, file, 'cheque');
+  if(!path) return null;
+  var c=cheques.find(function(x){return x.id===id;});
+  if(c) c.photoPath=path;
+  saveCacheLS();
+  return path;
+}
+async function removeChequePhoto(id){
+  var c=cheques.find(function(x){return x.id===id;}); if(!c || !c.photoPath) return;
+  var ok=await _removeDocPhotoGeneric('cheques', id, c.photoPath);
+  if(!ok) return;
+  c.photoPath=null; saveCacheLS();
+  if(typeof openEditChequeModal==='function') openEditChequeModal(id);
+}
+function _triggerChequePhotoUpload(id){
+  var inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+  inp.onchange=async function(ev){
+    var file=ev.target.files && ev.target.files[0]; if(!file) return;
+    var path=await uploadChequePhoto(id, file);
+    if(path && typeof openEditChequeModal==='function') openEditChequeModal(id);
+  };
+  inp.click();
+}
+async function shareChequePhotoTelegram(id){
+  var c=cheques.find(function(x){return x.id===id;}); if(!c || !c.photoPath) return;
+  try{
+    var url=docPhotoUrl(c.photoPath);
+    var caption='💳 CHK-'+c.num+' · '+(c.fournisseur||'')+' · '+fmtN(c.montant||0)+' DH';
+    var blob=await fetch(url).then(function(r){return r.blob();});
+    await sendTelegramPhotoBroadcast(blob, 'cheque-'+c.num+'.jpg', caption);
+    try{toast('📨 صيفطات','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+
+// Facture photo wrappers — factures rows are raw DB objects (not mapped),
+// so the column name is photo_path (snake) directly on the object.
+async function uploadFacturePhoto(id, file){
+  var path=await _uploadDocPhotoGeneric('factures', id, file, 'facture');
+  if(!path) return null;
+  var f=factures.find(function(x){return x.id===id;});
+  if(f) f.photo_path=path;
+  saveCacheLS();
+  return path;
+}
+async function removeFacturePhoto(id){
+  var f=factures.find(function(x){return x.id===id;}); if(!f || !f.photo_path) return;
+  var ok=await _removeDocPhotoGeneric('factures', id, f.photo_path);
+  if(!ok) return;
+  f.photo_path=null; saveCacheLS();
+  if(typeof renderFactures==='function') renderFactures();
+}
+function _triggerFacturePhotoUpload(id, refreshCb){
+  var inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+  inp.onchange=async function(ev){
+    var file=ev.target.files && ev.target.files[0]; if(!file) return;
+    var path=await uploadFacturePhoto(id, file);
+    if(path && typeof refreshCb==='function') refreshCb();
+    else if(path && typeof renderFactures==='function') renderFactures();
+  };
+  inp.click();
+}
+async function shareFacturePhotoTelegram(id){
+  var f=factures.find(function(x){return x.id===id;}); if(!f || !f.photo_path) return;
+  try{
+    var url=docPhotoUrl(f.photo_path);
+    var caption='🧾 FAC-'+(f.date?f.date.substring(0,4):'')+'-'+String(f.num||'').padStart(4,'0')+' · '+(f.client_nom||'')+' · '+fmtN(f.total_ttc||0)+' DH';
+    var blob=await fetch(url).then(function(r){return r.blob();});
+    await sendTelegramPhotoBroadcast(blob, 'facture-'+f.num+'.jpg', caption);
+    try{toast('📨 صيفطات','success');}catch(e){}
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
   }
 }
 function _triggerBonPhotoUpload(bonId){
@@ -18845,6 +18959,7 @@ function renderFactSideBody(){
       +'<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">'
         +'<button onclick="factPrint('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-weight:700;cursor:pointer">🖨️ طبع</button>'
         +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="padding:5px 8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:6px;color:#06b6d4;font-size:10px;font-weight:700;cursor:pointer">📨</button>'
+        +'<button onclick="openFacturePhoto('+f.id+')" title="'+(f.photo_path?'شوف الصورة':'زيد صورة')+'" style="padding:5px 8px;background:'+(f.photo_path?'rgba(16,185,129,0.12)':'transparent')+';border:1px solid '+(f.photo_path?'rgba(16,185,129,0.4)':'var(--border)')+';border-radius:6px;color:'+(f.photo_path?'#10b981':'var(--text2)')+';font-size:10px;font-weight:700;cursor:pointer">📷</button>'
         +'<button onclick="factDuplicate('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--accent);font-size:10px;font-weight:700;cursor:pointer">📋 نسخ</button>'
         +convertBtn
       +'</div>'
@@ -18868,6 +18983,31 @@ function factDuplicate(id){
 function factGoto(k){factSubPage=k;try{uiSaveFactSub(k);}catch(e){}renderFactures();}
 
 // ─── Devis ↔ Facture conversion ──────────────────────────────
+// Facture photo modal — view + replace + share + delete
+function openFacturePhoto(id){
+  var f=factures.find(function(x){return x.id===id;}); if(!f) return;
+  document.getElementById('modal-main').classList.add('open');
+  var c=document.getElementById('modal-main-c'); if(!c) return;
+  var hasPhoto=!!f.photo_path;
+  var url=hasPhoto?docPhotoUrl(f.photo_path):'';
+  var num=(f.date?f.date.substring(0,4):'')+'-'+String(f.num||'').padStart(4,'0');
+  c.innerHTML='<div class="modal-title"><span>📷 صورة الفاتورة #'+escB(num)+'</span><button class="modal-close" onclick="closeMM()">✕</button></div>'+
+    '<div style="text-align:center;padding:12px">'+
+      (hasPhoto
+        ? '<a href="'+escB(url)+'" target="_blank" rel="noopener"><img src="'+escB(url)+'" style="max-width:100%;max-height:60vh;border-radius:8px;border:1px solid var(--border);object-fit:contain"></a>'
+        : '<div style="padding:30px;color:var(--text3);font-size:13px;background:var(--bg3);border:1px dashed var(--border);border-radius:var(--radius-sm)">— ما كاينش حتى صورة —</div>'
+      )+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
+      (hasPhoto
+        ? '<button class="btn" style="flex:1;padding:10px;background:rgba(6,182,212,0.1);color:#06b6d4;border:1px solid rgba(6,182,212,0.3);border-radius:8px;font-weight:700" onclick="shareFacturePhotoTelegram('+id+')">📨 سيفط</button>'+
+          '<button class="btn" style="flex:1;padding:10px;background:transparent;border:1px solid var(--border);border-radius:8px;font-weight:700" onclick="_triggerFacturePhotoUpload('+id+', function(){openFacturePhoto('+id+');})">🔄 بدّل</button>'+
+          '<button class="btn" style="flex:1;padding:10px;background:transparent;color:var(--red);border:1px solid rgba(232,64,64,0.3);border-radius:8px;font-weight:700" onclick="removeFacturePhoto('+id+')">🗑️ حذف</button>'
+        : '<button class="btn btn-accent" style="flex:1;padding:12px" onclick="_triggerFacturePhotoUpload('+id+', function(){openFacturePhoto('+id+');})">📷 زيد صورة</button>'
+      )+
+    '</div>';
+}
+
 async function factConvertDevis(id){
   var f=factures.find(function(x){return x.id===id;}); if(!f) return;
   if(!confirm('تحويل هاد الديفي إلى فاتورة؟ الستاتو غادي يولي "معلقة".')) return;

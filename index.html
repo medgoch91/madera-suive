@@ -18629,9 +18629,15 @@ function renderFactSideBody(){
   return list.slice(0,60).map(function(f){
     var num=(f.date?f.date.substring(0,4):new Date().getFullYear())+'-'+String(f.num||1).padStart(4,'0');
     var isPaid=f.statut==='مدفوعة';
-    var badge=isPaid
-      ?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--green);font-weight:700">✓ مدفوعة</span>'
-      :'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:var(--amber);font-weight:700">⏳ معلقة</span>';
+    var isDevis=f.statut==='ديفي';
+    var badge=isDevis
+      ?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(147,51,234,0.15);color:#a78bfa;font-weight:700">📝 ديفي</span>'
+      :(isPaid
+        ?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--green);font-weight:700">✓ مدفوعة</span>'
+        :'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:var(--amber);font-weight:700">⏳ معلقة</span>');
+    var convertBtn=isDevis
+      ? '<button onclick="factConvertDevis('+f.id+')" style="flex:1;padding:5px;background:rgba(147,51,234,0.12);border:1px solid rgba(147,51,234,0.4);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">✅ حول لفاتورة</button>'
+      : (isPaid ? '' : '<button onclick="factToDevis('+f.id+')" title="حول رجوع ل ديفي" style="padding:5px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">📝</button>');
     return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:all 0.15s;cursor:default" '
       +'onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
@@ -18643,10 +18649,11 @@ function renderFactSideBody(){
         +'<div style="font-size:10px;color:var(--text3)">'+escB(f.date||'')+'</div>'
         +'<div style="font-size:13px;font-weight:800;color:var(--green)">'+fmtN(Number(f.total_ttc||0))+' DH</div>'
       +'</div>'
-      +'<div style="display:flex;gap:4px;margin-top:8px">'
+      +'<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">'
         +'<button onclick="factPrint('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-weight:700;cursor:pointer">🖨️ طبع</button>'
         +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="padding:5px 8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:6px;color:#06b6d4;font-size:10px;font-weight:700;cursor:pointer">📨</button>'
         +'<button onclick="factDuplicate('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--accent);font-size:10px;font-weight:700;cursor:pointer">📋 نسخ</button>'
+        +convertBtn
       +'</div>'
     +'</div>';
   }).join('')+(list.length>60?'<div style="text-align:center;padding:8px;color:var(--text3);font-size:10px">+'+(list.length-60)+' فاتورة (قلب)</div>':'');
@@ -18666,6 +18673,38 @@ function factDuplicate(id){
 }
 
 function factGoto(k){factSubPage=k;try{uiSaveFactSub(k);}catch(e){}renderFactures();}
+
+// ─── Devis ↔ Facture conversion ──────────────────────────────
+async function factConvertDevis(id){
+  var f=factures.find(function(x){return x.id===id;}); if(!f) return;
+  if(!confirm('تحويل هاد الديفي إلى فاتورة؟ الستاتو غادي يولي "معلقة".')) return;
+  try{
+    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'معلقة'});
+    if(res && res.__sbError) throw new Error(res.msg||'فشل');
+    f.statut='معلقة';
+    saveCacheLS();
+    try{toast('✅ تحول لفاتورة','success');}catch(e){}
+    if(typeof renderFactures==='function') renderFactures();
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+async function factToDevis(id){
+  var f=factures.find(function(x){return x.id===id;}); if(!f) return;
+  if(!confirm('تحويل هاد الفاتورة إلى ديفي؟')) return;
+  try{
+    var res=await sbFetch('factures?id=eq.'+id,'PATCH',{statut:'ديفي'});
+    if(res && res.__sbError) throw new Error(res.msg||'فشل');
+    f.statut='ديفي';
+    saveCacheLS();
+    try{toast('📝 تحول ل ديفي','success');}catch(e){}
+    if(typeof renderFactures==='function') renderFactures();
+  }catch(e){
+    try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
+  }
+}
+var factNewAsDevis=false;
+function factToggleAsDevis(checked){ factNewAsDevis=!!checked; }
 
 // ─── LIST ─────────────────────────────────────────────────────
 function renderFactList(){
@@ -18996,7 +19035,11 @@ function renderFactNew(){
       +'</div>'
 
       // Save button
-      +'<button id="btn-save-fact" onclick="factSaveNew()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 16px rgba(79,142,247,0.35);transition:opacity 0.15s" onmouseover="this.style.opacity=\'0.9\'" onmouseout="this.style.opacity=\'1\'">💾 حفظ الفاتورة</button>'
+      +'<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;margin-bottom:8px;background:rgba(147,51,234,0.06);border:1px solid rgba(147,51,234,0.25);border-radius:8px;cursor:pointer;font-size:12px;color:var(--text2)">'
+        +'<input type="checkbox" '+(factNewAsDevis?'checked':'')+' onchange="factToggleAsDevis(this.checked)" style="margin:0;cursor:pointer;accent-color:#a78bfa">'
+        +'<span>📝 احفظ كـ <b style="color:#a78bfa">ديفي</b> (machi facture مباشرة) — ت9دري tحوّلو لفاتورة b3da</span>'
+      +'</label>'
+      +'<button id="btn-save-fact" onclick="factSaveNew()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 16px rgba(79,142,247,0.35);transition:opacity 0.15s" onmouseover="this.style.opacity=\'0.9\'" onmouseout="this.style.opacity=\'1\'">💾 حفظ '+(factNewAsDevis?'الديفي':'الفاتورة')+'</button>'
 
       // Cancel button
       +'<button onclick="factGoto(\'list\')" style="width:100%;padding:11px;background:transparent;border:1px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;font-size:13px;color:var(--text2);cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor=\'var(--text3)\'" onmouseout="this.style.borderColor=\'var(--border)\'">إلغاء</button>'
@@ -19151,7 +19194,7 @@ async function _factSaveNewImpl(){
         total_ht:Math.round(ht*100)/100,
         total_tva:Math.round(tva*100)/100,
         total_ttc:Math.round(ttc*100)/100,
-        statut:'معلقة',notes:factNewNotes,
+        statut:(factNewAsDevis?'ديفي':'معلقة'),notes:factNewNotes,
       };
       const res=await sbFetch('factures','POST',payload);
       if(res && res.__sbError){

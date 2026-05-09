@@ -740,6 +740,67 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   .modal-overlay{padding:0!important;align-items:flex-end;}
   .modal-box{padding-bottom:calc(28px + env(safe-area-inset-bottom, 0px))!important;}
   .modal-title{position:sticky;top:0;background:var(--bg2);z-index:5;padding-block:10px 8px;margin:-18px -18px 14px;padding-inline:18px;border-bottom:1px solid var(--border);}
+
+  /* ── Mobile axe 3: nav (sidebar overlay smoother) ─────────
+     Larger backdrop tap area, smoother slide, hamburger min target,
+     close on backdrop tap (already wired in JS). */
+  .sidebar{transition:transform 0.25s ease-out!important;}
+  .sidebar-overlay{transition:opacity 0.2s ease-out!important;backdrop-filter:blur(2px);}
+  .hamburger{min-width:44px!important;min-height:44px!important;font-size:20px!important;}
+  .nav-btn{min-height:48px!important;padding:12px 14px!important;font-size:14px!important;}
+  .nav-icon{font-size:18px!important;}
+
+  /* ── Mobile axe 4: touch targets ──────────────────────────
+     Every icon-only button gets a 44×44 hit area (Apple HIG). Small
+     "btn-ghost" / pill / row-action buttons currently as low as
+     20-24px — bump them so fingers don't miss. */
+  .btn-ghost,.pill,.btn-icon{min-height:40px;min-width:40px;}
+  /* Action icons inside dense tables stay smaller per row but get a
+     hit area through padding so taps don't overflow into neighbors. */
+  td button[title],td .btn-ghost{min-height:36px;min-width:36px;padding:6px 10px!important;}
+  /* Increase tap-spacing between adjacent action buttons */
+  td > button + button,td > .btn-ghost + .btn-ghost{margin-inline-start:4px;}
+
+  /* ── Mobile axe 5: FAB / floating buttons reachable ───────
+     Anything fixed-bottom respects the iOS safe area + thumb zone
+     (raise it ~8px above the home indicator). Banners get the same. */
+  [style*="position:fixed"][style*="bottom:20px"]{bottom:calc(20px + env(safe-area-inset-bottom, 0px))!important;}
+  [style*="position:fixed"][style*="bottom:24px"]{bottom:calc(24px + env(safe-area-inset-bottom, 0px))!important;}
+  /* Page content gets bottom padding so floating elements never sit
+     on top of the last row of data. */
+  .content{padding-bottom:calc(88px + env(safe-area-inset-bottom, 0px))!important;}
+
+  /* ── Mobile axe 6: forms — bigger fields, easier tab order ─
+     Inputs already use 16px font (zoom-prevention). Bump min-height
+     so labels + fields breathe. Stack form-grid into single column
+     at small widths — multi-col grids cramped fields on phones. */
+  .field-inp,input[type=text],input[type=number],input[type=date],input[type=tel],input[type=email],input[type=search],select,textarea{
+    min-height:46px!important;
+    padding:11px 12px!important;
+  }
+  .field-lbl{font-size:13px!important;margin-bottom:6px!important;display:block;}
+  .form-grid{grid-template-columns:1fr!important;gap:14px!important;}
+  /* Number inputs without spinner buttons (cleaner on iOS) */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+
+  /* ── Mobile axe 7: print/photo-share scaling ──────────────
+     html2canvas captures a fixed 780px-wide template — way wider
+     than a phone viewport. The offscreen iframe is invisible so
+     this doesn't matter for capture, but the inline preview <img>
+     in modals (e.g. bon photo) needs to scale. */
+  img[src*="bon-photos"]{max-width:100%!important;height:auto!important;}
+  .bso-print,.payslip-print{transform-origin:top right;}
+}
+
+@media(max-width:480px){
+  /* Tighten the worker dashboard cards: 1-col, more breathing room */
+  .worker-grid{grid-template-columns:1fr!important;gap:10px!important;}
+  .worker-card{padding:14px!important;}
+  /* KPI grid 2-col instead of 6 to keep numbers legible */
+  .dash-grid{grid-template-columns:1fr 1fr!important;gap:8px!important;}
+  /* Sidebar slightly narrower on tiny screens */
+  .sidebar{width:min(82vw,300px)!important;}
 }
 
 /* ═══════════════ ADMIN PAGE ═══════════════ */

@@ -14674,12 +14674,13 @@ function salBuildPayslipHTML(r, dateFrom, dateTo, cashPaid, isOverflow, rollover
     : (location.protocol==='file:' ? 'logo.svg' : 'https://maderadeco.app/logo.svg');
   var watermarkText=String(soc.nom||'MADERA DECO').toUpperCase();
 
-  // Per-day breakdown: walk every date in range, find presence row
+  // Per-day breakdown: only show days that have a presence record (any
+  // status — present/demi/absent/conge — counts as "حركة"). Empty
+  // no-record days were noisy on long periods.
   var pres=(salariePresences||[]).filter(function(p){return p.salarie_id===s.id && p.date>=dateFrom && p.date<=dateTo;});
   var presByDate={};
   pres.forEach(function(p){ presByDate[p.date]=p; });
-  var days=[]; var d=new Date(dateFrom); var end=new Date(dateTo);
-  while(d<=end){ days.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  var days=Object.keys(presByDate).sort();
   var statusLbl={present:{ic:'✅',lbl:'حاضر',mult:1},demi:{ic:'🟠',lbl:'نص نهار',mult:0.5},absent:{ic:'🔴',lbl:'غائب',mult:0},conge:{ic:'🟡',lbl:'عطلة',mult:0}};
   var dayRows=days.map(function(date){
     var p=presByDate[date];
@@ -14816,6 +14817,172 @@ function salPayslipPrint(salId, dateFrom, dateTo, cashPaid, isOverflow, rollover
   var html=salBuildPayslipHTML(r, dateFrom, dateTo, cashPaid, isOverflow, rollover); if(!html) return;
   var w=window.open('','_blank'); if(!w) return;
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
+  w.document.close();
+}
+
+// ─── PC worker payslip (bulletin pour عمال القطعة) ────────────
+// Mirrors salBuildPayslipHTML with PC-specific fields: per-day production
+// (PC name × qty × prix = subtotal), no status/hsup column. Same logo +
+// watermark + signatures style.
+function pcBuildPayslipHTML(o, dateFrom, dateTo, cashPaid, isOverflow, rollover, totalProd, totalAvs){
+  if(!o) return '';
+  var nomSal=String(o.nom||'');
+  var col='#10b981';
+  var soc=(typeof factSociete!=='undefined' && factSociete) ? factSociete : {
+    nom:'MADERA DECO', adresse:'COMMUNE DRARGA AGADIR', ville:'AGADIR',
+    tel:'0676637608', email:'maderadeco.ma@gmail.com', web:'maderadeco.ma',
+    ice:'002733643000006', if_num:'48573755', rc:'46235', patente:'93100364'
+  };
+  var logoSrc=(soc.logo && String(soc.logo).length>50) ? soc.logo
+    : (location.protocol==='file:' ? 'logo.svg' : 'https://maderadeco.app/logo.svg');
+  var watermarkText=String(soc.nom||'MADERA DECO').toUpperCase();
+
+  // Group production by date (only days with qty>0)
+  var pres=(pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===Number(o.id) && r.date>=dateFrom && r.date<=dateTo && Number(r.qte||0)>0;});
+  var byDate={};
+  pres.forEach(function(r){
+    if(!byDate[r.date]) byDate[r.date]=[];
+    byDate[r.date].push(r);
+  });
+  var days=Object.keys(byDate).sort();
+  var dayRows=days.map(function(date){
+    var rows=byDate[date];
+    var dayTotal=rows.reduce(function(t,r){return t+Number(r.qte||0)*Number(r.prix||0);},0);
+    var detail=rows.map(function(r){return escB(r.pc_nom)+' × '+r.qte+' × '+fmtN(r.prix);}).join('<br>');
+    var dayName=new Date(date+'T00:00:00').toLocaleDateString('ar-MA',{weekday:'short'});
+    return '<tr style="border-bottom:1px solid #e5e7eb">'+
+      '<td style="padding:6px 8px;font-size:11px;color:#6b7280;white-space:nowrap">'+escB(dayName)+'<br><small style="font-family:monospace">'+escB(date.slice(5))+'</small></td>'+
+      '<td style="padding:6px 8px;font-size:12px;line-height:1.6">'+detail+'</td>'+
+      '<td style="padding:6px 8px;text-align:center;font-weight:700;color:'+col+'">'+fmtN(dayTotal)+' DH</td>'+
+    '</tr>';
+  }).join('');
+
+  // Per-PC roll-up footer
+  var perPcMap={};
+  pres.forEach(function(r){
+    var k=r.pc_nom||'?';
+    if(!perPcMap[k]) perPcMap[k]={qty:0, val:0};
+    perPcMap[k].qty += Number(r.qte||0);
+    perPcMap[k].val += Number(r.qte||0)*Number(r.prix||0);
+  });
+  var perPcRows=Object.keys(perPcMap).map(function(k){
+    var v=perPcMap[k];
+    return '<tr><td style="padding:5px 8px;font-weight:600">'+escB(k)+'</td><td style="padding:5px 8px;text-align:center">'+v.qty+' قطعة</td><td style="padding:5px 8px;text-align:left;font-weight:700;color:'+col+'">'+fmtN(v.val)+' DH</td></tr>';
+  }).join('');
+
+  return ''+
+    '<div class="payslip-print" style="font-family:Cairo,sans-serif;direction:rtl;background:#fff;color:#1f2937;padding:32px 28px;width:780px;box-sizing:border-box;position:relative;overflow:hidden">'+
+      '<div aria-hidden="true" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:0;overflow:hidden">'+
+        '<div style="font-family:Cairo,sans-serif;font-size:120px;font-weight:900;color:'+col+';opacity:0.055;transform:rotate(-30deg);white-space:nowrap;letter-spacing:8px">'+escB(watermarkText)+'</div>'+
+      '</div>'+
+      '<div style="position:relative;z-index:1">'+
+      // Header
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid '+col+';padding-bottom:14px;margin-bottom:20px;gap:14px">'+
+        '<div style="display:flex;align-items:center;gap:14px">'+
+          '<img src="'+escB(logoSrc)+'" alt="logo" crossorigin="anonymous" style="width:72px;height:72px;object-fit:contain;flex-shrink:0" onerror="this.style.display=\'none\'">'+
+          '<div>'+
+            '<div style="font-size:24px;font-weight:900;color:'+col+';letter-spacing:0.5px">'+escB(soc.nom||'MADERA DECO')+'</div>'+
+            '<div style="font-size:11px;color:#6b7280;margin-top:4px;line-height:1.6">'+
+              (soc.adresse?escB(soc.adresse):'')+(soc.ville && soc.adresse && soc.adresse.indexOf(soc.ville)<0?' — '+escB(soc.ville):(soc.ville?escB(soc.ville):''))+'<br>'+
+              (soc.tel?'📞 '+escB(soc.tel):'')+(soc.email?' · ✉ '+escB(soc.email):'')+
+            '</div>'+
+          '</div>'+
+        '</div>'+
+        '<div style="text-align:left;background:'+col+'15;border:1px solid '+col+'55;border-radius:8px;padding:8px 14px;min-width:180px">'+
+          '<div style="font-size:9px;color:#6b7280;font-weight:700;letter-spacing:0.5px">FICHE DE PAIE · PC</div>'+
+          '<div style="font-size:14px;font-weight:800;color:'+col+';margin-top:2px">'+escB(nomSal)+'</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="text-align:center;margin-bottom:18px">'+
+        '<div style="display:inline-block;background:'+col+';color:#fff;padding:8px 28px;border-radius:6px;font-size:18px;font-weight:800;letter-spacing:1px">💰 ورقة الأجر · BULLETIN PC</div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse;margin-bottom:14px;font-size:12px">'+
+        '<tr>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">العامل</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:800;color:'+col+'">'+escB(nomSal)+'</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;background:#f3f4f6;font-weight:700;width:90px">الفترة</td>'+
+          '<td style="border:1px solid #d1d5db;padding:8px 10px;font-weight:700">'+escB(fmtDate(dateFrom))+' → '+escB(fmtDate(dateTo))+'</td>'+
+        '</tr>'+
+      '</table>'+
+      // Per-day production
+      (dayRows
+        ? '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">'+
+            '<thead><tr style="background:'+col+';color:#fff">'+
+              '<th style="padding:8px;text-align:right;width:80px">اليوم</th>'+
+              '<th style="padding:8px;text-align:right">PCs</th>'+
+              '<th style="padding:8px;text-align:center;width:120px">المجموع</th>'+
+            '</tr></thead>'+
+            '<tbody>'+dayRows+'</tbody>'+
+          '</table>'
+        : '<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:12px;text-align:center;color:#92400e;font-size:13px;margin-bottom:14px">— ما كاين شي إنتاج فهاد الفترة —</div>'
+      )+
+      // Per-PC roll-up
+      (perPcRows
+        ? '<div style="font-size:11px;color:'+col+';font-weight:700;margin-bottom:6px">📊 تجميع حسب القطعة</div>'+
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px;border:1px solid #e5e7eb">'+
+            '<tbody>'+perPcRows+'</tbody>'+
+          '</table>'
+        : ''
+      )+
+      // Totals
+      '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:6px">'+
+        '<tr><td style="padding:6px 10px;background:#f9fafb;border:1px solid #e5e7eb">🛠 الإنتاج الإجمالي</td><td style="padding:6px 10px;border:1px solid #e5e7eb;text-align:left;font-weight:700">'+fmtN(totalProd||0)+' DH</td></tr>'+
+        ((totalAvs||0)>0?'<tr><td style="padding:6px 10px;background:#fef3c7;border:1px solid #fde68a;color:#92400e">💳 السلف ـ</td><td style="padding:6px 10px;border:1px solid #fde68a;text-align:left;font-weight:700;color:#92400e">−'+fmtN(totalAvs)+' DH</td></tr>':'')+
+        '<tr><td style="padding:10px;background:'+col+';color:#fff;font-weight:800;font-size:14px">💰 الصافي</td><td style="padding:10px;background:'+col+'15;color:'+col+';text-align:left;font-weight:900;font-size:16px">'+fmtN(cashPaid||0)+' DH</td></tr>'+
+        (isOverflow?'<tr><td style="padding:6px 10px;background:#fee2e2;border:1px solid #fecaca;color:#991b1b">🔄 ترصيد للأسبوع الجاي</td><td style="padding:6px 10px;border:1px solid #fecaca;text-align:left;font-weight:700;color:#991b1b">'+fmtN(rollover||0)+' DH</td></tr>':'')+
+      '</table>'+
+      // Signatures
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px;page-break-inside:avoid">'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📤 المؤدِّي — PAYÉ PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937">MADERA DECO</div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+        '<div style="border:1px solid #d1d5db;border-radius:8px;padding:14px 16px 24px;background:#f9fafb">'+
+          '<div style="font-size:11px;color:#6b7280;font-weight:700;letter-spacing:0.5px;margin-bottom:6px">📥 المتسلِّم — REÇU PAR</div>'+
+          '<div style="font-size:13px;font-weight:700;color:#1f2937">'+escB(nomSal)+'</div>'+
+          '<div style="margin-top:32px;border-top:1px dashed #9ca3af;padding-top:6px;font-size:10px;color:#9ca3af;text-align:center">التوقيع · Signature</div>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-top:24px;padding-top:10px;border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af">'+
+        '<div>Bulletin de paie PC</div>'+
+        '<div>تم الإصدار: '+new Date().toLocaleString('fr-MA',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})+'</div>'+
+        '<div>'+escB(soc.web||soc.nom||'')+'</div>'+
+      '</div>'+
+      '</div>'+
+    '</div>';
+}
+
+async function pcPayslipShare(ouvrierId, dateFrom, dateTo, cashPaid, isOverflow, rollover, totalProd, totalAvs){
+  var o=(ouvriersPc||[]).find(function(x){return x.id===ouvrierId;});
+  if(!o) return;
+  var html=pcBuildPayslipHTML(o, dateFrom, dateTo, cashPaid, isOverflow, rollover, totalProd, totalAvs); if(!html) return;
+  if(typeof html2canvas==='undefined'){ try{toast('❌ html2canvas not loaded','error');}catch(e){} return; }
+  var iframe=document.createElement('iframe');
+  iframe.style.cssText='position:fixed;left:-9999px;top:0;width:820px;height:1400px;border:0';
+  document.body.appendChild(iframe);
+  iframe.srcdoc='<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#fff">'+html+'</body></html>';
+  await new Promise(function(res){iframe.onload=res;});
+  try{
+    var target=iframe.contentDocument.querySelector('.payslip-print');
+    var canvas=await html2canvas(target, {backgroundColor:'#fff', scale:2, useCORS:true, allowTaint:true, logging:false});
+    canvas.toBlob(async function(blob){
+      try{
+        await sendTelegramPhotoBroadcast(blob, 'paie-pc-'+(o.nom||ouvrierId)+'-'+dateTo+'.png', '💰 ورقة الأجر · '+(o.nom||'')+' (PC) · '+fmtDate(dateFrom)+'→'+fmtDate(dateTo));
+      }catch(e){ console.warn('pc payslip share failed:',e); }
+      try{iframe.remove();}catch(e){}
+    },'image/png');
+  }catch(e){
+    try{iframe.remove();}catch(_){}
+    try{toast('❌ '+(e&&e.message||'فشل التصوير'),'error');}catch(err){}
+  }
+}
+function pcPayslipPrint(ouvrierId, dateFrom, dateTo, cashPaid, isOverflow, rollover, totalProd, totalAvs){
+  var o=(ouvriersPc||[]).find(function(x){return x.id===ouvrierId;});
+  if(!o) return;
+  var html=pcBuildPayslipHTML(o, dateFrom, dateTo, cashPaid, isOverflow, rollover, totalProd, totalAvs); if(!html) return;
+  var w=window.open('','_blank'); if(!w) return;
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Paie PC</title></head><body onload="window.print();" style="margin:0;background:#fff">'+html+'</body></html>');
   w.document.close();
 }
 
@@ -17123,6 +17290,28 @@ function _dashPayslipBtns(salId){
   return '<button onclick="salPayslipPrintFromRow('+salId+')" title="طبع ورقة الأجر" style="padding:4px 8px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📄</button>'+
     '<button onclick="salPayslipShareFromRow('+salId+')" title="إرسال ورقة الأجر للتيليجرام" style="padding:4px 8px;border:1px solid rgba(6,182,212,0.4);border-radius:14px;background:rgba(6,182,212,0.08);color:#06b6d4;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📨</button>';
 }
+function _dashPcPayslipBtns(ouvrierId){
+  return '<button onclick="pcPayslipPrintFromRow('+ouvrierId+')" title="طبع ورقة الأجر" style="padding:4px 8px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📄</button>'+
+    '<button onclick="pcPayslipShareFromRow('+ouvrierId+')" title="إرسال ورقة الأجر للتيليجرام" style="padding:4px 8px;border:1px solid rgba(6,182,212,0.4);border-radius:14px;background:rgba(6,182,212,0.08);color:#06b6d4;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📨</button>';
+}
+function _pcRowCashAndOverflow(ouvrierId){
+  // Reproduce the same numbers pcKhallas would persist for the active period
+  var myPres=(pcPresences||[]).filter(function(r){return Number(r.ouvrier_id)===Number(ouvrierId) && r.date>=salDashFrom && r.date<=salDashTo;});
+  var grossPC=myPres.reduce(function(t,r){return t+(Number(r.qte||0)*Number(r.prix||0));},0);
+  var totalPcAvs=(pcAvances||[]).filter(function(a){return Number(a.ouvrier_id)===Number(ouvrierId) && !a.rembourse;}).reduce(function(t,a){return t+Number(a.montant||0);},0);
+  var isOverflow=totalPcAvs > grossPC + 0.01;
+  var cashPaid=Math.max(0, grossPC-totalPcAvs);
+  var rollover=isOverflow ? Math.round((totalPcAvs-grossPC)*100)/100 : 0;
+  return {cashPaid:cashPaid, isOverflow:isOverflow, rollover:rollover, totalProd:grossPC, totalAvs:totalPcAvs};
+}
+function pcPayslipPrintFromRow(ouvrierId){
+  var x=_pcRowCashAndOverflow(ouvrierId);
+  pcPayslipPrint(ouvrierId, salDashFrom, salDashTo, x.cashPaid, x.isOverflow, x.rollover, x.totalProd, x.totalAvs);
+}
+function pcPayslipShareFromRow(ouvrierId){
+  var x=_pcRowCashAndOverflow(ouvrierId);
+  pcPayslipShare(ouvrierId, salDashFrom, salDashTo, x.cashPaid, x.isOverflow, x.rollover, x.totalProd, x.totalAvs);
+}
 // Pre-settlement payslip helpers — compute cash + overflow from the row
 // snapshot in salLastRows (built by renderSalDashboard for the active period).
 function _salRowCashAndOverflow(salId){
@@ -17360,7 +17549,10 @@ function renderSalDashboard(){
             +'<span class="wc-net" style="color:'+(r.net<0?'var(--red)':'var(--green)')+'">'+fmtN(r.net)+' DH</span>'
             +(r.avsTotal>0?'<div class="wc-net-sub">'+fmtN(r.total)+' − '+fmtN(r.avsTotal)+'</div>':'')
           +'</div>'
-          +_dashKhallasBtn('pcKhallas('+r.o.id+')');
+          +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">'
+            +_dashPcPayslipBtns(r.o.id)
+            +_dashKhallasBtn('pcKhallas('+r.o.id+')')
+          +'</div>';
       html+='<div class="worker-card'+(isPaid?' paid':(r.net<0?' warn':''))+'" data-kind="pc">'
         +'<div class="wc-head">'
           +'<div class="wc-avatar" style="background:rgba(16,185,129,0.15);color:#10b981">'+escB(r.o.nom.charAt(0))+'</div>'
@@ -17733,6 +17925,8 @@ async function pcKhallas(ouvrierId){
       }
     }catch(e){}
     sendTelegramBroadcast(pcLines.join('\n'));
+    // Auto-fire PC payslip image right after the text broadcast
+    try{ pcPayslipShare(ouvrierId, salDashFrom, salDashTo, r, isOverflow, rollover, grossPC, totalPcAvs); }catch(e){ console.warn('pc payslip share failed:', e); }
   } else {
     pcTaswiyas.push(payload); // offline fallback
   }

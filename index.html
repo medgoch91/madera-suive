@@ -740,7 +740,6 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   .modal-overlay{padding:0!important;align-items:flex-end;}
   .modal-box{padding-bottom:calc(28px + env(safe-area-inset-bottom, 0px))!important;}
   .modal-title{position:sticky;top:0;background:var(--bg2);z-index:5;padding-block:10px 8px;margin:-18px -18px 14px;padding-inline:18px;border-bottom:1px solid var(--border);}
-  .modal-close{position:sticky;top:8px;}
 }
 
 /* ═══════════════ ADMIN PAGE ═══════════════ */
@@ -12047,21 +12046,24 @@ async function pushCaisseMovement(date, type, amount, designation, linkedKind, l
   if(res && Array.isArray(res) && res[0]){
     caisseMovements.push(res[0]);
     localStorage.setItem('caisse_v1', JSON.stringify(caisseMovements));
-    // Telegram broadcast — explicit cash-flow notif (distinct from any
-    // upstream event notif fired by the caller). Brief, includes running
-    // running solde so the user sees the cash position at a glance.
-    try{
-      var solde=getCaisseSolde();
-      var icon=payload.type==='in'?'⬆️ دخول الصندوق':'⬇️ خروج الصندوق';
-      var sign=payload.type==='in'?'+':'-';
-      var lines=[
-        icon,
-        sign+fmtN(payload.amount)+' د.م. · '+(payload.designation||'—'),
-        '💵 الصندوق: '+fmtN(solde.solde)+' د.م.'
-      ];
-      if(payload.notes) lines.push('📝 '+payload.notes);
-      sendTelegramBroadcast(lines.join('\n'));
-    }catch(e){ console.warn('[caisse] notif failed:', e); }
+    // Telegram broadcast — only for MANUAL caisse entries (no linked_kind).
+    // Mirrored movements (sal_payment, pc_payment, tech_payment, avance)
+    // are already announced by their source-event notifs — broadcasting a
+    // second caisse-specific message would double-ping the user.
+    if(!payload.linked_kind){
+      try{
+        var solde=getCaisseSolde();
+        var icon=payload.type==='in'?'⬆️ دخول الصندوق':'⬇️ خروج الصندوق';
+        var sign=payload.type==='in'?'+':'-';
+        var lines=[
+          icon,
+          sign+fmtN(payload.amount)+' د.م. · '+(payload.designation||'—'),
+          '💵 الصندوق: '+fmtN(solde.solde)+' د.م.'
+        ];
+        if(payload.notes) lines.push('📝 '+payload.notes);
+        sendTelegramBroadcast(lines.join('\n'));
+      }catch(e){ console.warn('[caisse] notif failed:', e); }
+    }
     return res[0];
   }
   // The unique index can reject a duplicate insert (linked_kind+linked_id
@@ -13820,9 +13822,13 @@ async function shareFacturePhotoTelegram(id){
   var f=factures.find(function(x){return x.id===id;}); if(!f || !f.photo_path) return;
   try{
     var url=docPhotoUrl(f.photo_path);
-    var caption='🧾 FAC-'+(f.date?f.date.substring(0,4):'')+'-'+String(f.num||'').padStart(4,'0')+' · '+(f.client_nom||'')+' · '+fmtN(f.total_ttc||0)+' DH';
+    var label=_factDocLabel(f);
+    var isDevis=(f.serie==='devis')||f.statut==='ديفي';
+    var caption=(isDevis?'📝 ':'🧾 ')+label+' · '+(f.client_nom||'')+' · '+fmtN(f.total_ttc||0)+' DH';
     var blob=await fetch(url).then(function(r){return r.blob();});
-    await sendTelegramPhotoBroadcast(blob, 'facture-'+f.num+'.jpg', caption);
+    // Use full label as filename (DEV-2026-0007 / FAC-2026-0042) — avoids
+    // collisions when both series have the same num.
+    await sendTelegramPhotoBroadcast(blob, label.toLowerCase()+'.jpg', caption);
     try{toast('📨 صيفطات','success');}catch(e){}
   }catch(e){
     try{toast('❌ '+(e&&e.message||'فشل'),'error');}catch(err){}
@@ -13893,7 +13899,7 @@ async function restoreArticle(id){
     // Re-fetch the restored row + add it to local cache so the user sees it
     // immediately without a full reload.
     try{
-      var fresh=await sbFetch('articles?id=eq.'+id,'GET',null,'select=*');
+      var fresh=await sbFetch('articles','GET',null,'id=eq.'+id+'&select=*');
       if(Array.isArray(fresh)&&fresh[0]){
         var a=fresh[0];
         var idx=articles.findIndex(function(x){return x.id===a.id;});

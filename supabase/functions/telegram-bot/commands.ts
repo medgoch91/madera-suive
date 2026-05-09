@@ -334,6 +334,10 @@ export async function cmdKhlas(msg: TgMessage, args?: string[]): Promise<void> {
 }
 
 // ── /khlas <name> — drill-down for one worker ───────────────────
+// Markdown-escape user input before splicing into a Markdown reply.
+function _escapeMd(s: string): string {
+  return String(s || '').replace(/([_*`[\]])/g, '\\$1');
+}
 async function cmdKhlasOne(msg: TgMessage, query: string): Promise<void> {
   const STATUS_LBL: Record<string, { ic: string; lbl: string; mult: number }> = {
     present: { ic: '✅', lbl: 'حاضر', mult: 1 },
@@ -342,6 +346,7 @@ async function cmdKhlasOne(msg: TgMessage, query: string): Promise<void> {
     conge:   { ic: '🟡', lbl: 'عطلة', mult: 0 },
   };
   const q = query.toLowerCase();
+  const qEsc = _escapeMd(query);
 
   // Try to match a salarié, an ouvrier_pc, or a technician.
   const [salRes, ouvRes, techRes] = await Promise.all([
@@ -353,18 +358,37 @@ async function cmdKhlasOne(msg: TgMessage, query: string): Promise<void> {
   const ouvs = ouvRes.data ?? [];
   const techs = techRes.data ?? [];
 
-  const matchSal = sals.find((s) => {
+  // Collect ALL matches across the three tables, not just the first.
+  const salMatches = sals.filter((s) => {
     const full = (String((s as { nom: string }).nom || '') + ' ' + String((s as { prenom?: string }).prenom || '')).toLowerCase();
     return full.includes(q);
   });
-  const matchPc  = ouvs.find((o) => String((o as { nom: string }).nom || '').toLowerCase().includes(q));
-  const matchTec = techs.find((t) => String((t as { nom: string }).nom || '').toLowerCase().includes(q));
+  const pcMatches  = ouvs.filter((o) => String((o as { nom: string }).nom || '').toLowerCase().includes(q));
+  const tecMatches = techs.filter((t) => String((t as { nom: string }).nom || '').toLowerCase().includes(q));
 
-  if (!matchSal && !matchPc && !matchTec) {
-    await sendMessage(msg.chat.id, `❌ ما لقيت حتى عامل فيه "${query}". جرّب \`/khlas\` بلا اسم لقائمة الكل.`,
+  const totalMatches = salMatches.length + pcMatches.length + tecMatches.length;
+  if (totalMatches === 0) {
+    await sendMessage(msg.chat.id, `❌ ما لقيت حتى عامل فيه "${qEsc}". جرّب \`/khlas\` بلا اسم لقائمة الكل.`,
       { parseMode: 'Markdown' });
     return;
   }
+  // Ambiguous query → list candidates so the user can refine.
+  if (totalMatches > 1) {
+    const lines: string[] = [`🔍 ${totalMatches} نتيجة لـ "${qEsc}":`, ''];
+    for (const s of salMatches) {
+      const ss = s as { nom: string; prenom?: string };
+      const full = (String(ss.nom || '?') + (ss.prenom ? ' ' + ss.prenom : '')).trim();
+      lines.push(`👤 ${full}`);
+    }
+    for (const o of pcMatches) lines.push(`👷 ${(o as { nom: string }).nom} (PC)`);
+    for (const t of tecMatches) lines.push(`⚡ ${(t as { nom: string }).nom} (تقني)`);
+    lines.push('', `زيد حروف باش تخصّص (مثلا \`/khlas ${qEsc} CNC\`).`);
+    await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
+    return;
+  }
+  const matchSal = salMatches[0];
+  const matchPc  = pcMatches[0];
+  const matchTec = tecMatches[0];
 
   // ── Salarié branch ──────────────────────────────────────────────
   if (matchSal) {

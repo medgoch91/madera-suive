@@ -17214,59 +17214,10 @@ function _pcFullCalendar(ouvrierId, days){
   return html;
 }
 
-// Team activity heatmap — all active salariés + PCs vs last N days
-function _dashTeamActivitySection(){
-  var days=14;
-  var dates=_activityDateRange(days);
-  var sals=(salariesData||[]).filter(function(s){return s.actif!==false;});
-  var pcs=(ouvriersPc||[]).filter(function(o){return o.actif!==false;});
-  if(!sals.length && !pcs.length) return '';
-  var rows='';
-  sals.forEach(function(s){
-    var nm=(escB(s.nom)+(s.prenom?' '+escB(s.prenom):'')).slice(0,18);
-    var bySalDate={};
-    (salariePresences||[]).forEach(function(p){ if(Number(p.salarie_id)===Number(s.id)) bySalDate[p.date]=p.statut; });
-    var cells=dates.map(function(d){
-      var st=bySalDate[d]||'none';
-      var c=_ACTIVITY_COLORS[st]||_ACTIVITY_COLORS.none;
-      return '<span title="'+escB(d+' · '+c.lbl)+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:'+c.bg+';border:1px solid '+c.border+';margin-inline-end:1px"></span>';
-    }).join('');
-    rows+='<tr><td style="font-size:11px;font-weight:600;padding:4px 8px;white-space:nowrap;color:var(--text2)">👤 '+nm+'</td><td style="padding:4px 8px;direction:ltr">'+cells+'</td></tr>';
-  });
-  pcs.forEach(function(o){
-    var byDate={};
-    (pcPresences||[]).forEach(function(r){
-      if(Number(r.ouvrier_id)!==Number(o.id)) return;
-      if(Number(r.qte||0)<=0) return;
-      if(!byDate[r.date]) byDate[r.date]={qty:0,val:0};
-      byDate[r.date].qty+=Number(r.qte||0); byDate[r.date].val+=Number(r.qte||0)*Number(r.prix||0);
-    });
-    var maxVal=0; Object.keys(byDate).forEach(function(k){ if(byDate[k].val>maxVal) maxVal=byDate[k].val; });
-    var cells=dates.map(function(d){
-      var rec=byDate[d];
-      if(!rec) return '<span title="'+escB(d+' · بلا إنتاج')+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:rgba(120,120,140,0.18);border:1px solid rgba(120,120,140,0.3);margin-inline-end:1px"></span>';
-      var intensity=maxVal>0 ? (0.25 + 0.75*(rec.val/maxVal)) : 1;
-      return '<span title="'+escB(d+' · '+rec.qty+' قطعة · '+fmtN(rec.val)+' DH')+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:rgba(16,185,129,'+intensity.toFixed(2)+');border:1px solid rgba(16,185,129,'+(intensity*0.7).toFixed(2)+');margin-inline-end:1px"></span>';
-    }).join('');
-    rows+='<tr><td style="font-size:11px;font-weight:600;padding:4px 8px;white-space:nowrap;color:var(--text2)">👷 '+escB(o.nom).slice(0,18)+'</td><td style="padding:4px 8px;direction:ltr">'+cells+'</td></tr>';
-  });
-  // Date header (small)
-  var dayLabels=dates.map(function(d){
-    var dd=d.slice(8,10);
-    return '<span style="display:inline-block;width:13px;text-align:center;font-size:9px;color:var(--text3);margin-inline-end:1px;font-family:monospace">'+dd+'</span>';
-  }).join('');
-  return _dashSectionHeader('👀','نشاط الخدامة (آخر '+days+' يوم)','#a78bfa', sals.length+' أجير · '+pcs.length+' PC')+
-    '<div style="background:var(--bg3);border-radius:var(--radius);padding:10px;margin-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch">'+
-      '<table style="border-collapse:collapse;font-family:Cairo,sans-serif"><thead><tr><th></th><th style="padding:0 8px 4px;direction:ltr;text-align:left">'+dayLabels+'</th></tr></thead><tbody>'+rows+'</tbody></table>'+
-      '<div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text3)">'+
-        Object.keys(_ACTIVITY_COLORS).filter(function(k){return k!=='none';}).map(function(k){
-          var c=_ACTIVITY_COLORS[k];
-          return '<span><span style="display:inline-block;width:9px;height:9px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:2px;vertical-align:middle"></span> '+escB(c.lbl)+'</span>';
-        }).join('')+
-        '<span><span style="display:inline-block;width:9px;height:9px;background:rgba(16,185,129,0.85);border-radius:2px;vertical-align:middle"></span> إنتاج PC</span>'+
-      '</div>'+
-    '</div>';
-}
+// _dashTeamActivitySection removed 2026-05-09 per user — wasn't called
+// from the dashboard render anyway after the previous removal commit.
+// Inline 14-day strips on each card + 60-day calendar in details modal
+// remain (they're useful at-a-glance and live on the cards themselves).
 
 // Visual helpers for the dashboard so the 3 wage sections share the same
 // rhythm (header pill + table chrome + total band + خلاص button).

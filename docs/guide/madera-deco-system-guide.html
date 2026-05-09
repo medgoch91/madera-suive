@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>دليل النظام — MADERA DECO Suivi App</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; padding:0; }
+  body {
+    font-family: 'Cairo', 'Segoe UI', Tahoma, sans-serif;
+    color: #1f2937; background:#fff;
+    line-height: 1.65; font-size: 13px;
+    direction: rtl;
+  }
+  .page { max-width: 780px; margin: 0 auto; padding: 24px 28px; }
+  h1, h2, h3, h4 { font-family: 'Cairo', sans-serif; font-weight: 800; color:#0f172a; margin-top: 1.6em; margin-bottom:0.5em; }
+  h1 { font-size: 28px; color: #10b981; border-bottom: 3px solid #10b981; padding-bottom: 6px; }
+  h2 { font-size: 20px; color: #0e7490; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; margin-top: 2em; }
+  h3 { font-size: 16px; color: #1e40af; }
+  h4 { font-size: 14px; color: #6d28d9; }
+  p { margin: 0.6em 0; }
+  ul, ol { padding-inline-start: 22px; margin: 0.4em 0; }
+  li { margin: 0.25em 0; }
+  code { font-family: 'JetBrains Mono', Consolas, monospace; font-size: 12px; background:#f3f4f6; padding:1px 5px; border-radius:3px; color:#dc2626; direction: ltr; display: inline-block; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:6px; font-family:'JetBrains Mono', Consolas, monospace; font-size:12px; overflow-x:auto; direction: ltr; }
+  table { width:100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+  th, td { border: 1px solid #d1d5db; padding: 6px 9px; text-align: right; vertical-align: top; }
+  th { background:#f3f4f6; font-weight: 700; }
+  tr:nth-child(even) td { background:#fafafa; }
+  .cover { text-align: center; padding: 60px 0 40px; border-bottom: 4px double #10b981; margin-bottom: 30px; }
+  .cover h1 { font-size: 36px; border: none; }
+  .cover .sub { color:#6b7280; font-size: 14px; margin-top: 8px; }
+  .cover .meta { margin-top: 24px; font-family: monospace; font-size: 11px; color:#9ca3af; }
+  .badge { display:inline-block; padding:2px 9px; background:#10b98115; color:#10b981; border:1px solid #10b98144; border-radius:12px; font-size:11px; font-weight:700; margin-inline-start:6px; }
+  .callout { background:#fef3c7; border-inline-start: 4px solid #f59e0b; padding: 10px 14px; margin: 12px 0; border-radius: 4px; }
+  .callout-info { background:#dbeafe; border-inline-start-color:#3b82f6; }
+  .callout-danger { background:#fee2e2; border-inline-start-color:#dc2626; }
+  .callout-success { background:#dcfce7; border-inline-start-color:#16a34a; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .toc { background: #f9fafb; border:1px solid #e5e7eb; border-radius: 6px; padding: 14px 18px; }
+  .toc ol { margin: 0; padding-inline-start: 22px; }
+  .toc a { color:#0e7490; text-decoration: none; }
+  .footer-note { text-align:center; font-size: 10px; color: #9ca3af; margin-top: 30px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+  @media print {
+    h2 { page-break-before: auto; }
+    h2:not(:first-of-type) { page-break-before: always; }
+    .cover { page-break-after: always; }
+    .toc { page-break-after: always; }
+    pre, table { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- COVER -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <h1>دليل النظام</h1>
+  <div style="font-size:18px;color:#0e7490;margin-top:10px">MADERA DECO — Suivi App</div>
+  <div class="sub">دليل شامل دلميزات، الـworkflows، و l-config</div>
+  <div class="meta">
+    Version 2026-05-09 · maderadeco.app · Hostinger + Supabase
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<!-- TOC -->
+<!-- ════════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h2 style="margin-top:0;border:none;padding:0;color:#10b981">📑 الفهرس</h2>
+  <ol>
+    <li><a href="#vue">نظرة عامة</a></li>
+    <li><a href="#stack">البنية التقنية</a></li>
+    <li><a href="#pages">صفحات التطبيق</a>
+      <ol>
+        <li><a href="#dashboard">📊 الداشبورد</a></li>
+        <li><a href="#catalog">📦 فورنيسور و السلعة</a></li>
+        <li><a href="#sorties">📤 بونات الخروج</a></li>
+        <li><a href="#salaries">👥 الأجراء</a></li>
+        <li><a href="#caisse">💵 الصندوق</a></li>
+        <li><a href="#cheques">🗒️ التسويات (شيكات)</a></li>
+        <li><a href="#factures">🧾 الفواتير + ديفي</a></li>
+        <li><a href="#elec">⚡ électricité à distance</a></li>
+        <li><a href="#admin">⚙️ الإدارة</a></li>
+      </ol>
+    </li>
+    <li><a href="#workflows">الـ Workflows</a></li>
+    <li><a href="#telegram">بوت تيليجرام</a></li>
+    <li><a href="#cron">المهام التلقائية (Cron)</a></li>
+    <li><a href="#db">مخطط قاعدة البيانات</a></li>
+    <li><a href="#roles">الأدوار و الصلاحيات</a></li>
+    <li><a href="#backup">النسخ الاحتياطي</a></li>
+    <li><a href="#troubleshoot">حل المشاكل الشائعة</a></li>
+  </ol>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="vue">1. نظرة عامة</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+<p><b>MADERA DECO Suivi App</b> هي PWA (Progressive Web App) لإدارة الأعمال اليومية ل MADERA DECO (نجارة، توزيع كهربائي، فواتير) — تجمع المخزون، الفواتير، الشيكات، الصندوق، الخدامة (الأجراء + PCs + التقنيون)، و إعلامات Telegram ف نظام واحد.</p>
+
+<h3>أهم الميزات (2026-05-09)</h3>
+<ul>
+  <li>📋 <b>Bons d'entrée</b> من الفورنيسورات مع صور إثبات (proof scan)</li>
+  <li>📤 <b>Bons de sortie</b> منظمين par département (m:n article tagging)</li>
+  <li>🧾 <b>فواتير + ديفي (devis)</b> سلسلتين رقم منفصلتين (DEV- vs FAC-)</li>
+  <li>💳 <b>شيكات + كمبيالات + نقد</b> مع تنبيهات استحقاق</li>
+  <li>💵 <b>صندوق</b> ledger كامل مع mirror تلقائي للحركات</li>
+  <li>👥 <b>أجراء أسبوعيين</b> + 🟠 demi (نص نهار) + ⏱ heures supplémentaires + سلف</li>
+  <li>👷 <b>عمال PCs</b> piece-work catalogue dédié</li>
+  <li>⚡ <b>تقنيون à distance</b> avec bons sortie + recettes BOM</li>
+  <li>📷 <b>صور</b> bons + cheques + factures (Supabase Storage)</li>
+  <li>🤖 <b>Telegram bot</b> avec /today, /khlas, /caisse, /balance, /stock، notifs مباشرة</li>
+  <li>📊 <b>3 cron jobs نهارية</b>: workers_eod, daily_report, caisse_eod</li>
+  <li>🔐 <b>Roles + permissions</b>: admin, comptable, magasinier, commercial, technicien, viewer</li>
+  <li>💾 <b>نسخ احتياطية يومية</b> Telegram + FTP (JSON dump 29 جدول)</li>
+</ul>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="stack">2. البنية التقنية</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+<table>
+<tr><th>Layer</th><th>Technology</th></tr>
+<tr><td>Frontend</td><td>HTML/CSS/Vanilla JS (single file: <code>index.html</code> ~21,000 سطر), PWA + Service Worker</td></tr>
+<tr><td>Backend</td><td>Supabase (Postgres + RLS + Auth + Edge Functions + Storage + pg_cron)</td></tr>
+<tr><td>Realtime</td><td>WebSocket: 6 جداول (bons, cheques, factures, articles, chantiers, fournisseurs)</td></tr>
+<tr><td>Hosting</td><td>Hostinger Business — auto-deploy via GitHub Actions على كل push على main</td></tr>
+<tr><td>Domain</td><td>maderadeco.app (Dynadot → Hostinger DNS)</td></tr>
+<tr><td>Bot</td><td>Telegram (@APPSUIVEBOT) — Edge Function <code>telegram-bot</code></td></tr>
+<tr><td>i18n</td><td>AR/FR runtime translator (611+ مدخل قاموس)</td></tr>
+</table>
+
+<div class="callout callout-info">
+<b>ℹ️ ملاحظة:</b> الكل في <code>index.html</code> واحد — ما كاين build step. كل تعديل = push = auto-deploy في 15 ثانية.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="pages">3. صفحات التطبيق</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3 id="dashboard">📊 الداشبورد</h3>
+<p>الصفحة الرئيسية. KPIs دلّحظة دلوقت:</p>
+<ul>
+  <li>إجمالي البونات في الفترة المختارة</li>
+  <li>المبالغ المعلقة (شيكات بلا تسوية)</li>
+  <li>الصندوق الحالي + إيرادات/مصاريف اليوم</li>
+  <li>الخدامة (أجراء + PCs + تقنيون) مع KPI per-bucket</li>
+  <li>التنبيهات (شيكات تستحق اليوم، مخزون منخفض، إلخ)</li>
+</ul>
+
+<h3 id="catalog">📦 فورنيسور و السلعة (Catalog Hub)</h3>
+<p>3 tabs ف نفس الصفحة:</p>
+<table>
+<tr><th>Tab</th><th>المحتوى</th></tr>
+<tr><td>📦 السلع</td><td>كتالوغ المنتجات: نوم، unité، عائلة (cat)، ref، صورة، سعر par fournisseur (table prix), departments tags (max 3), المخزون + min limit</td></tr>
+<tr><td>🏢 الفورنيسورات</td><td>قائمة المورّدين: ICE, IF, RC, tel, email, families, totaux dette/credit</td></tr>
+<tr><td>📋 البونات</td><td>قائمة bons d'entrée + tab "+ بون جديد" لإنشاء واحد</td></tr>
+</table>
+
+<div class="callout">
+<b>📷 صور:</b> كل سلعة قادر تشد صورة (localStorage). كل بون / شيك / فاتورة قادر يشد صورة دلورقة الأصلية f Storage bucket <code>bon-photos</code> (proof scan).
+</div>
+
+<h3 id="sorties">📤 بونات الخروج (Bons de Sortie)</h3>
+<p>Hub جديد — bons de sortie منظمين par département. Tabs ديناميكية مبنية من جدول <code>departments</code> (CRUD).</p>
+<ul>
+  <li><b>📋 بون جديد:</b> اختار قسم → article picker مفلتر par dept tag → multi-line + qty + stock validation per row</li>
+  <li><b>📜 السجل:</b> قائمة كل البونات السابقة + filters (date range / search / dept) + actions (✏️ edit / 🗑️ delete / 📨 photo-share / 📥 print)</li>
+  <li><b>⚙️ Depts:</b> modal CRUD لإضافة/تعديل/أرشفة الأقسام (code, name, icon, color, position)</li>
+</ul>
+<p><b>الأقسام الموجودة:</b> ⚡ Élec, MIROIR, EMBALLAGE, MONTAGE, FINITION (و قابل لإضافة جديدة).</p>
+<p><b>تنسيق الرقم:</b> <code>BS-{CODE}-YYYYMMDD-NNN</code> (مثال: <code>BS-ELEC-20260509-001</code>).</p>
+<p><b>Print:</b> template احترافي مع logo + watermark + signatures (li khraj / li khda) — same style كي bulletin de paie.</p>
+
+<h3 id="salaries">👥 الأجراء (الخدامة)</h3>
+<p>3 sub-tabs:</p>
+<table>
+<tr><th>Tab</th><th>المحتوى</th></tr>
+<tr><td>👥 الأجراء (workers)</td><td>عمال أسبوعيين: pointage يومي (✅ present / 🟠 demi / 🔴 absent / 🟡 conge) + ⏱ heures supp + 🔧 إنتاج بالقطعة</td></tr>
+<tr><td>👷 par PCs</td><td>عمال piece-work: الانتاج اليومي per PC (e.g. Tiroir 80 × 13 DH) — كتالوغ مشترك (sal_catalogue) لتجنب double-entry</td></tr>
+<tr><td>⚡ électricité à distance</td><td>تقنيون subcontracting (شوف §3.7)</td></tr>
+</table>
+
+<h4>Workflow التسوية الأسبوعية:</h4>
+<ol>
+  <li>اختر الأسبوع (Sun → Sat)</li>
+  <li>دير pointage يومي (مع قيمة إضافية إن وجدت)</li>
+  <li>كل عامل ف الـdashboard كيبان net = (أيام × سعر) + hsup − سلف</li>
+  <li>اضغط "💰 خلاص" → تأكيد → automatic Telegram notif + PDF payslip</li>
+  <li>إذا السلف > الأجر → automatic rollover للأسبوع الجاي</li>
+  <li>📄 / 📨 buttons لطبع/مشاركة payslip بدون settlement</li>
+</ol>
+
+<div class="callout callout-info">
+<b>ℹ️ معدلات تاريخية:</b> <code>salary_rates</code> table بتدير effective-dated rate lookups — رفع الأجر اليوم ما كيرتراجعش على pointage الفترات السابقة.
+</div>
+
+<h3 id="caisse">💵 الصندوق</h3>
+<p>Cash-box ledger كامل. كل حركة (سلف، تسويات، payments) كي تكون auto-mirrored من جدولها الأصلي.</p>
+<ul>
+  <li>Manual entries (إيرادات / مصاريف غير مرتبطة)</li>
+  <li>Auto-mirror من <code>salarie_taswiyas</code>, <code>pc_taswiyas</code>, <code>technician_payments</code>, <code>salarie_avances</code>, <code>pc_avances</code></li>
+  <li>كل حركة كتفير Telegram notif مع المتقدم الجاري دلصندوق</li>
+  <li>Daily summary auto à 21:00 Casa</li>
+</ul>
+
+<h3 id="cheques">🗒️ التسويات (شيكات + كمبيالات + نقد)</h3>
+<p>3 أنواع:</p>
+<ul>
+  <li>💳 <b>شيك (cheque):</b> مع رقم + تاريخ إصدار + تاريخ استحقاق</li>
+  <li>📜 <b>كمبيالة (effet):</b> نفس البنية</li>
+  <li>💵 <b>نقد (espèce):</b> بدون استحقاق (مدفوع فوراً)</li>
+</ul>
+<p><b>Statuses:</b> 🟡 معلق / ✅ مدفوع / 🔴 مرتجع</p>
+<p><b>تنبيهات:</b></p>
+<ul>
+  <li>🌅 08:00: <code>cheques_due_morning</code> — قائمة الشيكات اللي تستحق اليوم</li>
+  <li>🕓 16:00 + 18:00: <code>cheques_today_ping</code> — رسالة prompt per شيك مع inline buttons (✅ مدفوع / ❌ باقي / 📅 أجّل 7 أيام)</li>
+</ul>
+
+<h3 id="factures">🧾 الفواتير + ديفي (Devis)</h3>
+<p>Both share the <code>factures</code> table مع <code>serie</code> column ('fact' | 'devis').</p>
+<table>
+<tr><th>Type</th><th>Format</th><th>Color</th></tr>
+<tr><td>Devis</td><td><code>DEV-{YYYY}-{NNNN}</code></td><td>🟣 بنفسجي</td></tr>
+<tr><td>Facture</td><td><code>FAC-{YYYY}-{NNNN}</code></td><td>🔵 أزرق</td></tr>
+</table>
+<p>كل serie عندو sequence مستقل per-year (DEV-2026-0001 + FAC-2026-0001 يقدرو كاينين فس نفس الوقت).</p>
+
+<p><b>Workflow:</b></p>
+<ol>
+  <li>إنشاء فاتورة جديدة مع checkbox "📝 احفظ كـ ديفي" → status = 'ديفي'</li>
+  <li>إن قبل الزبون → اضغط "✅ حول لفاتورة" → re-numbered كـFAC-... + status 'معلقة'</li>
+  <li>كل فاتورة قادر يشد صورة + photo-share + print A4 template</li>
+</ol>
+
+<h3 id="elec">⚡ électricité à distance</h3>
+<p>Sub-contracting workflow للتقنيين:</p>
+<ol>
+  <li><b>Envoi matière:</b> أرسل المادة الأولية للتقني (ينقص من <code>articles.stock</code> + INSERT <code>material_dispatches</code>)</li>
+  <li><b>Recettes (BOM):</b> per produit fini، حدّد المواد الخام المطلوبة (Bill of Materials)</li>
+  <li><b>Livraison produit:</b> التقني يجيب المنتج الفيني → ينقص من رصيد التقني (dispatches − consommation recettes), ما يمسش articles.stock</li>
+  <li><b>Soldes:</b> per-tech balance view (تاخذ − استعمل = باقي)</li>
+  <li><b>Payments:</b> سجّل الدفع (auto Telegram + caisse mirror)</li>
+</ol>
+
+<h3 id="admin">⚙️ إدارة المستخدمين</h3>
+<p>Admin-only page (مرئية ل role 'admin' فقط). إدارة Supabase Auth users:</p>
+<ul>
+  <li>إضافة user جديد (ميل + password)</li>
+  <li>تعيين role (admin, comptable, magasinier, commercial, technicien, viewer)</li>
+  <li>per-page permissions toggles (مثلا magasinier ما يقدرش يفتح factures)</li>
+  <li>reset password</li>
+  <li>audit log بكل العمليات</li>
+</ul>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="workflows">4. الـ Workflows الرئيسية</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3>4.1 شراء سلعة من فورنيسور</h3>
+<ol>
+  <li>📦 فورنيسور و السلعة → tab بونات → ➕ بون جديد</li>
+  <li>اختار الفورنيسور + التاريخ</li>
+  <li>زيد lignes (article + qte + prix)</li>
+  <li>احفظ → stock يزيد automatique + Telegram notif</li>
+  <li>📷 (اختياري) شد صورة دلورقة الأصلية</li>
+</ol>
+
+<h3>4.2 خروج سلعة لورشة</h3>
+<ol>
+  <li>📤 بونات الخروج → اختار القسم (e.g. ⚡ الكهرباء)</li>
+  <li>📋 بون جديد → اختار articles + qty (مفلترين par dept tag)</li>
+  <li>زيد destination (chantier optional) + ملاحظات</li>
+  <li>احفظ → stock ينقص automatique + Telegram notif مع الـlines</li>
+  <li>📨 photo-share أو 📥 طبع PDF</li>
+</ol>
+
+<h3>4.3 إصدار فاتورة</h3>
+<ol>
+  <li>🧾 الفواتير → ➕ فاتورة جديدة</li>
+  <li>اختار client + lignes + TVA</li>
+  <li>اختياري: ☑️ "احفظ كـ ديفي" → DEV-...</li>
+  <li>احفظ → Telegram notif</li>
+  <li>📷 شد صورة دلورقة (proof) إن طلبتها</li>
+  <li>إذا ديفي → b3da اضغط "✅ حول لفاتورة" → DEV → FAC</li>
+</ol>
+
+<h3>4.4 خلاص شيك مستحق</h3>
+<p>طريقتين:</p>
+<ol>
+  <li><b>من Telegram:</b> الشيك كيوصل لي 16:00 و 18:00 مع buttons → اضغط "✅ مدفوع" — انتها</li>
+  <li><b>من التطبيق:</b> 🗒️ التسويات → اختار الشيك → ✏️ edit → status = 'مدفوع' → احفظ</li>
+</ol>
+
+<h3>4.5 خلاص أجير أسبوعي</h3>
+<ol>
+  <li>👥 الأجراء → tab dashboard → اختار الأسبوع</li>
+  <li>كل عامل كيبان: أيام، أجر، إنتاج، سلف، الصافي</li>
+  <li>اضغط "💰 خلاص" → confirm</li>
+  <li>Auto: caisse out + Telegram notif + PDF payslip image مع توقيعات</li>
+</ol>
+
+<h3>4.6 إدخال PC جديد لعامل</h3>
+<ol>
+  <li>👥 الأجراء → tab par PCs → اختار العامل</li>
+  <li>ف form إضافة PC: اكتب اسم PC ولا اختر من dropdown (catalog)</li>
+  <li>اختياري: ☑️ "زيد فالكتالوغ" → باش يبان لعمال آخرين</li>
+  <li>اكتب الثمن (auto-fill من catalog إذا اخترتو)</li>
+  <li>احفظ</li>
+</ol>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="telegram">5. بوت تيليجرام</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+<p><b>Bot:</b> @APPSUIVEBOT</p>
+<p><b>الاشتراك:</b> أرسل <code>/start</code> ل البوت ثم <code>/subscribe</code> باش تتلقى الإشعارات.</p>
+
+<h3>الأوامر المتاحة</h3>
+<table>
+<tr><th>Command</th><th>الوظيفة</th></tr>
+<tr><td><code>/today</code></td><td>خلاصة اليوم (شيكات تستحق + أحداث مهمة)</td></tr>
+<tr><td><code>/balance</code></td><td>رصيد البونات و الشيكات (بلا شيك / تستحق ف 7 أيام)</td></tr>
+<tr><td><code>/khlas</code></td><td>الباقي للخدامة (أجراء + PCs + تقنيون) مع per-worker totals</td></tr>
+<tr><td><code>/khlas &lt;اسم&gt;</code></td><td>تفصيل لعامل واحد: per-day breakdown، avances، 💰 الصافي</td></tr>
+<tr><td><code>/caisse</code></td><td>حالة الصندوق + اليوم + آخر 10 حركات</td></tr>
+<tr><td><code>/stock &lt;سلعة&gt;</code></td><td>مخزون سلعة (بحث ب الاسم)</td></tr>
+<tr><td><code>/listbons</code></td><td>آخر 10 بونات</td></tr>
+<tr><td><code>/newbon</code></td><td>إضافة بون جديد (multi-step conversation)</td></tr>
+<tr><td><code>/cheque</code></td><td>إضافة شيك جديد</td></tr>
+<tr><td><code>/subscribe</code> / <code>/unsubscribe</code></td><td>تفعيل/إيقاف الإشعارات</td></tr>
+<tr><td><code>/cancel</code></td><td>إلغاء العملية الجارية</td></tr>
+</table>
+
+<h3>الإشعارات التلقائية (Push)</h3>
+<ul>
+  <li>📦 بون جديد / تعديل بون</li>
+  <li>📤 بون خروج جديد / تعديل / حذف (مع dept + lines)</li>
+  <li>💳 شيك جديد / تعديل / دفع</li>
+  <li>🧾 فاتورة جديدة / ديفي → تحويل</li>
+  <li>👤 pointage update (debounced 10 min) — coalesced into one message</li>
+  <li>💰 تخلص (sal/pc/tech) — مع running total اليوم</li>
+  <li>⬆️ ⬇️ كل حركة دلصندوق (in/out) مع solde جديد</li>
+  <li>⚠️ مخزون منخفض (تحت stock_min) — مل BS save</li>
+  <li>🔐 first-activity admin online (1h cooldown)</li>
+</ul>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="cron">6. المهام التلقائية (pg_cron)</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+<table>
+<tr><th>Job</th><th>الوقت (Casa)</th><th>الوظيفة</th></tr>
+<tr><td><code>bot-backup-daily</code></td><td>02:00</td><td>JSON dump 29 جدول → Telegram document + FTP upload</td></tr>
+<tr><td><code>bot-cheques-due-morning</code></td><td>08:00</td><td>قائمة الشيكات اللي تستحق اليوم</td></tr>
+<tr><td><code>bot-cheques-today-ping</code></td><td>16:00 + 18:00</td><td>رسالة per شيك مع buttons (دفع / إلغاء / تأجيل)</td></tr>
+<tr><td><code>bot-workers-eod</code></td><td>20:00</td><td>per-worker pointage + hsup + PCs detail</td></tr>
+<tr><td><code>bot-daily-report</code></td><td>20:30</td><td>spending + invoices + BS + caisse + workers brief</td></tr>
+<tr><td><code>bot-caisse-eod</code></td><td>21:00</td><td>cash-flow recap + settlements breakdown + balance</td></tr>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="db">7. مخطط قاعدة البيانات (الجداول الرئيسية)</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h4>Master tables</h4>
+<table>
+<tr><th>Table</th><th>الوظيفة</th></tr>
+<tr><td><code>articles</code></td><td>السلع (nom, unite, cat, ref, stock, stock_min, deleted_at, photo_path)</td></tr>
+<tr><td><code>fournisseurs</code></td><td>الموردون (nom, ICE, IF, RC, tel, email, families[])</td></tr>
+<tr><td><code>chantiers</code></td><td>الورشات / المشاريع</td></tr>
+<tr><td><code>departments</code></td><td>الأقسام (code, name, icon, color, position, active)</td></tr>
+<tr><td><code>article_departments</code></td><td>m:n: article ↔ department (max 3 per article via trigger)</td></tr>
+<tr><td><code>salaries</code></td><td>الأجراء master (nom, prenom, salaire_base, taux_hsup, actif)</td></tr>
+<tr><td><code>salary_rates</code></td><td>تاريخ معدلات الأجر (effective_from لكل تغيير)</td></tr>
+<tr><td><code>ouvriers_pc</code></td><td>عمال PCs master</td></tr>
+<tr><td><code>ouvrier_pc_assign</code></td><td>per-worker PC list (pc_nom, prix)</td></tr>
+<tr><td><code>sal_catalogue</code></td><td>كتالوغ PCs المشترك (id, nom, unite, prix)</td></tr>
+<tr><td><code>technicians</code></td><td>التقنيون (للـelectricité à distance)</td></tr>
+<tr><td><code>products</code></td><td>المنتجات الفينية (sub-contracting)</td></tr>
+<tr><td><code>product_recipe</code></td><td>BOM: product ↔ raw_materials × quantity_needed</td></tr>
+</table>
+
+<h4>Transactional tables</h4>
+<table>
+<tr><th>Table</th><th>الوظيفة</th></tr>
+<tr><td><code>bons</code></td><td>bons d'entrée (num, fournisseur, date, lignes jsonb, total, total_net, photo_path)</td></tr>
+<tr><td><code>cheques</code></td><td>شيكات + كمبيالات + نقد (num, montant, type, date, echeance, status, paid_at)</td></tr>
+<tr><td><code>factures</code></td><td>fact + devis (num, serie, client_*, lignes, total_ht/tva/ttc, statut)</td></tr>
+<tr><td><code>fact_clients</code> / <code>fact_produits</code> / <code>fact_societe</code></td><td>master data للفواتير</td></tr>
+<tr><td><code>bons_sortie</code> + <code>bons_sortie_lines</code></td><td>BS hub (header + lines)</td></tr>
+<tr><td><code>material_dispatches</code></td><td>إرسال مادة لتقني (legacy elec-dist)</td></tr>
+<tr><td><code>subcontracting_orders</code></td><td>تسليم منتج فيني من تقني</td></tr>
+<tr><td><code>material_returns</code></td><td>إرجاع مادة من تقني</td></tr>
+<tr><td><code>technician_payments</code></td><td>دفعات للتقنيين</td></tr>
+<tr><td><code>salarie_presences</code></td><td>pointage يومي per salarié</td></tr>
+<tr><td><code>salarie_avances</code></td><td>سلف الأجراء</td></tr>
+<tr><td><code>salarie_taswiyas</code></td><td>تسويات أسبوعية أجراء</td></tr>
+<tr><td><code>ouvrier_pc_presences</code></td><td>إنتاج per worker per day</td></tr>
+<tr><td><code>pc_avances</code> + <code>pc_taswiyas</code></td><td>مثل الأجراء</td></tr>
+<tr><td><code>caisse_movements</code></td><td>cash-box ledger كامل (date, type, amount, designation, linked_kind, linked_id)</td></tr>
+<tr><td><code>audit_log</code></td><td>كل CRUD operation (للتتبع)</td></tr>
+<tr><td><code>bot_subscribers</code> + <code>push_subscriptions</code></td><td>chat_ids + browser push tokens</td></tr>
+</table>
+
+<h3>RPCs (Stored Procedures)</h3>
+<table>
+<tr><th>Function</th><th>الوظيفة</th></tr>
+<tr><td><code>bons_sortie_save(p_bon, p_lines)</code></td><td>Atomic insert BS + lines + decrement stock</td></tr>
+<tr><td><code>bons_sortie_update(p_id, p_bon, p_lines)</code></td><td>Atomic update مع stock delta</td></tr>
+<tr><td><code>bons_sortie_delete(p_id)</code></td><td>حذف + restore stock</td></tr>
+<tr><td><code>restore_data(jsonb)</code></td><td>استعادة من backup JSON (atomic)</td></tr>
+<tr><td><code>call_bot_cron(jobname)</code></td><td>Wrapper to invoke Edge Function from pg_cron</td></tr>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="roles">8. الأدوار و الصلاحيات</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+<table>
+<tr><th>Role</th><th>Pages</th><th>Use case</th></tr>
+<tr><td>👑 admin</td><td>كل شيء (bypass)</td><td>المدير العام</td></tr>
+<tr><td>📝 comptable</td><td>dashboard, bons, cheques, echeancier, factures, fournisseurs, articles, caisse</td><td>محاسب</td></tr>
+<tr><td>🏪 magasinier</td><td>dashboard, bons, fournisseurs, articles, sorties, elec-dist</td><td>مخزني (warehouse keeper)</td></tr>
+<tr><td>💼 commercial</td><td>dashboard, factures, fournisseurs, articles</td><td>مسؤول تجاري</td></tr>
+<tr><td>🔧 technicien</td><td>dashboard, elec-dist, articles</td><td>تقني</td></tr>
+<tr><td>👁️ viewer</td><td>read-only على معظم الصفحات</td><td>محاسب خارجي / إستشارة</td></tr>
+</table>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="backup">9. النسخ الاحتياطي</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<h3>Auto-backup يومي (02:00 Casa)</h3>
+<ul>
+  <li><b>Telegram:</b> sendDocument JSON dump (29 جدول) لكل chat ف <code>bot_subscribers</code></li>
+  <li><b>FTP Hostinger:</b> upload نفس JSON ل <code>/backups/backup-maderadeco-YYYY-MM-DD.json</code></li>
+  <li><b>Google Drive:</b> wired لكن disabled (يحتاج GCP service account)</li>
+</ul>
+
+<h3>Restore tool</h3>
+<p>👉 <code>https://maderadeco.app/restore.html</code> (login → upload backup JSON → preview row counts → checkbox + button أحمر → atomic restore via <code>restore_data(jsonb)</code> RPC)</p>
+
+<div class="callout callout-danger">
+<b>⚠️ تحذير:</b> Restore يدير TRUNCATE 3la كل الجداول قبل INSERT — تأكد ما عندكش بيانات جديدة لي ما خاصش تتمسح.
+</div>
+
+<!-- ════════════════════════════════════════════════════════════ -->
+<h2 id="troubleshoot">10. حل المشاكل الشائعة</h2>
+<!-- ════════════════════════════════════════════════════════════ -->
+
+<table>
+<tr><th>المشكلة</th><th>الحل</th></tr>
+<tr><td>التطبيق ما كيتحدثش بعد deploy</td><td>Hard reload (Cmd+Shift+R) أو Service Worker → Update available banner → reload</td></tr>
+<tr><td>"تعذر الاتصال" / fetch errors</td><td>Check Supabase project status + RLS policies + Auth session</td></tr>
+<tr><td>Telegram notif ما كتجيش</td><td>أرسل <code>/subscribe</code> ل البوت + verify <code>tg_chat_id</code> ف localStorage</td></tr>
+<tr><td>"violates foreign key constraint" مل حذف article</td><td>الـsoft-delete ديال البونات السابقة — استخدم button "🗑️ حذف" ف ال article modal (غادي يدير soft-delete)</td></tr>
+<tr><td>Stock مغلوط بعد edit بون</td><td>Refresh button "🔄 تحديث" ف tab السلع — يعيد fetch من Supabase</td></tr>
+<tr><td>Forgot password</td><td>maderadeco.app → Forgot password → check email — أو Supabase Dashboard → Auth → reset</td></tr>
+<tr><td>I18N misses (FR coverage)</td><td>افتح console: <code>copy(JSON.stringify(window._i18nMisses))</code> + سيفط للمطور</td></tr>
+</table>
+
+<div class="footer-note">
+  دليل النظام · MADERA DECO Suivi App · Version 2026-05-09<br>
+  maderadeco.app · github.com/medgoch91/madera-suive
+</div>
+
+</div>
+</body>
+</html>

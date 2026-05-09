@@ -6637,8 +6637,39 @@ function renderFournisseurs(){
   const soldeColor = v => v>0.005 ? 'var(--red)' : (v<-0.005 ? 'var(--green)' : 'var(--text3)');
   const soldeIcon  = v => v>0.005 ? '🔴' : (v<-0.005 ? '🟢' : '✓');
 
+  // Top-3 dette cards — visually pull the highest-debt suppliers above
+  // the table so the boss spots "kayn 3la men" at a glance.
+  var topDebt = all.filter(function(f){return f.soldeNow > 0.005;}).slice(0,3);
+  function _lastPaymentDateFor(nom){
+    var paid = cheques.filter(function(c){return c.fournisseur===nom && _fourIsPaid(c);})
+      .map(function(c){return _fourPaidDate(c)||'';})
+      .filter(Boolean).sort();
+    return paid.length ? paid[paid.length-1] : '';
+  }
+  var topDebtHTML = topDebt.length
+    ? '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:14px">'+
+      topDebt.map(function(f){
+        var lp = _lastPaymentDateFor(f.nom);
+        var nameEsc = String(f.nom||'').replace(/'/g,"\\'");
+        return '<div onclick="openFModal(\''+nameEsc+'\')" style="cursor:pointer;background:linear-gradient(135deg,rgba(232,64,64,0.08),rgba(245,158,11,0.04));border:1px solid rgba(232,64,64,0.3);border-radius:var(--radius);padding:14px 16px;transition:transform 0.1s" onmouseover="this.style.transform=\'translateY(-1px)\'" onmouseout="this.style.transform=\'\'">'+
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'+
+            '<div style="font-size:13px;font-weight:800;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">🏢 '+escB(f.nom)+'</div>'+
+            '<span style="font-size:9px;background:rgba(232,64,64,0.12);color:var(--red);padding:2px 8px;border-radius:8px;font-weight:700;white-space:nowrap">دين</span>'+
+          '</div>'+
+          '<div style="font-size:22px;font-weight:900;color:var(--red);margin-top:4px">'+fmtN(f.soldeNow)+' <span style="font-size:11px;color:var(--text3);font-weight:600">DH</span></div>'+
+          '<div style="display:flex;gap:10px;margin-top:6px;font-size:11px;color:var(--text2);flex-wrap:wrap">'+
+            (f.pendingTotal>0.005 ? '<span title="شيكات معلقة">📝 '+fmtN(f.pendingTotal)+'</span>' : '')+
+            (f.enCompteTotal>0.005 ? '<span title="بونات بلا شيك">💼 '+fmtN(f.enCompteTotal)+'</span>' : '')+
+            (lp ? '<span title="آخر دفعة">⏱ '+fmtDate(lp)+'</span>' : '<span style="color:var(--text3)">⚠️ ما تخلصش بعد</span>')+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>'
+    : '';
+
   document.getElementById('page-fournisseurs').innerHTML=
     _renderCatalogTabsHTML('fournisseurs')
+    +topDebtHTML
     +`<div style="display:grid;grid-template-columns:1fr 320px;gap:20px;align-items:start">
       <!-- LEFT: table -->
       <div>
@@ -21656,6 +21687,79 @@ if('serviceWorker' in navigator){
     });
   });
 }
+
+// ═══ PWA INSTALL BANNER ═════════════════════════════════════════
+// Capture the beforeinstallprompt event and surface a one-time banner
+// inviting the user to add the app to their home screen. Dismissals
+// stick in localStorage so we don't nag — re-shown again only if the
+// user clears storage or 30 days have passed since dismissal.
+(function(){
+  var DEFER_KEY = 'pwa_install_dismissed_at';
+  var DEFER_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+  // Skip if already installed (standalone display)
+  try{
+    if(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return;
+    if(window.navigator && window.navigator.standalone) return; // iOS
+    var dismissed = Number(localStorage.getItem(DEFER_KEY)||0);
+    if(dismissed && (Date.now()-dismissed) < DEFER_MS) return;
+  }catch(_){}
+  var deferredPrompt = null;
+
+  function showInstallBanner(){
+    if(document.getElementById('__pwa-install-banner')) return;
+    var b = document.createElement('div');
+    b.id = '__pwa-install-banner';
+    b.style.cssText = 'position:fixed;bottom:20px;inset-inline-start:20px;z-index:9997;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;padding:12px 18px;border-radius:14px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;box-shadow:0 8px 24px rgba(16,185,129,0.35);display:flex;align-items:center;gap:12px;direction:rtl;max-width:calc(100vw - 40px)';
+    var hasPrompt = !!deferredPrompt;
+    var iosTip = !hasPrompt && /iphone|ipad|ipod/i.test(navigator.userAgent||'');
+    b.innerHTML = '<span style="font-size:18px">📲</span>'
+      + '<div style="flex:1">'
+        + '<div>ضيف التطبيق ل home screen</div>'
+        + (iosTip
+            ? '<div style="font-size:11px;opacity:0.9;font-weight:500;margin-top:2px">Safari → 📤 Share → "Add to Home Screen"</div>'
+            : '<div style="font-size:11px;opacity:0.9;font-weight:500;margin-top:2px">سريع، fullscreen، بحال app native</div>')
+      + '</div>'
+      + (hasPrompt
+          ? '<button id="__pwa-install-go" style="padding:7px 14px;border:none;border-radius:20px;background:rgba(255,255,255,0.95);color:#0f766e;font-family:Cairo,sans-serif;font-size:12px;font-weight:800;cursor:pointer">ضيف</button>'
+          : '')
+      + '<button id="__pwa-install-skip" style="padding:7px 10px;border:1px solid rgba(255,255,255,0.45);border-radius:20px;background:transparent;color:#fff;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">لاحقا</button>';
+    document.body.appendChild(b);
+    var goBtn = document.getElementById('__pwa-install-go');
+    var skipBtn = document.getElementById('__pwa-install-skip');
+    if(goBtn) goBtn.onclick = async function(){
+      try{
+        if(!deferredPrompt) return;
+        deferredPrompt.prompt();
+        await deferredPrompt.userChoice;
+      }catch(e){ console.warn('install prompt failed', e); }
+      finally{ deferredPrompt = null; b.remove(); }
+    };
+    if(skipBtn) skipBtn.onclick = function(){
+      try{ localStorage.setItem(DEFER_KEY, String(Date.now())); }catch(_){}
+      b.remove();
+    };
+  }
+
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    deferredPrompt = e;
+    // Wait until the user has had time to interact with the app at least
+    // once (3s) before showing the prompt — otherwise it pops on cold
+    // start which feels intrusive.
+    setTimeout(showInstallBanner, 3000);
+  });
+  window.addEventListener('appinstalled', function(){
+    deferredPrompt = null;
+    var b = document.getElementById('__pwa-install-banner');
+    if(b) b.remove();
+    try{ localStorage.setItem(DEFER_KEY, String(Date.now())); }catch(_){}
+  });
+  // iOS path: no beforeinstallprompt event. Show the manual-tip banner
+  // after a longer delay (10s) to avoid being annoying.
+  if(/iphone|ipad|ipod/i.test(navigator.userAgent||'') && !window.navigator.standalone){
+    setTimeout(showInstallBanner, 10000);
+  }
+})();
 
 // ═══ WEB PUSH ═══════════════════════════════════════════════════
 const VAPID_PUB = 'BFyNX5fMqFYfdQv1Q1A1Fo1X4AdFKgJVNAwM2VYLKSQo8dXMsMgqU2XuMqIK6K-YVfWceIA6iMthQGqWCWsGrRU';

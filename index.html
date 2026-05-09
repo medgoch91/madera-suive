@@ -16736,7 +16736,8 @@ function salCardShowDetails(salId){
         +'<div style="overflow:auto;max-height:240px;margin-bottom:14px"><table class="data-table" style="font-size:12px"><thead><tr><th>التاريخ</th><th>الحالة</th><th style="text-align:end">س. إضافية</th><th style="text-align:end">الإنتاج</th></tr></thead><tbody>'+daysHTML+'</tbody></table></div>'
       : '<div style="color:var(--text3);text-align:center;padding:14px;font-size:12px;background:var(--bg3);border-radius:8px;margin-bottom:14px">ما كاين شي حضور فهاد الفترة</div>'
     )
-    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
+    +_salFullCalendar(salId, 60)
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px;margin-top:14px">💳 السلف المعلقة ('+avs.length+')</div>'
     +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
     +'<div style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
       +'<span>📜 سجل التسويات ('+tasws.length+')</span>'
@@ -16860,7 +16861,8 @@ function pcCardShowDetails(ouvrierId){
         +'<div style="overflow:auto;max-height:200px;margin-bottom:14px"><table class="data-table" style="font-size:12px"><thead><tr><th>التاريخ</th><th>التفاصيل</th><th style="text-align:end">المجموع</th></tr></thead><tbody>'+daysHTML+'</tbody></table></div>'
       : ''
     )
-    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
+    +_pcFullCalendar(ouvrierId, 60)
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px;margin-top:14px">💳 السلف المعلقة ('+avs.length+')</div>'
     +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
     +(function(){
       var pcTasws=(pcTaswiyas||[]).filter(function(t){return Number(t.ouvrier_id)===Number(ouvrierId);})
@@ -16887,6 +16889,216 @@ function pcCardShowDetails(ouvrierId){
     +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
   document.getElementById('modal-main-c').innerHTML = html;
   document.getElementById('modal-main').classList.add('open');
+}
+
+// ─── Activity tracking — inline strip + full calendar + team heatmap ──
+// Reuses _POINTAGE_STATUS for color/icon. Computes a fixed-length array of
+// the last N days ending today, fills each day from `salariePresences`.
+// Future-proof: any unknown status stays gray ("no record").
+function _activityDateRange(days){
+  var arr=[]; var d=new Date();
+  for(var i=days-1;i>=0;i--){
+    var dt=new Date(d); dt.setDate(d.getDate()-i);
+    arr.push(dt.toISOString().slice(0,10));
+  }
+  return arr;
+}
+const _ACTIVITY_COLORS={
+  present:{bg:'rgba(46,204,122,0.85)', border:'#27ae60', ic:'✅', lbl:'حاضر'},
+  demi:   {bg:'rgba(251,146,60,0.75)', border:'#f97316', ic:'🟠', lbl:'نص نهار'},
+  absent: {bg:'rgba(239,68,68,0.75)',  border:'#ef4444', ic:'🔴', lbl:'غائب'},
+  conge:  {bg:'rgba(251,191,36,0.75)', border:'#f59e0b', ic:'🟡', lbl:'عطلة'},
+  none:   {bg:'rgba(120,120,140,0.18)',border:'rgba(120,120,140,0.3)', ic:'⚫', lbl:'بلا تسجيل'}
+};
+function _salActivityStrip(salId, days){
+  days=days||14;
+  var dates=_activityDateRange(days);
+  var bySalDate={};
+  (salariePresences||[]).forEach(function(p){ if(Number(p.salarie_id)===Number(salId)) bySalDate[p.date]=p.statut; });
+  var counts={present:0,demi:0,absent:0,conge:0,none:0};
+  var streak=0; var streakActive=true;
+  // Compute current streak (consecutive present/demi from latest day backwards)
+  for(var i=dates.length-1;i>=0;i--){
+    var st=bySalDate[dates[i]]||'none';
+    if(streakActive && (st==='present' || st==='demi')) streak++;
+    else streakActive=false;
+  }
+  var cells=dates.map(function(d){
+    var st=bySalDate[d]||'none';
+    counts[st]=(counts[st]||0)+1;
+    var c=_ACTIVITY_COLORS[st]||_ACTIVITY_COLORS.none;
+    return '<span title="'+escB(d+' · '+c.lbl)+'" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:'+c.bg+';border:1px solid '+c.border+';margin-inline-end:1px"></span>';
+  }).join('');
+  var summary=[];
+  if(counts.present) summary.push('<span style="color:#27ae60;font-weight:700">✅'+counts.present+'</span>');
+  if(counts.demi)    summary.push('<span style="color:#f97316;font-weight:700">🟠'+counts.demi+'</span>');
+  if(counts.absent)  summary.push('<span style="color:#ef4444;font-weight:700">🔴'+counts.absent+'</span>');
+  if(counts.conge)   summary.push('<span style="color:#f59e0b;font-weight:700">🟡'+counts.conge+'</span>');
+  if(streak>=2)      summary.push('<span title="أيام متتالية" style="color:#dc2626;font-weight:800">🔥'+streak+'</span>');
+  return '<div class="activity-strip" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 4px">'+
+    '<div style="display:flex">'+cells+'</div>'+
+    (summary.length?'<div style="font-size:10px;display:flex;gap:6px;align-items:center">'+summary.join(' ')+'</div>':'')+
+  '</div>';
+}
+function _pcActivityStrip(ouvrierId, days){
+  days=days||14;
+  var dates=_activityDateRange(days);
+  var byDate={};
+  (pcPresences||[]).forEach(function(r){
+    if(Number(r.ouvrier_id)!==Number(ouvrierId)) return;
+    if(Number(r.qte||0)<=0) return;
+    if(!byDate[r.date]) byDate[r.date]={qty:0, val:0};
+    byDate[r.date].qty += Number(r.qte||0);
+    byDate[r.date].val += Number(r.qte||0)*Number(r.prix||0);
+  });
+  var maxVal=0; Object.keys(byDate).forEach(function(k){ if(byDate[k].val>maxVal) maxVal=byDate[k].val; });
+  var workedDays=0, totalVal=0, streak=0, streakActive=true;
+  for(var i=dates.length-1;i>=0;i--){
+    var rec=byDate[dates[i]];
+    if(rec){ workedDays++; totalVal+=rec.val; if(streakActive) streak++; }
+    else streakActive=false;
+  }
+  var cells=dates.map(function(d){
+    var rec=byDate[d];
+    if(!rec){
+      return '<span title="'+escB(d+' · بلا إنتاج')+'" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:rgba(120,120,140,0.18);border:1px solid rgba(120,120,140,0.3);margin-inline-end:1px"></span>';
+    }
+    // Intensity: 25–100% green based on val/maxVal so heavy-production days pop
+    var intensity=maxVal>0 ? (0.25 + 0.75 * (rec.val/maxVal)) : 1;
+    return '<span title="'+escB(d+' · '+rec.qty+' قطعة · '+fmtN(rec.val)+' DH')+'" style="display:inline-block;width:11px;height:11px;border-radius:2px;background:rgba(16,185,129,'+intensity.toFixed(2)+');border:1px solid rgba(16,185,129,'+(intensity*0.7).toFixed(2)+');margin-inline-end:1px"></span>';
+  }).join('');
+  var summary=[];
+  if(workedDays) summary.push('<span style="color:#10b981;font-weight:700">✅ '+workedDays+'/'+days+' يوم</span>');
+  if(streak>=2)  summary.push('<span style="color:#dc2626;font-weight:800">🔥'+streak+'</span>');
+  return '<div class="activity-strip" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:6px 0 4px">'+
+    '<div style="display:flex">'+cells+'</div>'+
+    (summary.length?'<div style="font-size:10px;display:flex;gap:6px">'+summary.join(' ')+'</div>':'')+
+  '</div>';
+}
+
+// Full calendar (last N days, week-grid) for the worker details modal.
+function _salFullCalendar(salId, days){
+  days=days||60;
+  var dates=_activityDateRange(days);
+  var bySalDate={};
+  (salariePresences||[]).forEach(function(p){ if(Number(p.salarie_id)===Number(salId)) bySalDate[p.date]=p.statut; });
+  // Group into weeks (start on Sunday — Casa work week)
+  var weeks=[]; var curWeek=[];
+  var firstDow=new Date(dates[0]+'T00:00:00').getDay();
+  for(var i=0;i<firstDow;i++) curWeek.push(null);
+  dates.forEach(function(d){
+    curWeek.push(d);
+    if(curWeek.length===7){ weeks.push(curWeek); curWeek=[]; }
+  });
+  if(curWeek.length){ while(curWeek.length<7) curWeek.push(null); weeks.push(curWeek); }
+  var dayLabels=['أحد','إث','ثل','أرب','خم','جم','سب'];
+  var html='<div style="font-size:11px;font-weight:700;color:var(--text2);margin:10px 0 6px">📊 نشاط آخر '+days+' يوم</div>'+
+    '<div style="display:flex;gap:3px;flex-wrap:wrap;direction:ltr">';
+  weeks.forEach(function(w){
+    html+='<div style="display:flex;flex-direction:column;gap:2px">';
+    w.forEach(function(d){
+      if(!d){ html+='<span style="display:inline-block;width:14px;height:14px"></span>'; return; }
+      var st=bySalDate[d]||'none';
+      var c=_ACTIVITY_COLORS[st]||_ACTIVITY_COLORS.none;
+      html+='<span title="'+escB(d+' · '+c.lbl)+'" style="display:inline-block;width:14px;height:14px;border-radius:3px;background:'+c.bg+';border:1px solid '+c.border+'"></span>';
+    });
+    html+='</div>';
+  });
+  html+='</div>'+
+    '<div style="margin-top:6px;font-size:10px;color:var(--text3);direction:ltr;display:flex;gap:8px;justify-content:flex-end">'+
+      Object.keys(_ACTIVITY_COLORS).filter(function(k){return k!=='none';}).map(function(k){
+        var c=_ACTIVITY_COLORS[k];
+        return '<span><span style="display:inline-block;width:9px;height:9px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:2px;vertical-align:middle"></span> '+escB(c.lbl)+'</span>';
+      }).join('')+
+    '</div>';
+  return html;
+}
+function _pcFullCalendar(ouvrierId, days){
+  days=days||60;
+  var dates=_activityDateRange(days);
+  var byDate={};
+  (pcPresences||[]).forEach(function(r){
+    if(Number(r.ouvrier_id)!==Number(ouvrierId)) return;
+    if(Number(r.qte||0)<=0) return;
+    if(!byDate[r.date]) byDate[r.date]={qty:0,val:0};
+    byDate[r.date].qty+=Number(r.qte||0);
+    byDate[r.date].val+=Number(r.qte||0)*Number(r.prix||0);
+  });
+  var maxVal=0; Object.keys(byDate).forEach(function(k){ if(byDate[k].val>maxVal) maxVal=byDate[k].val; });
+  var weeks=[]; var curWeek=[];
+  var firstDow=new Date(dates[0]+'T00:00:00').getDay();
+  for(var i=0;i<firstDow;i++) curWeek.push(null);
+  dates.forEach(function(d){ curWeek.push(d); if(curWeek.length===7){ weeks.push(curWeek); curWeek=[]; } });
+  if(curWeek.length){ while(curWeek.length<7) curWeek.push(null); weeks.push(curWeek); }
+  var html='<div style="font-size:11px;font-weight:700;color:var(--text2);margin:10px 0 6px">📊 نشاط آخر '+days+' يوم</div>'+
+    '<div style="display:flex;gap:3px;flex-wrap:wrap;direction:ltr">';
+  weeks.forEach(function(w){
+    html+='<div style="display:flex;flex-direction:column;gap:2px">';
+    w.forEach(function(d){
+      if(!d){ html+='<span style="display:inline-block;width:14px;height:14px"></span>'; return; }
+      var rec=byDate[d];
+      if(!rec){ html+='<span title="'+escB(d+' · بلا إنتاج')+'" style="display:inline-block;width:14px;height:14px;border-radius:3px;background:rgba(120,120,140,0.18);border:1px solid rgba(120,120,140,0.3)"></span>'; return; }
+      var intensity=maxVal>0 ? (0.25 + 0.75*(rec.val/maxVal)) : 1;
+      html+='<span title="'+escB(d+' · '+rec.qty+' قطعة · '+fmtN(rec.val)+' DH')+'" style="display:inline-block;width:14px;height:14px;border-radius:3px;background:rgba(16,185,129,'+intensity.toFixed(2)+');border:1px solid rgba(16,185,129,'+(intensity*0.7).toFixed(2)+')"></span>';
+    });
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+// Team activity heatmap — all active salariés + PCs vs last N days
+function _dashTeamActivitySection(){
+  var days=14;
+  var dates=_activityDateRange(days);
+  var sals=(salariesData||[]).filter(function(s){return s.actif!==false;});
+  var pcs=(ouvriersPc||[]).filter(function(o){return o.actif!==false;});
+  if(!sals.length && !pcs.length) return '';
+  var rows='';
+  sals.forEach(function(s){
+    var nm=(escB(s.nom)+(s.prenom?' '+escB(s.prenom):'')).slice(0,18);
+    var bySalDate={};
+    (salariePresences||[]).forEach(function(p){ if(Number(p.salarie_id)===Number(s.id)) bySalDate[p.date]=p.statut; });
+    var cells=dates.map(function(d){
+      var st=bySalDate[d]||'none';
+      var c=_ACTIVITY_COLORS[st]||_ACTIVITY_COLORS.none;
+      return '<span title="'+escB(d+' · '+c.lbl)+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:'+c.bg+';border:1px solid '+c.border+';margin-inline-end:1px"></span>';
+    }).join('');
+    rows+='<tr><td style="font-size:11px;font-weight:600;padding:4px 8px;white-space:nowrap;color:var(--text2)">👤 '+nm+'</td><td style="padding:4px 8px;direction:ltr">'+cells+'</td></tr>';
+  });
+  pcs.forEach(function(o){
+    var byDate={};
+    (pcPresences||[]).forEach(function(r){
+      if(Number(r.ouvrier_id)!==Number(o.id)) return;
+      if(Number(r.qte||0)<=0) return;
+      if(!byDate[r.date]) byDate[r.date]={qty:0,val:0};
+      byDate[r.date].qty+=Number(r.qte||0); byDate[r.date].val+=Number(r.qte||0)*Number(r.prix||0);
+    });
+    var maxVal=0; Object.keys(byDate).forEach(function(k){ if(byDate[k].val>maxVal) maxVal=byDate[k].val; });
+    var cells=dates.map(function(d){
+      var rec=byDate[d];
+      if(!rec) return '<span title="'+escB(d+' · بلا إنتاج')+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:rgba(120,120,140,0.18);border:1px solid rgba(120,120,140,0.3);margin-inline-end:1px"></span>';
+      var intensity=maxVal>0 ? (0.25 + 0.75*(rec.val/maxVal)) : 1;
+      return '<span title="'+escB(d+' · '+rec.qty+' قطعة · '+fmtN(rec.val)+' DH')+'" style="display:inline-block;width:13px;height:13px;border-radius:2px;background:rgba(16,185,129,'+intensity.toFixed(2)+');border:1px solid rgba(16,185,129,'+(intensity*0.7).toFixed(2)+');margin-inline-end:1px"></span>';
+    }).join('');
+    rows+='<tr><td style="font-size:11px;font-weight:600;padding:4px 8px;white-space:nowrap;color:var(--text2)">👷 '+escB(o.nom).slice(0,18)+'</td><td style="padding:4px 8px;direction:ltr">'+cells+'</td></tr>';
+  });
+  // Date header (small)
+  var dayLabels=dates.map(function(d){
+    var dd=d.slice(8,10);
+    return '<span style="display:inline-block;width:13px;text-align:center;font-size:9px;color:var(--text3);margin-inline-end:1px;font-family:monospace">'+dd+'</span>';
+  }).join('');
+  return _dashSectionHeader('👀','نشاط الخدامة (آخر '+days+' يوم)','#a78bfa', sals.length+' أجير · '+pcs.length+' PC')+
+    '<div style="background:var(--bg3);border-radius:var(--radius);padding:10px;margin-bottom:14px;overflow-x:auto;-webkit-overflow-scrolling:touch">'+
+      '<table style="border-collapse:collapse;font-family:Cairo,sans-serif"><thead><tr><th></th><th style="padding:0 8px 4px;direction:ltr;text-align:left">'+dayLabels+'</th></tr></thead><tbody>'+rows+'</tbody></table>'+
+      '<div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--text3)">'+
+        Object.keys(_ACTIVITY_COLORS).filter(function(k){return k!=='none';}).map(function(k){
+          var c=_ACTIVITY_COLORS[k];
+          return '<span><span style="display:inline-block;width:9px;height:9px;background:'+c.bg+';border:1px solid '+c.border+';border-radius:2px;vertical-align:middle"></span> '+escB(c.lbl)+'</span>';
+        }).join('')+
+        '<span><span style="display:inline-block;width:9px;height:9px;background:rgba(16,185,129,0.85);border-radius:2px;vertical-align:middle"></span> إنتاج PC</span>'+
+      '</div>'+
+    '</div>';
 }
 
 // Visual helpers for the dashboard so the 3 wage sections share the same
@@ -17012,6 +17224,11 @@ function renderSalDashboard(){
     +'<div class="kpi"><div class="kpi-icon">💰</div><div class="kpi-val" style="color:var(--purple)">'+fmtN(grandTotal+pcGrandTotalKpi+edTechDueAll)+'</div><div class="kpi-lbl">الإجمالي الكلي</div><div class="kpi-sub">DH</div></div>'
   +'</div>';
 
+  // Team activity heatmap — last 14 days across all active workers + PCs
+  // ("swivi dyal khdam imta khdm imta la"). Goes between KPIs and the
+  // per-section card grids so the boss sees attendance at a glance.
+  try{ html+=_dashTeamActivitySection(); }catch(e){ console.warn('team activity section failed:', e); }
+
   // Don't early-return when salariés rows are empty — PCs may still have
   // data and we want to render their table below. Just emit a thin notice
   // for the salariés section and continue.
@@ -17069,6 +17286,7 @@ function renderSalDashboard(){
           +'<div class="wc-id"><div class="wc-name">'+fullName+'</div><div class="wc-role">'+(escB(r.s.poste||'أجير'))+'</div></div>'
           +'<button onclick="salCardShowDetails('+r.s.id+')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(79,142,247,0.4);background:rgba(79,142,247,0.08);color:#4f8ef7;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 تفاصيل</button>'
         +'</div>'
+        +_salActivityStrip(r.s.id, 14)
         +'<div class="wc-stats" style="grid-template-columns:1fr 1fr">'+stats+'</div>'
         +'<div class="wc-action">'+action+'</div>'
       +'</div>';
@@ -17150,6 +17368,7 @@ function renderSalDashboard(){
           +'<div class="wc-id"><div class="wc-name">'+escB(r.o.nom)+'</div><div class="wc-role">عامل القطعة</div></div>'
           +'<button onclick="pcCardShowDetails('+r.o.id+')" title="تفاصيل" style="padding:5px 10px;border:1px solid rgba(16,185,129,0.4);background:rgba(16,185,129,0.08);color:#10b981;border-radius:14px;font-family:Cairo,sans-serif;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 تفاصيل</button>'
         +'</div>'
+        +_pcActivityStrip(r.o.id, 14)
         +'<div class="wc-stats">'
           +'<div class="wc-stat"><span class="wc-stat-lbl">🔧 إجمالي</span><span class="wc-stat-val" style="color:var(--accent)">'+fmtN(r.total)+'</span></div>'
           +'<div class="wc-stat"><span class="wc-stat-lbl">💳 سلف</span><span class="wc-stat-val" style="color:'+(r.avsTotal>0?'var(--amber)':'var(--text3)')+'">'+(r.avsTotal>0?'−'+fmtN(r.avsTotal):'—')+'</span></div>'

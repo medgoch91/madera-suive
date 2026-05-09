@@ -723,6 +723,24 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
   /* Kill double-rendering flash when page loads from #hash — force opacity transition */
   .page{animation:fadeIn 0.15s ease-out;}
+
+  /* ── Mobile axe 1: tables responsive ──────────────────────
+     Wrap each data-table in its own horizontal-scroll viewport so
+     wide tables (fournisseurs ledger, bons list, wages dashboard…)
+     don't push the whole page off-screen on a phone. */
+  .data-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;white-space:nowrap;}
+  .data-table thead,.data-table tbody,.data-table tr{display:table;width:100%;table-layout:auto;}
+  .data-table th,.data-table td{white-space:normal;}
+  .data-table::-webkit-scrollbar{height:6px;}
+  .data-table::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+
+  /* ── Mobile axe 2: modal visibility ───────────────────────
+     Modal close button always reachable + save bar sticks to bottom.
+     Adds bottom-safe padding for iOS notch. */
+  .modal-overlay{padding:0!important;align-items:flex-end;}
+  .modal-box{padding-bottom:calc(28px + env(safe-area-inset-bottom, 0px))!important;}
+  .modal-title{position:sticky;top:0;background:var(--bg2);z-index:5;padding-block:10px 8px;margin:-18px -18px 14px;padding-inline:18px;border-bottom:1px solid var(--border);}
+  .modal-close{position:sticky;top:8px;}
 }
 
 /* ═══════════════ ADMIN PAGE ═══════════════ */

@@ -16978,11 +16978,29 @@ function renderSalDashboard(){
 
   // ── الأجراء بالنهار — card grid ──
   if(rows.length){
-    html+=_dashSectionHeader('📅', 'الأجراء بالنهار', '#4f8ef7', rows.length+' أجير');
-    html+='<div class="worker-grid">';
+    // Tag every row with its taswiya status + cash and split into 2 buckets
+    // so unpaid render first, paid render after a visual separator. This
+    // keeps the boss's eye on what's left to pay and prevents the running
+    // totals from blending settled vs unsettled.
     rows.forEach(function(r){
-      const t=salTaswiyas.find(function(x){return x.salarie_id===r.s.id&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
-      const isPaid=!!t;
+      r._tasw = salTaswiyas.find(function(x){return x.salarie_id===r.s.id&&x.date_from===salDashFrom&&x.date_to===salDashTo;});
+      r._isPaid = !!r._tasw;
+    });
+    var unpaidRows = rows.filter(function(r){return !r._isPaid;});
+    var paidRows   = rows.filter(function(r){return  r._isPaid;});
+    var orderedRows= unpaidRows.concat(paidRows);
+    html+=_dashSectionHeader('📅', 'الأجراء بالنهار', '#4f8ef7', rows.length+' أجير'+(paidRows.length?' · '+paidRows.length+' مخلص':''));
+    html+='<div class="worker-grid">';
+    orderedRows.forEach(function(r, _idx){
+      // Inject a divider just before the first paid card so the user sees
+      // exactly where "remaining to pay" ends and "already paid" begins.
+      if(r._isPaid && _idx === unpaidRows.length){
+        html += '</div>'+ // close the unpaid grid
+          '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#27ae6055)"></div><div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(39,174,96,0.10);border:1px solid rgba(39,174,96,0.4);border-radius:20px;font-size:11px;font-weight:800;color:var(--green);white-space:nowrap">✓ تخلصو ('+paidRows.length+')</div><div style="flex:1;height:1px;background:linear-gradient(90deg,#27ae6055,transparent)"></div></div>'+
+          '<div class="worker-grid">'; // re-open for paid rows
+      }
+      const t=r._tasw;
+      const isPaid=r._isPaid;
       const fullName=escB(r.s.nom)+(r.s.prenom?' '+escB(r.s.prenom):'');
       const stats=[
         '<div class="wc-stat"><span class="wc-stat-lbl">📅 أيام</span><span class="wc-stat-val">'+r.joursTotal+'</span></div>',
@@ -17012,14 +17030,17 @@ function renderSalDashboard(){
         +'<div class="wc-action">'+action+'</div>'
       +'</div>';
     });
-    html+='</div>'; // worker-grid
-    // Summary band
+    html+='</div>'; // worker-grid (paid bucket)
+    // Summary band — split into "remaining to pay" vs "already paid" so
+    // settled cards don't muddy the running totals.
+    var dueNet  = unpaidRows.reduce(function(t,r){return t+(r.net||0);},0);
+    var paidSum = paidRows.reduce(function(t,r){return t+Number((r._tasw && r._tasw.montant)||0);},0);
     html+='<div class="wc-section-summary" style="border-color:rgba(79,142,247,0.25)">'
-      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">📅 الأجراء</span><span class="wc-summary-val" style="color:#4f8ef7">'+rows.length+'</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">📅 الأجراء</span><span class="wc-summary-val" style="color:#4f8ef7">'+rows.length+(paidRows.length?' <small style="color:var(--green);font-size:10px">('+paidRows.length+'✓)</small>':'')+'</span></div>'
       +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💵 إجمالي الأجر</span><span class="wc-summary-val" style="color:var(--accent)">'+fmtN(rows.reduce(function(t,r){return t+r.totalJours;},0))+' DH</span></div>'
-      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">🔧 الإنتاج</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(rows.reduce(function(t,r){return t+r.totalProd;},0))+' DH</span></div>'
       +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💳 السلف</span><span class="wc-summary-val" style="color:var(--amber)">'+fmtN(rows.reduce(function(t,r){return t+r.totalAvs;},0))+' DH</span></div>'
-      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💰 الصافي</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(grandTotal)+' DH</span></div>'
+      +(paidRows.length?'<div class="wc-summary-cell"><span class="wc-summary-lbl">✓ تخلصو</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(paidSum)+' DH</span></div>':'')
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">'+(paidRows.length?'⏳ الباقي للخلاص':'💰 الصافي')+'</span><span class="wc-summary-val" style="color:'+(paidRows.length?'var(--amber)':'var(--green)')+'">'+fmtN(dueNet)+' DH</span></div>'
     +'</div>';
   } // end if(rows.length) — Nharat cards
 
@@ -17046,14 +17067,27 @@ function renderSalDashboard(){
   const pcGrandTotal=pcRows.reduce(function(t,r){return t+r.total;},0);
   const pcGrandAvs  =pcRows.reduce(function(t,r){return t+r.avsTotal;},0);
   const pcGrandNet  =pcRows.reduce(function(t,r){return t+r.net;},0);
-  html+=_dashSectionHeader('👷', 'Par PCs', '#10b981', pcRows.length?(pcRows.length+' عامل'):'');
+  // Tag PCs with taswiya, split into 2 buckets so unpaid render first
+  pcRows.forEach(function(r){
+    r._tasw = pcTaswiyas.find(function(t){return t.ouvrier_id===r.o.id&&t.date_from===salDashFrom&&t.date_to===salDashTo;});
+    r._isPaid = !!r._tasw;
+  });
+  var pcUnpaid = pcRows.filter(function(r){return !r._isPaid;});
+  var pcPaid   = pcRows.filter(function(r){return  r._isPaid;});
+  var pcOrdered= pcUnpaid.concat(pcPaid);
+  html+=_dashSectionHeader('👷', 'Par PCs', '#10b981', pcRows.length?(pcRows.length+' عامل'+(pcPaid.length?' · '+pcPaid.length+' مخلص':'')):'');
   if(!pcRows.length){
     html+='<div style="text-align:center;padding:20px;color:var(--text3);background:var(--bg3);border-radius:12px;font-size:12px;margin-bottom:14px">ما كاين شي إنتاج PC ف هاد الفترة</div>';
   } else {
     html+='<div class="worker-grid">';
-    pcRows.forEach(function(r){
-      const tasw=pcTaswiyas.find(function(t){return t.ouvrier_id===r.o.id&&t.date_from===salDashFrom&&t.date_to===salDashTo;});
-      const isPaid=!!tasw;
+    pcOrdered.forEach(function(r, _idx){
+      if(r._isPaid && _idx === pcUnpaid.length){
+        html += '</div>'+
+          '<div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px"><div style="flex:1;height:1px;background:linear-gradient(90deg,transparent,#10b98155)"></div><div style="display:flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(16,185,129,0.10);border:1px solid rgba(16,185,129,0.4);border-radius:20px;font-size:11px;font-weight:800;color:#10b981;white-space:nowrap">✓ تخلصو ('+pcPaid.length+')</div><div style="flex:1;height:1px;background:linear-gradient(90deg,#10b98155,transparent)"></div></div>'+
+          '<div class="worker-grid">';
+      }
+      const tasw=r._tasw;
+      const isPaid=r._isPaid;
       const detailText = r.detail||'—';
       const action = isPaid
         ? '<div><span class="wc-net" style="color:var(--green)">'+fmtN(tasw.montant)+' DH</span></div>'
@@ -17080,12 +17114,15 @@ function renderSalDashboard(){
         +'<div class="wc-action">'+action+'</div>'
       +'</div>';
     });
-    html+='</div>'; // worker-grid
+    html+='</div>'; // worker-grid (paid bucket)
+    var pcDueNet  = pcUnpaid.reduce(function(t,r){return t+(r.net||0);},0);
+    var pcPaidSum = pcPaid.reduce(function(t,r){return t+Number((r._tasw && r._tasw.montant)||0);},0);
     html+='<div class="wc-section-summary" style="border-color:rgba(16,185,129,0.25)">'
-      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">👷 العمال</span><span class="wc-summary-val" style="color:#10b981">'+pcRows.length+'</span></div>'
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">👷 العمال</span><span class="wc-summary-val" style="color:#10b981">'+pcRows.length+(pcPaid.length?' <small style="color:var(--green);font-size:10px">('+pcPaid.length+'✓)</small>':'')+'</span></div>'
       +'<div class="wc-summary-cell"><span class="wc-summary-lbl">🔧 الإجمالي</span><span class="wc-summary-val" style="color:var(--accent)">'+fmtN(pcGrandTotal)+' DH</span></div>'
       +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💳 السلف</span><span class="wc-summary-val" style="color:var(--amber)">'+(pcGrandAvs>0?'−'+fmtN(pcGrandAvs):'0')+' DH</span></div>'
-      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">💰 الصافي</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(pcGrandNet)+' DH</span></div>'
+      +(pcPaid.length?'<div class="wc-summary-cell"><span class="wc-summary-lbl">✓ تخلصو</span><span class="wc-summary-val" style="color:var(--green)">'+fmtN(pcPaidSum)+' DH</span></div>':'')
+      +'<div class="wc-summary-cell"><span class="wc-summary-lbl">'+(pcPaid.length?'⏳ الباقي للخلاص':'💰 الصافي')+'</span><span class="wc-summary-val" style="color:'+(pcPaid.length?'var(--amber)':'var(--green)')+'">'+fmtN(pcDueNet)+' DH</span></div>'
     +'</div>';
   }
 

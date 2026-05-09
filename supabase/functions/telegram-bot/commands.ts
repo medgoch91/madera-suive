@@ -2,7 +2,7 @@
 // Multi-step commands (/newbon, /cheque) live in conversations.ts.
 
 import { sb, SB_REST, SB_HEADERS } from '../_shared/sb.ts';
-import { sendMessage, type TgMessage } from '../_shared/tg.ts';
+import { sendMessage, type TgMessage, type TgInlineKeyboard } from '../_shared/tg.ts';
 import { sendWebPush } from '../_shared/push.ts';
 import { fmtMoney, todayCasa, TZ, safeNum } from '../_shared/util.ts';
 
@@ -19,6 +19,7 @@ export async function cmdStart(msg: TgMessage): Promise<void> {
     '/balance — رصيد البونات و الشيكات',
     '/khlas — الباقي للخدامة (اجراء + PCs + تقنيون)',
     '/khlas `<اسم>` — تفصيل لعامل واحد',
+    '/khlaspay `<اسم>` — خلص العامل مع تأكيد',
     '/caisse — حالة الصندوق + آخر الحركات',
     '/stock `<سلعة>` — مخزون سلعة',
     '/listbons — آخر البونات',
@@ -519,6 +520,114 @@ async function cmdKhlasOne(msg: TgMessage, query: string): Promise<void> {
     await sendMessage(msg.chat.id, lines.join('\n'), { parseMode: 'Markdown' });
     return;
   }
+}
+
+// ── /khlas-pay <name> — conversational settle for one worker ────
+// Sends the worker's current pending amount with inline ✅ / ❌ buttons.
+// On confirm, callbacks.ts inserts the taswiya + caisse mirror server-side
+// and broadcasts the same notif salKhallas would.
+export async function cmdKhlasPay(msg: TgMessage, args?: string[]): Promise<void> {
+  const STATUS_FACTOR: Record<string, number> = { present: 1, demi: 0.5, absent: 0, conge: 0 };
+  if (!args || !args.length) {
+    await sendMessage(msg.chat.id, '❌ استعمال: `/khlas-pay <اسم العامل>`\nمثال: `/khlas-pay yassine`', { parseMode: 'Markdown' });
+    return;
+  }
+  const q = args.join(' ').trim().toLowerCase();
+  const [salRes, ouvRes] = await Promise.all([
+    sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup,actif'),
+    sb.from('ouvriers_pc').select('id,nom,actif'),
+  ]);
+  const sals = (salRes.data ?? []) as Array<{ id: number; nom: string; prenom?: string; salaire_base: number; taux_hsup: number; actif: boolean }>;
+  const ouvs = (ouvRes.data ?? []) as Array<{ id: number; nom: string; actif: boolean }>;
+  const salHits = sals.filter((s) => {
+    const full = (String(s.nom || '') + ' ' + String(s.prenom || '')).toLowerCase();
+    return s.actif !== false && full.includes(q);
+  });
+  const pcHits = ouvs.filter((o) => o.actif !== false && String(o.nom || '').toLowerCase().includes(q));
+
+  if (salHits.length + pcHits.length === 0) {
+    await sendMessage(msg.chat.id, `❌ ما لقيت حتى عامل فيه "${args.join(' ')}".`);
+    return;
+  }
+  if (salHits.length + pcHits.length > 1) {
+    const lines = [`🔍 ${salHits.length + pcHits.length} نتيجة — زيد حروف باش تخصّص:`, ''];
+    salHits.forEach((s) => lines.push(`👤 ${s.nom}${s.prenom ? ' ' + s.prenom : ''}`));
+    pcHits.forEach((o) => lines.push(`👷 ${o.nom} (PC)`));
+    await sendMessage(msg.chat.id, lines.join('\n'));
+    return;
+  }
+
+  // Single hit — compute pending amount for the current week (Sun→Sat Casa)
+  const today = new Date(todayCasa() + 'T12:00:00Z');
+  const dow = today.getUTCDay(); // 0=Sun..6=Sat
+  today.setUTCDate(today.getUTCDate() - dow); // back to Sunday
+  const weekFrom = today.toISOString().slice(0, 10);
+  const weekEnd = new Date(today); weekEnd.setUTCDate(today.getUTCDate() + 6);
+  const weekTo = weekEnd.toISOString().slice(0, 10);
+
+  if (salHits.length) {
+    const s = salHits[0];
+    const fullName = (String(s.nom || '?') + (s.prenom ? ' ' + s.prenom : '')).trim();
+    const presRes = await sb.from('salarie_presences').select('date,statut,heures_supp,taux_horaire,notes').eq('salarie_id', s.id).gte('date', weekFrom).lte('date', weekTo);
+    const pres = (presRes.data ?? []) as Array<{ date: string; statut: string; heures_supp: number; taux_horaire: number; notes?: string }>;
+    let base = 0, hsupCost = 0, prod = 0;
+    pres.forEach((p) => {
+      base += (STATUS_FACTOR[p.statut] ?? 0) * Number(s.salaire_base || 0);
+      hsupCost += Number(p.heures_supp || 0) * Number(p.taux_horaire || 0);
+      if (p.notes) try { prod += JSON.parse(p.notes).reduce((t: number, l: { qte: number; prix: number }) => t + Number(l.qte) * Number(l.prix), 0); } catch (_) { /* */ }
+    });
+    const avsRes = await sb.from('salarie_avances').select('montant').eq('salarie_id', s.id).eq('rembourse', false);
+    const totalAvs = (avsRes.data ?? []).reduce((t: number, a: { montant: number }) => t + Number(a.montant || 0), 0);
+    const gross = base + hsupCost + prod;
+    const cashPaid = Math.max(0, gross - totalAvs);
+    const text = [
+      `💰 *تأكيد خلاص — ${fullName}*`,
+      `📅 الأسبوع: ${weekFrom} → ${weekTo}`,
+      ``,
+      `💼 الأجر الأساسي: ${fmtMoney(base)} د.م.`,
+      hsupCost > 0 ? `⏱ ساعات إضافية: ${fmtMoney(hsupCost)} د.م.` : '',
+      prod > 0 ? `🔨 إنتاج بالقطعة: ${fmtMoney(prod)} د.م.` : '',
+      totalAvs > 0 ? `💳 السلف ـ: −${fmtMoney(totalAvs)} د.م.` : '',
+      ``,
+      `💰 *الصافي: ${fmtMoney(cashPaid)} د.م.*`,
+      ``,
+      'تأكيد الخلاص؟',
+    ].filter(Boolean).join('\n');
+    const replyMarkup: TgInlineKeyboard = {
+      inline_keyboard: [[
+        { text: `✅ نعم — خلص ${fmtMoney(cashPaid)} د.م.`, callback_data: `KHLAS_SAL:${s.id}:${weekFrom}:${weekTo}:${cashPaid.toFixed(2)}` },
+        { text: '❌ لا', callback_data: 'KHLAS_CANCEL' },
+      ]],
+    };
+    await sendMessage(msg.chat.id, text, { parseMode: 'Markdown', replyMarkup });
+    return;
+  }
+
+  // PC branch
+  const o = pcHits[0];
+  const presRes = await sb.from('ouvrier_pc_presences').select('qte,prix').eq('ouvrier_id', o.id).gte('date', weekFrom).lte('date', weekTo);
+  const gross = (presRes.data ?? []).reduce((t: number, r: { qte: number; prix: number }) => t + Number(r.qte || 0) * Number(r.prix || 0), 0);
+  const avsRes = await sb.from('pc_avances').select('montant').eq('ouvrier_id', o.id).eq('rembourse', false);
+  const totalAvs = (avsRes.data ?? []).reduce((t: number, a: { montant: number }) => t + Number(a.montant || 0), 0);
+  const cashPaid = Math.max(0, gross - totalAvs);
+  const text = [
+    `💰 *تأكيد خلاص PC — ${o.nom}*`,
+    `📅 الأسبوع: ${weekFrom} → ${weekTo}`,
+    ``,
+    `🔨 الإنتاج: ${fmtMoney(gross)} د.م.`,
+    totalAvs > 0 ? `💳 السلف ـ: −${fmtMoney(totalAvs)} د.م.` : '',
+    ``,
+    `💰 *الصافي: ${fmtMoney(cashPaid)} د.م.*`,
+    ``,
+    'تأكيد الخلاص؟',
+  ].filter(Boolean).join('\n');
+  const replyMarkup: TgInlineKeyboard = {
+    inline_keyboard: [[
+      { text: `✅ نعم — خلص ${fmtMoney(cashPaid)} د.م.`, callback_data: `KHLAS_PC:${o.id}:${weekFrom}:${weekTo}:${cashPaid.toFixed(2)}` },
+      { text: '❌ لا', callback_data: 'KHLAS_CANCEL' },
+    ]],
+  };
+  await sendMessage(msg.chat.id, text, { parseMode: 'Markdown', replyMarkup });
 }
 
 // ── /caisse — cash-box snapshot on demand ───────────────────────

@@ -6,7 +6,7 @@
 import { parseCommand, answerCallbackQuery, type TgUpdate } from '../_shared/tg.ts';
 import {
   cmdStart, cmdSubscribe, cmdUnsubscribe, cmdTestPush,
-  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel, cmdKhlas, cmdCaisse,
+  cmdToday, cmdBalance, cmdStock, cmdListBons, cmdCancel, cmdKhlas, cmdCaisse, cmdKhlasPay,
 } from './commands.ts';
 import { startNewBon, startCheque, handleConvMessage } from './conversations.ts';
 import {
@@ -14,7 +14,7 @@ import {
   jobWorkersEod, jobMonthlyReport, jobDailyReport, jobCaisseEod,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
 } from './jobs.ts';
-import { handleChequeCallback } from './callbacks.ts';
+import { handleChequeCallback, handleKhlasCallback } from './callbacks.ts';
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
@@ -58,6 +58,8 @@ async function route(update: TgUpdate): Promise<void> {
     const data = update.callback_query.data ?? '';
     if (data.startsWith('CHQPAID:') || data.startsWith('CHQUNPAID:') || data.startsWith('CHQDEFER:')) {
       await handleChequeCallback(update.callback_query);
+    } else if (data.startsWith('KHLAS_')) {
+      await handleKhlasCallback(update.callback_query);
     } else {
       await answerCallbackQuery(update.callback_query.id);
     }
@@ -81,6 +83,9 @@ async function route(update: TgUpdate): Promise<void> {
       case 'baqi':        return await cmdKhlas(msg, parsed.args);
       case 'wages':       return await cmdKhlas(msg, parsed.args);
       case 'caisse':      return await cmdCaisse(msg);
+      case 'khlaspay':    return await cmdKhlasPay(msg, parsed.args);
+      case 'khlas-pay':   return await cmdKhlasPay(msg, parsed.args);
+      case 'pay':         return await cmdKhlasPay(msg, parsed.args);
       case 'stock':       return await cmdStock(msg, parsed.args);
       case 'listbons':    return await cmdListBons(msg);
       case 'newbon':      return await startNewBon(msg);

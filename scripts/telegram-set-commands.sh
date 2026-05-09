@@ -18,6 +18,7 @@ curl -sS -X POST "https://api.telegram.org/bot${TG_TOKEN}/setMyCommands" \
       {"command":"today","description":"📊 خلاصة اليوم"},
       {"command":"balance","description":"⚖️ رصيد البونات و الشيكات"},
       {"command":"khlas","description":"💰 الباقي للخدامة (أو /khlas <اسم>)"},
+      {"command":"khlaspay","description":"💸 خلص عامل (مع تأكيد)"},
       {"command":"caisse","description":"💵 حالة الصندوق"},
       {"command":"stock","description":"📦 مخزون سلعة (مثل: /stock LED)"},
       {"command":"listbons","description":"📋 آخر البونات"},

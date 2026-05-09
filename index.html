@@ -16858,6 +16858,30 @@ function _dashSectionHeader(emoji, title, color, sub){
 function _dashKhallasBtn(onclickAttr){
   return '<button onclick="'+onclickAttr+'" style="padding:6px 14px;border:none;border-radius:20px;background:linear-gradient(135deg,var(--green),#27ae60);color:#fff;font-family:Cairo,sans-serif;font-size:12px;font-weight:800;cursor:pointer;box-shadow:0 2px 8px rgba(46,204,122,0.3);white-space:nowrap">💰 خلاص</button>';
 }
+function _dashPayslipBtns(salId){
+  return '<button onclick="salPayslipPrintFromRow('+salId+')" title="طبع ورقة الأجر" style="padding:4px 8px;border:1px solid var(--border);border-radius:14px;background:transparent;color:var(--text2);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📄</button>'+
+    '<button onclick="salPayslipShareFromRow('+salId+')" title="إرسال ورقة الأجر للتيليجرام" style="padding:4px 8px;border:1px solid rgba(6,182,212,0.4);border-radius:14px;background:rgba(6,182,212,0.08);color:#06b6d4;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">📨</button>';
+}
+// Pre-settlement payslip helpers — compute cash + overflow from the row
+// snapshot in salLastRows (built by renderSalDashboard for the active period).
+function _salRowCashAndOverflow(salId){
+  var r=(salLastRows||[]).find(function(x){return x.s.id===salId;});
+  if(!r) return null;
+  var gross=Number(r.totalJours||0)+Number(r.totalHsup||0)+Number(r.totalProd||0);
+  var avs=Number(r.totalAvs||0);
+  var isOverflow=avs > gross + 0.01;
+  var cashPaid=Math.max(0, gross-avs);
+  var rollover=isOverflow ? Math.round((avs-gross)*100)/100 : 0;
+  return {r:r, cashPaid:cashPaid, isOverflow:isOverflow, rollover:rollover};
+}
+function salPayslipPrintFromRow(salId){
+  var x=_salRowCashAndOverflow(salId); if(!x) return;
+  salPayslipPrint(salId, salDashFrom, salDashTo, x.cashPaid, x.isOverflow, x.rollover);
+}
+function salPayslipShareFromRow(salId){
+  var x=_salRowCashAndOverflow(salId); if(!x) return;
+  salPayslipShare(salId, salDashFrom, salDashTo, x.cashPaid, x.isOverflow, x.rollover);
+}
 function _dashPaidBadge(){
   return '<span style="font-size:10px;background:rgba(39,174,96,0.12);color:var(--green);padding:3px 10px;border-radius:20px;font-weight:700;border:1px solid rgba(39,174,96,0.3)">✓ مخلص</span>';
 }
@@ -16968,7 +16992,10 @@ function renderSalDashboard(){
             +'<button onclick="salAnnulerTasw('+r.s.id+')" title="إلغاء" style="padding:4px 9px;border:1px solid var(--red);border-radius:14px;background:transparent;color:var(--red);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">↩</button>'
           +'</div>'
         : '<div><span class="wc-net" style="color:'+(r.net<0?'var(--red)':'var(--accent)')+'">'+fmtN(r.net)+' DH</span></div>'
-          +_dashKhallasBtn('salKhallas('+r.s.id+')');
+          +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">'
+            +_dashPayslipBtns(r.s.id)
+            +_dashKhallasBtn('salKhallas('+r.s.id+')')
+          +'</div>';
       html+='<div class="worker-card'+(isPaid?' paid':'')+'" data-kind="sal">'
         +'<div class="wc-head">'
           +'<div class="wc-avatar" style="background:rgba(79,142,247,0.15);color:#4f8ef7">'+escB(r.s.nom.charAt(0))+'</div>'

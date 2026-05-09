@@ -16707,6 +16707,22 @@ function salCardShowDetails(salId){
   const avsHTML = avs.length
     ? avs.map(function(a){return '<div style="display:flex;justify-content:space-between;padding:6px 10px;background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.25);border-radius:8px"><span style="color:var(--text2)">'+fmtDate(a.date)+'</span><span style="color:var(--amber);font-weight:800">−'+fmtN(a.montant)+' DH</span></div>';}).join('')
     : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">ما كاين شي سلف معلقة</div>';
+  // Settlement history (all taswiyas for this worker, newest first)
+  const tasws = (salTaswiyas||[]).filter(function(t){return Number(t.salarie_id)===Number(salId);})
+    .slice().sort(function(a,b){return String(b.date_paiement||'').localeCompare(String(a.date_paiement||''));});
+  const taswHTML = tasws.length
+    ? tasws.map(function(t){
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(39,174,96,0.06);border:1px solid rgba(39,174,96,0.25);border-radius:8px">'+
+          '<div style="flex:1;min-width:0">'+
+            '<div style="font-size:12px;font-weight:700;color:var(--text)">📅 '+fmtDate(t.date_paiement||'')+'</div>'+
+            '<div style="font-size:10px;color:var(--text3)">'+fmtDate(t.date_from||'')+' → '+fmtDate(t.date_to||'')+'</div>'+
+          '</div>'+
+          '<span style="color:var(--green);font-weight:800;font-size:13px;white-space:nowrap">'+fmtN(t.montant||0)+' DH</span>'+
+          (t.id?'<button onclick="printTaswiyaRow('+t.id+')" title="طبع" style="padding:4px 9px;border:1px solid var(--accent);border-radius:14px;background:transparent;color:var(--accent);font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')+
+        '</div>';
+      }).join('')
+    : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">— ما كاين شي تسوية سابقة —</div>';
+  var taswsTotal = tasws.reduce(function(t,x){return t+Number(x.montant||0);},0);
   const html = '<div class="modal-title"><span>📋 تفاصيل — '+fullName+'</span>'
     +'<button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>'
     +'<div style="font-size:11px;color:var(--text3);margin-bottom:10px">📅 '+fmtDate(salDashFrom)+' → '+fmtDate(salDashTo)+'</div>'
@@ -16722,6 +16738,11 @@ function salCardShowDetails(salId){
     )
     +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
     +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
+    +'<div style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'
+      +'<span>📜 سجل التسويات ('+tasws.length+')</span>'
+      +(tasws.length?'<span style="font-size:11px;color:var(--green);font-weight:800">إجمالي: '+fmtN(taswsTotal)+' DH</span>':'')
+    +'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;max-height:240px;overflow-y:auto">'+taswHTML+'</div>'
     +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
   document.getElementById('modal-main-c').innerHTML = html;
   document.getElementById('modal-main').classList.add('open');
@@ -16841,6 +16862,28 @@ function pcCardShowDetails(ouvrierId){
     )
     +'<div style="font-size:12px;font-weight:700;margin-bottom:6px">💳 السلف المعلقة ('+avs.length+')</div>'
     +'<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">'+avsHTML+'</div>'
+    +(function(){
+      var pcTasws=(pcTaswiyas||[]).filter(function(t){return Number(t.ouvrier_id)===Number(ouvrierId);})
+        .slice().sort(function(a,b){return String(b.date_paiement||'').localeCompare(String(a.date_paiement||''));});
+      var pcTaswsHTML=pcTasws.length
+        ? pcTasws.map(function(t){
+            return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 10px;background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.25);border-radius:8px">'+
+              '<div style="flex:1;min-width:0">'+
+                '<div style="font-size:12px;font-weight:700;color:var(--text)">📅 '+fmtDate(t.date_paiement||'')+'</div>'+
+                '<div style="font-size:10px;color:var(--text3)">'+fmtDate(t.date_from||'')+' → '+fmtDate(t.date_to||'')+'</div>'+
+              '</div>'+
+              '<span style="color:var(--green);font-weight:800;font-size:13px;white-space:nowrap">'+fmtN(t.montant||0)+' DH</span>'+
+              (t.id?'<button onclick="printPcTaswiyaRow('+t.id+')" title="طبع" style="padding:4px 9px;border:1px solid #10b981;border-radius:14px;background:transparent;color:#10b981;font-family:Cairo,sans-serif;font-size:11px;cursor:pointer">🖨️</button>':'')+
+            '</div>';
+          }).join('')
+        : '<div style="color:var(--text3);text-align:center;padding:8px;font-size:12px">— ما كاين شي تسوية سابقة —</div>';
+      var pcTaswsTotal=pcTasws.reduce(function(s,x){return s+Number(x.montant||0);},0);
+      return '<div style="font-size:12px;font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">'+
+        '<span>📜 سجل التسويات ('+pcTasws.length+')</span>'+
+        (pcTasws.length?'<span style="font-size:11px;color:var(--green);font-weight:800">إجمالي: '+fmtN(pcTaswsTotal)+' DH</span>':'')+
+      '</div>'+
+      '<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px;max-height:240px;overflow-y:auto">'+pcTaswsHTML+'</div>';
+    })()
     +'<button class="btn btn-outline" style="width:100%;padding:10px" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">إغلاق</button>';
   document.getElementById('modal-main-c').innerHTML = html;
   document.getElementById('modal-main').classList.add('open');

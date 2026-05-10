@@ -12348,8 +12348,11 @@ let salPcSemFrom=(function(){const d=new Date();d.setDate(d.getDate()-d.getDay()
 let pcPresences=[]; // {id, ouvrier_id, date, pc_nom, qte, prix}
 let salPointageLignes=[{designation:'',qte:1,prix:0}];
 let salPointageStatut='present';
-let salDashFrom=(function(){const d=new Date();d.setDate(1);return d.toISOString().split('T')[0];})();
-let salDashTo=new Date().toISOString().split('T')[0];
+// Default = "هاد الأسبوع" (Sun → Sat) so the dashboard opens on the
+// current work week. User can switch to month / custom via the date
+// inputs or the "هاد الشهر" preset.
+let salDashFrom=(function(){const d=new Date(); d.setDate(d.getDate()-d.getDay()); return d.toISOString().split('T')[0];})();
+let salDashTo  =(function(){const d=new Date(); d.setDate(d.getDate()-d.getDay()+6); return d.toISOString().split('T')[0];})();
 let salHistFrom=(function(){const d=new Date();d.setDate(1);return d.toISOString().split('T')[0];})();
 let salHistTo=new Date().toISOString().split('T')[0];
 let salHistSalId='';

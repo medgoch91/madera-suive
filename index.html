@@ -1314,7 +1314,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
               <div class="nb-grid nb-grid-3">
                 <div>
                   <label class="nb-label">رقم البون</label>
-                  <input class="nb-input" id="b-num" readonly style="font-family:'JetBrains Mono',monospace;opacity:.7">
+                  <input class="nb-input" id="b-num" placeholder="رقم البون من الفورنيسور (مثلا: 12345)" style="font-family:'JetBrains Mono',monospace" oninput="try{bonSaveDraft();}catch(e){}">
                 </div>
                 <div>
                   <label class="nb-label">التاريخ</label>
@@ -2579,20 +2579,30 @@ async function sbSaveBon(bon){
   if(bon.id && bons.find(b=>b.id===bon.id)&&bon.id>0){
     await sbFetch('bons?id=eq.'+bon.id,'PATCH',data);
   } else {
-    // Race-safe: bump num past server max, retry on 409 unique conflict
+    // Bons numbers come from the supplier's paper bon — they're user-typed,
+    // not auto-generated. On unique-conflict we surface a friendly error
+    // (don't silently rewrite the supplier's reference number).
+    // Legacy BON-NNNN prefix still gets the auto-bump retry for back-compat.
+    var isLegacyPrefix = String(bon.num||'').startsWith('BON-');
     var saved=null;
     for(var attempt=0; attempt<5 && !saved; attempt++){
-      if(attempt>0 || String(bon.num||'').startsWith('BON-')){
+      if(isLegacyPrefix && attempt>0){
         data.num = await _bumpNumIfStale('bons','BON-', data.num);
       }
       var res=await sbFetch('bons','POST',data);
       if(res && Array.isArray(res) && res[0]){ saved=res; bon.num=data.num; bon.id=res[0].id; break; }
       if(res && res.__sbError && (res.status===409 || /duplicate|unique/i.test(res.msg||''))){
-        console.warn('sbSaveBon unique conflict on '+data.num+', retrying...');
-        continue;
+        if(isLegacyPrefix){
+          console.warn('sbSaveBon BON- collision on '+data.num+', auto-bumping...');
+          continue;
+        }
+        // Custom (supplier) num — fail fast, the caller already prevents
+        // duplicates in the local cache so this is a server-side race
+        throw new Error('رقم البون "'+data.num+'" مستعمل من قبل عند المورد. بدّل الرقم.');
       }
-      if(res && res.__sbError){ console.error('sbSaveBon error:', res); break; }
+      if(res && res.__sbError){ console.error('sbSaveBon error:', res); throw new Error(res.msg||'فشل الحفظ'); }
     }
+    if(!saved) throw new Error('تعذر حفظ البون بعد '+5+' محاولات');
   }
   saveCacheLS();
 }
@@ -11060,24 +11070,12 @@ function initNewBon(){
   const cnt = document.getElementById('b-counter');
   if(cnt) cnt.textContent = '0 سلعة';
 
-  // Compute next available num: scan existing BON-NNNN numbers, take max+1
-  // This guards against displaying a num that collides with an already-saved bon.
-  var _usedNums={};
-  var _maxNum=0;
-  (bons||[]).forEach(function(x){
-    var s=String(x.num||'').trim().toUpperCase();
-    _usedNums[s]=true;
-    var m=s.match(/^BON-(\d+)$/);
-    if(m){ var n=Number(m[1]); if(n>_maxNum) _maxNum=n; }
-  });
-  var _candidate=Math.max(_maxNum+1, nextBId);
-  // Extra safety: if somehow the candidate still collides, bump until free
-  while(_usedNums['BON-'+String(_candidate).padStart(4,'0')]) _candidate++;
-  const num = 'BON-' + String(_candidate).padStart(4,'0');
+  // Per user 2026-05-12: bon num comes from the fournisseur's paper bon,
+  // we don't auto-generate. Leave the input empty so the user types it.
   const numEl = document.getElementById('b-num');
-  if(numEl) numEl.value = num;
+  if(numEl) numEl.value = '';
   const dispEl = document.getElementById('b-bon-num-display');
-  if(dispEl) dispEl.textContent = num;
+  if(dispEl) dispEl.textContent = '—';
   const dateEl = document.getElementById('b-date');
   if(dateEl) dateEl.valueAsDate = new Date();
   ['b-fournisseur','b-note','art-search'].forEach(function(id){
@@ -11853,8 +11851,14 @@ async function _saveBonImpl(){
     if(msg){ msg.style.color='var(--red)'; msg.textContent='رجاءً عبئ رقم البون، الفورنيسور، والتاريخ'; }
     return;
   }
-  // Uniqueness: no two bons can share the same num
-  var _dup=bons.find(function(x){ return String(x.num||'').trim().toLowerCase()===num.toLowerCase(); });
+  // Uniqueness scoped per-fournisseur: supplier numbers can legitimately
+  // repeat across different fournisseurs (e.g., "12345" might exist for
+  // GADIMAT and for RACHID — different paper bons, different invoices).
+  // We still reject same-num within the same fournisseur.
+  var _dup=bons.find(function(x){
+    return String(x.num||'').trim().toLowerCase()===num.toLowerCase()
+        && String(x.fournisseur||'').trim().toLowerCase()===fournisseur.toLowerCase();
+  });
   if(_dup){
     if(msg){ msg.style.color='var(--red)'; msg.textContent='⛔ رقم البون "'+num+'" مستعمل من قبل عند الفورنيسور "'+_dup.fournisseur+'". بدل الرقم.'; }
     return;

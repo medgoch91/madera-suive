@@ -1340,6 +1340,15 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
                     <option value="">— بلا ورش —</option>
                   </select>
                 </div>
+                <div style="grid-column:1/-1;margin-top:4px">
+                  <label style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(245,158,11,0.06);border:1px dashed rgba(245,158,11,0.4);border-radius:8px;cursor:pointer;font-family:Cairo,sans-serif">
+                    <input type="checkbox" id="b-skip-stock" onchange="try{bonSaveDraft();}catch(e){}" style="cursor:pointer;width:18px;height:18px;accent-color:#f59e0b;flex-shrink:0">
+                    <div style="flex:1">
+                      <div style="font-size:13px;font-weight:700;color:var(--text)">📦 سلعة قديمة — ما تأثرش على المخزون</div>
+                      <div style="font-size:11px;color:var(--text3);margin-top:2px">اضغط ila l-سلعة déjà mawjouda f stock physiquement. L-بون kayb9a tracky lel-cheque + dette dyal fournisseur، mais stock ma yt-zad-ch.</div>
+                    </div>
+                  </label>
+                </div>
               </div>
             </div>
           </div>
@@ -2291,6 +2300,7 @@ async function loadAllData(){
         total:parseFloat(b.total)||0,
         totalNet:parseFloat(b.total_net)||0,
         photoPath:b.photo_path||null,
+        skipStock:!!b.skip_stock,
       };
     });
 
@@ -2564,6 +2574,7 @@ async function sbSaveBon(bon){
     statut:bon.statut||'Bon', remise_type:bon.remiseType||'%',
     remise_val:bon.remiseVal||0, total:bon.total||0, total_net:bon.totalNet||bon.total||0,
     cheque_id:bon.chequeId||null, chantier_id:bon.chantierId||null, lignes:bon.lignes||[],
+    skip_stock: !!bon.skipStock,
   };
   if(bon.id && bons.find(b=>b.id===bon.id)&&bon.id>0){
     await sbFetch('bons?id=eq.'+bon.id,'PATCH',data);
@@ -4963,30 +4974,36 @@ async function deleteBon(id){
   const b=bons.find(x=>x.id===id); if(!b) return;
 
   // ── Step 1: Pre-flight — would any article go negative? ──
+  // Historical bons (b.skipStock) never bumped stock, so deleting them
+  // can't make it go negative either — skip the shortage check entirely.
   var shortages=[];
   var lignes=Array.isArray(b.lignes)?b.lignes:[];
-  for(var i=0;i<lignes.length;i++){
-    var li=lignes[i];
-    var aid=Number(li.articleId||0);
-    var qte=Number(li.qte||0);
-    if(!aid || qte<=0) continue;
-    var cur=getArtStock(aid);
-    var curN=(cur==null?0:Number(cur));
-    if(curN < qte){
-      var a=(articles||[]).find(function(x){return x.id===aid;});
-      shortages.push({
-        nom: (a && a.nom) || li.nom || ('#'+aid),
-        qte: qte,
-        available: curN,
-        missing: qte - curN
-      });
+  if(!b.skipStock){
+    for(var i=0;i<lignes.length;i++){
+      var li=lignes[i];
+      var aid=Number(li.articleId||0);
+      var qte=Number(li.qte||0);
+      if(!aid || qte<=0) continue;
+      var cur=getArtStock(aid);
+      var curN=(cur==null?0:Number(cur));
+      if(curN < qte){
+        var a=(articles||[]).find(function(x){return x.id===aid;});
+        shortages.push({
+          nom: (a && a.nom) || li.nom || ('#'+aid),
+          qte: qte,
+          available: curN,
+          missing: qte - curN
+        });
+      }
     }
   }
 
   // skipStock: when true, we'll soft-delete the bon WITHOUT subtracting stock.
   // Used when localStorage stock is out of sync after a data wipe — the user
   // confirmed via a second prompt that the stock figures aren't reliable.
-  var skipStock = false;
+  // Also auto-true when the bon was created as historical (b.skipStock) —
+  // it never added to stock, so deleting shouldn't subtract.
+  var skipStock = !!b.skipStock;
 
   if(shortages.length){
     var lines=shortages.map(function(s){
@@ -5004,7 +5021,10 @@ async function deleteBon(id){
     if(!override) return;
     skipStock = true;
   } else {
-    if(!confirm('تأكيد حذف البون '+b.num+'؟\n\nغادي يتم طرح السلع من الستوك أوتوماتيكياً.')) return;
+    var confirmMsg = b.skipStock
+      ? 'تأكيد حذف البون '+b.num+'؟\n\n📦 هاد بون تاريخي — الستوك ما تبدلش (ما كان ضاف ليه شي حاجة).'
+      : 'تأكيد حذف البون '+b.num+'؟\n\nغادي يتم طرح السلع من الستوك أوتوماتيكياً.';
+    if(!confirm(confirmMsg)) return;
   }
 
   showLoader('جاري حذف البون...');
@@ -5381,18 +5401,21 @@ function saveEditBon(id){
   var _remMt  = b.remiseType === '%' ? b.total * _remVal / 100 : Math.min(b.total, _remVal);
   b.totalNet  = Math.round(Math.max(0, b.total - _remMt) * 100) / 100;
 
-  // ── Stock delta: compare original vs current lignes by articleId ──
-  var orig=_editBonOriginalLignes[id]||[];
-  var origByArt={};orig.forEach(function(l){if(l.articleId)origByArt[l.articleId]=(origByArt[l.articleId]||0)+Number(l.qte||0);});
-  var newByArt={};b.lignes.forEach(function(l){if(l.articleId)newByArt[l.articleId]=(newByArt[l.articleId]||0)+Number(l.qte||0);});
-  var allAids={};Object.keys(origByArt).forEach(function(k){allAids[k]=1;});Object.keys(newByArt).forEach(function(k){allAids[k]=1;});
-  Object.keys(allAids).forEach(function(aid){
-    var delta=(Number(newByArt[aid])||0)-(Number(origByArt[aid])||0);
-    if(delta!==0){
-      var cur=getArtStock(aid);
-      setArtStock(aid,(cur==null?0:Number(cur))+delta);
-    }
-  });
+  // ── Stock delta — SKIPPED for historical bons (skipStock=true) ──
+  // Otherwise compare original vs current lignes by articleId
+  if(!b.skipStock){
+    var orig=_editBonOriginalLignes[id]||[];
+    var origByArt={};orig.forEach(function(l){if(l.articleId)origByArt[l.articleId]=(origByArt[l.articleId]||0)+Number(l.qte||0);});
+    var newByArt={};b.lignes.forEach(function(l){if(l.articleId)newByArt[l.articleId]=(newByArt[l.articleId]||0)+Number(l.qte||0);});
+    var allAids={};Object.keys(origByArt).forEach(function(k){allAids[k]=1;});Object.keys(newByArt).forEach(function(k){allAids[k]=1;});
+    Object.keys(allAids).forEach(function(aid){
+      var delta=(Number(newByArt[aid])||0)-(Number(origByArt[aid])||0);
+      if(delta!==0){
+        var cur=getArtStock(aid);
+        setArtStock(aid,(cur==null?0:Number(cur))+delta);
+      }
+    });
+  }
   delete _editBonOriginalLignes[id];
 
   const editedBon=bons.find(x=>x.id===id);
@@ -5458,7 +5481,7 @@ function openBonModal(id){
   const missingName = (b.lignes||[]).some(l => !l.nom || !String(l.nom).trim());
   const isBroken = priceMismatch || missingName;
   document.getElementById('modal-main-c').innerHTML=`
-    <div class="modal-title"><span>📋 ${b.num}</span><button class="modal-close" onclick="document.getElementById('modal-main').classList.remove('open')">✕</button></div>
+    <div class="modal-title"><span>📋 ${b.num}${b.skipStock?' <span style="font-size:10px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:3px 9px;border-radius:10px;font-weight:700;margin-inline-start:6px;vertical-align:middle">📦 تاريخي — بلا تأثير على المخزون</span>':''}</span><button class="modal-close" onclick="document.getElementById('modal-main').classList.remove('open')">✕</button></div>
     <div class="info-grid" style="margin-bottom:16px">
       <div class="info-item"><div class="info-item-lbl">الفورنيسور</div><div class="info-item-val">${b.fournisseur}</div></div>
       <div class="info-item"><div class="info-item-lbl">التاريخ</div><div class="info-item-val">${fmtDate(b.date)}</div></div>
@@ -11822,6 +11845,7 @@ async function _saveBonImpl(){
   const chantierRaw = (document.getElementById('b-chantier')||{value:''}).value;
   const chantierId  = chantierRaw ? Number(chantierRaw) : null;
   const remVal      = parseFloat((document.getElementById('b-remise-val')||{value:'0'}).value) || 0;
+  const skipStock   = !!(document.getElementById('b-skip-stock')||{checked:false}).checked;
   const msg         = document.getElementById('msg-bon');
 
   // ── Step 1: Validate ──
@@ -11866,6 +11890,7 @@ async function _saveBonImpl(){
     id: nextBId, num, fournisseur, date, note, chequeId: null,
     chantierId: chantierId,
     statut: 'Bon', remiseType: bonRemiseType, remiseVal: remVal,
+    skipStock: skipStock,
     lignes: bonLignes.map(function(l){ return Object.assign({}, l); }),
     total:    Math.round(sousTotal * 100) / 100,
     totalNet: Math.round(net * 100) / 100
@@ -11916,15 +11941,20 @@ async function _saveBonImpl(){
       try{ await sbSaveFournisseur(createdFour); }catch(_){}
     }
 
-    // ── Step 5b: Update stock (ONLY after bon is confirmed saved) ──
+    // ── Step 5b: Update stock — SKIPPED for historical bons ──
+    // When the user checked "📦 سلعة قديمة" the bon still tracks fournisseur
+    // dette + cheque follow-up, but the stock column stays as-is (the
+    // merchandise was already physically counted before).
     var stockAdded=[];
-    for(var si=0;si<bon.lignes.length;si++){
-      var li=bon.lignes[si];
-      if(li.articleId && Number(li.qte)>0){
-        var cur=getArtStock(li.articleId);
-        var newStk=(cur==null?0:Number(cur))+Number(li.qte);
-        setArtStock(li.articleId, newStk);
-        stockAdded.push({nom:li.nom,qte:li.qte,total:newStk});
+    if(!skipStock){
+      for(var si=0;si<bon.lignes.length;si++){
+        var li=bon.lignes[si];
+        if(li.articleId && Number(li.qte)>0){
+          var cur=getArtStock(li.articleId);
+          var newStk=(cur==null?0:Number(cur))+Number(li.qte);
+          setArtStock(li.articleId, newStk);
+          stockAdded.push({nom:li.nom,qte:li.qte,total:newStk});
+        }
       }
     }
 
@@ -19490,6 +19520,7 @@ const BON_DRAFT_KEY='bon_new_draft_v1';
 function bonSaveDraft(){
   try{
     const g=function(id){var e=document.getElementById(id); return e?e.value:'';};
+    const c=function(id){var e=document.getElementById(id); return e?!!e.checked:false;};
     localStorage.setItem(BON_DRAFT_KEY,JSON.stringify({
       num:g('b-num'),
       fournisseur:g('b-fournisseur'),
@@ -19498,6 +19529,7 @@ function bonSaveDraft(){
       chantierId:g('b-chantier'),
       remiseVal:g('b-remise-val'),
       remiseType:(typeof bonRemiseType!=='undefined')?bonRemiseType:'%',
+      skipStock:c('b-skip-stock'),
       lignes:bonLignes||[],
       t:Date.now()
     }));
@@ -19521,6 +19553,7 @@ function bonLoadDraft(){
     set('b-note',d.note||'');
     if(d.chantierId!=null) set('b-chantier', String(d.chantierId||''));
     set('b-remise-val',d.remiseVal||'0');
+    var skipEl=document.getElementById('b-skip-stock'); if(skipEl) skipEl.checked=!!d.skipStock;
     return true;
   }catch(e){return false;}
 }

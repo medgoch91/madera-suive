@@ -11578,7 +11578,7 @@ function bonNomSearch(i, val){
 
   const f = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
   const fourObj2 = fournisseurs.find(function(x){ return x.nom===f; });
-  const linked2 = fourObj2 ? articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj2.id+'_'+a.id); }) : [];
+  const linked2 = fourObj2 ? articles.filter(function(a){ return _fourHasLink(fourObj2, f, a); }) : [];
   const pool2Raw = linked2.length > 0 ? linked2 : articles;
   // Exclude articles already picked in ANY ligne (hide once selected)
   const usedIds = new Set();
@@ -11706,6 +11706,25 @@ function _fourFamFilter(fourObj){
   return fams.length>0 ? function(a){ return fams.indexOf((a.cat||'').trim())>=0; } : null;
 }
 
+// Article ↔ fournisseur linkage is tracked in TWO places: the modern
+// `supplier_products` table (cached in spLinks) and the legacy `prix` map.
+// The fournisseur modal lists "السلع المربوطة" from `prix>0`, but the bon
+// picker historically only looked at spLinks — so articles linked via prix
+// (older flows) showed up in the modal but disappeared from the picker.
+// Always union both sources here.
+function _fourHasLink(fourObj, fName, a){
+  if(!fourObj || !a) return false;
+  if(spLinks.hasOwnProperty(fourObj.id+'_'+a.id)) return true;
+  try{ if(getPrix(a.id, fName)>0) return true; }catch(e){}
+  return false;
+}
+function _fourHasAnyLink(fourObj, fName){
+  if(!fourObj) return false;
+  if(Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); })) return true;
+  const fSuffix = '_'+fName;
+  return Object.keys(prix||{}).some(function(k){ return k.endsWith(fSuffix) && (prix[k]>0); });
+}
+
 function bonArtFocus(){
   const f = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
@@ -11715,9 +11734,9 @@ function bonArtFocus(){
       const pool = _bonExcludeSelected(articles.filter(famFilter));
       bonArtShowPool(pool.slice(0,10), f, fourObj);
     } else {
-      const hasLinks = Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
+      const hasLinks = _fourHasAnyLink(fourObj, f);
       if(hasLinks){
-        const pool = _bonExcludeSelected(articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); }));
+        const pool = _bonExcludeSelected(articles.filter(function(a){ return _fourHasLink(fourObj, f, a); }));
         bonArtShowPool(pool.slice(0,10), f, fourObj);
       } else {
         bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, fourObj);
@@ -11734,7 +11753,7 @@ function bonArtShowPool(pool, f, fourObj){
   sug.innerHTML='';
   if(fourObj){
     const fams = Array.isArray(fourObj.families) ? fourObj.families : [];
-    const hasLinks = Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
+    const hasLinks = _fourHasAnyLink(fourObj, f);
     var hdr=document.createElement('div');
     if(fams.length>0){
       hdr.style.cssText='padding:4px 14px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border)';
@@ -11783,11 +11802,11 @@ function bonArtSearch(val){
   // ── Articles — families filter takes priority, then supplier_products links ─
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
   const famFilter = _fourFamFilter(fourObj);
-  const hasLinks = !famFilter && fourObj && Object.keys(spLinks).some(function(k){ return k.startsWith(fourObj.id+'_'); });
+  const hasLinks = !famFilter && _fourHasAnyLink(fourObj, f);
   const pool = _bonExcludeSelected(famFilter
     ? articles.filter(famFilter)
     : (hasLinks
-        ? articles.filter(function(a){ return spLinks.hasOwnProperty(fourObj.id+'_'+a.id); })
+        ? articles.filter(function(a){ return _fourHasLink(fourObj, f, a); })
         : articles));
   const matches = pool.filter(function(a){
     return a.nom.toLowerCase().includes(q) || (a.ref||'').toLowerCase().includes(q);

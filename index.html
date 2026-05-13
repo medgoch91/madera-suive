@@ -413,6 +413,14 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   padding:22px 24px;
 }
 .modal-box.wide-page .info-grid{grid-template-columns:repeat(4, 1fr);}
+/* Inside the page-like modal we have room: stop truncating article names
+   etc. with the global 220px / ellipsis rule. Let cells wrap and show full
+   text — overflow:auto wrappers around each table still kick in if a row
+   genuinely doesn't fit. */
+.modal-box.wide-page .data-table td{
+  max-width:none;white-space:normal;overflow:visible;text-overflow:clip;
+  word-break:break-word;
+}
 @media (max-width: 900px){
   .modal-box.wide-page{padding:14px;}
   .modal-box.wide-page .info-grid{grid-template-columns:1fr 1fr;}

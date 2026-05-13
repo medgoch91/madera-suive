@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v125-view-bon-wide-page';
+const CACHE = 'suivi-v126-wide-table-no-ellipsis';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

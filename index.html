@@ -5348,14 +5348,15 @@ function _rebuildEditBonArtOpts(id){
 }
 
 function editAddLine(id){
-  const b=bons.find(x=>x.id===id);if(!b)return;
+  const b=bons.find(x=>x.id===id);
+  if(!b){ try{ toast('⚠️ ما لقيتش البون','error'); }catch(e){} return; }
   const sel=document.getElementById('eb-new-art');
   const qtyI=document.getElementById('eb-new-qty');
   const priceI=document.getElementById('eb-new-prix');
   const aid=sel?Number(sel.value):0;
-  if(!aid){try{toast('اختر سلعة أولاً','warning');}catch(e){}return;}
+  if(!aid){ try{ toast('اختر سلعة أولاً','warning'); }catch(e){} return; }
   const a=(articles||[]).find(function(x){return x.id===aid;});
-  if(!a)return;
+  if(!a){ try{ toast('⚠️ السلعة #'+aid+' ما لقيتهاش ف الكتالوج','error'); }catch(e){} return; }
   const qte=Math.max(0,Number(qtyI&&qtyI.value||1))||1;
   const prix=Math.max(0,Number(priceI&&priceI.value||0))||0;
   b.lignes.push({nom:a.nom,articleId:a.id,ref:a.ref||'',unite:a.unite||'قطعة',qte:qte,prix:prix});
@@ -5364,6 +5365,28 @@ function editAddLine(id){
   if(sel) sel.value='';
   if(qtyI) qtyI.value='1';
   if(priceI) priceI.value='';
+  try{ toast('✅ زدنا "'+a.nom+'" — كليكي 💾 حفظ التعديلات','success'); }catch(e){}
+}
+
+// When the user picks an article from the eb-new-art dropdown, auto-fill the
+// price field with the last known price for this fournisseur (supplier_products
+// first, legacy prix table as fallback). Saves a trip back to the catalog.
+function _ebOnArtPick(id){
+  const sel = document.getElementById('eb-new-art');
+  const priceI = document.getElementById('eb-new-prix');
+  if(!sel || !priceI) return;
+  const aid = Number(sel.value);
+  if(!aid){ priceI.value=''; return; }
+  const b = bons.find(function(x){ return x.id===id; });
+  const fName = (document.getElementById('eb-fournisseur')||{value:''}).value.trim() || (b && b.fournisseur) || '';
+  const fourObj = (fournisseurs||[]).find(function(f){ return f.nom===fName; });
+  let p = 0;
+  if(fourObj && spLinks[fourObj.id+'_'+aid]!=null) p = Number(spLinks[fourObj.id+'_'+aid])||0;
+  if(!p){ try{ p = Number(getPrix(aid, fName))||0; }catch(e){} }
+  if(p>0){
+    priceI.value = p;
+    try{ flashSaved(priceI); }catch(e){}
+  }
 }
 
 function editDeleteLine(id,i){
@@ -5407,7 +5430,7 @@ function openEditBon(id){
     <div style="background:var(--bg3);border:1px dashed var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 80px 100px auto;gap:8px;align-items:end">
       <div>
         <label style="font-size:10px;color:var(--text3);font-weight:700;display:block;margin-bottom:3px">➕ زيد سلعة</label>
-        <select id="eb-new-art" class="field-inp" style="width:100%;font-size:13px">
+        <select id="eb-new-art" class="field-inp" style="width:100%;font-size:13px" onchange="_ebOnArtPick(${id})">
           <option value="">— اختر سلعة —</option>
           ${artsOpts}
         </select>
@@ -5501,7 +5524,9 @@ function saveEditBon(id){
         cheque_id:editedBon.chequeId||null, chantier_id:editedBon.chantierId||null,
         lignes:editedBon.lignes||[], skip_stock: !!editedBon.skipStock,
       };
+      console.log('[saveEditBon] PATCH bons/id='+editedBon.id, {lignesCount:data.lignes.length, total:data.total, payload:data});
       const res = await sbFetch('bons?id=eq.'+editedBon.id, 'PATCH', data);
+      console.log('[saveEditBon] response', res);
       if(res && res.__sbError){ throw new Error(res.msg || ('HTTP '+res.status)); }
       if(Array.isArray(res) && res[0]){
         const norm = _normBon(res[0]);

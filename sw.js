@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v140-bon-direct-taswiya';
+const CACHE = 'suivi-v141-echeance-autofill-tracking';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

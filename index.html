@@ -3903,9 +3903,14 @@ function updateChequeTotal(){
   try{ suggestEcheance(); }catch(e){}
 }
 
-// Auto-suggest the échéance date based on the fournisseur's payment_terms_days
-// and the latest selected bon date. User can override — we only fill if the
-// échéance is empty (so a manual entry is never clobbered).
+// Tracks the last auto-suggested échéance — used so a re-suggest (e.g. user
+// changed fournisseur or picked another bon) replaces the previous auto-fill
+// but never clobbers a value the user typed manually.
+var _lastSuggestedEcheance = '';
+
+// Auto-suggest the échéance date from `fournisseur.paymentTermsDays` +
+// latest selected bon date. Always shows a hint banner; auto-fills the
+// input whenever it's empty OR still equals our previous suggestion.
 function suggestEcheance(){
   const echEl = document.getElementById('c-echeance');
   if(!echEl) return;
@@ -3913,27 +3918,41 @@ function suggestEcheance(){
   const nom = (document.getElementById('c-fournisseur')||{value:''}).value.trim();
   const four = nom ? (fournisseurs||[]).find(function(f){return f.nom===nom;}) : null;
   const days = four && four.paymentTermsDays!=null ? Number(four.paymentTermsDays)||0 : 0;
-  // Pick the LATEST date among selected bons (so the suggestion respects the
-  // most recent purchase — that's the day from which the supplier's terms tick).
+  // Pick the LATEST date among selected bons (the supplier's clock ticks from
+  // the most recent purchase). Fallback to today if no bon is picked yet so
+  // the user still sees what the agreed delay maps to.
   let latestBonDate = '';
   selectedBonIds.forEach(function(id){
     const b = bons.find(function(x){return x.id===id;});
     if(b && b.date && (!latestBonDate || b.date>latestBonDate)) latestBonDate = b.date;
   });
-  if(!days || !latestBonDate){
+  const baseDate = latestBonDate || (function(){
+    const t=new Date(); const p=n=>String(n).padStart(2,'0');
+    return t.getFullYear()+'-'+p(t.getMonth()+1)+'-'+p(t.getDate());
+  })();
+  const baseLbl = latestBonDate ? ('من بون <b>'+fmtDate(latestBonDate)+'</b>') : ('من <b>اليوم</b>');
+  if(!days){
     if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
     return;
   }
   // Compute base + days at noon UTC to avoid DST drift.
-  const d = new Date(latestBonDate+'T12:00:00Z');
+  const d = new Date(baseDate+'T12:00:00Z');
   d.setUTCDate(d.getUTCDate()+days);
   const iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  // Only auto-fill when the user hasn't typed anything yet, but always show the hint.
-  if(!echEl.value) echEl.value = iso;
+  // Auto-fill in two cases:
+  //  1) Field empty → first fill.
+  //  2) Field still equals what we suggested last time → re-fill (the user
+  //     changed fournisseur/bon and we want the date to track).
+  const userTouched = echEl.value && echEl.value !== _lastSuggestedEcheance;
+  if(!userTouched){
+    echEl.value = iso;
+    _lastSuggestedEcheance = iso;
+  }
   if(hintEl){
     hintEl.style.display = 'block';
-    hintEl.innerHTML = '💡 آجال '+nom+': <b>'+days+' يوم</b> من <b>'+fmtDate(latestBonDate)+'</b> = <b style="color:var(--accent)">'+fmtDate(iso)+'</b>'
-      +(echEl.value && echEl.value!==iso ? ' <span style="color:var(--amber)">⚠️ غادي تتأخر</span>' : '');
+    const latePart = (echEl.value && echEl.value > iso) ? ' <span style="color:var(--amber);font-weight:700">⚠️ غادي تتأخر</span>' : '';
+    const earlyPart = (echEl.value && echEl.value < iso) ? ' <span style="color:#10b981;font-weight:700">✓ قبل الأجل</span>' : '';
+    hintEl.innerHTML = '💡 آجال <b>'+escB(nom||'—')+'</b>: <b>'+days+' يوم</b> '+baseLbl+' = <b style="color:var(--accent)">'+fmtDate(iso)+'</b>'+latePart+earlyPart;
   }
 }
 
@@ -6258,6 +6277,11 @@ function initNewCheque(){
   wrap.className = 'cheques-tabs-bar';
   wrap.innerHTML = _renderChequesTabsHTML('new-cheque');
   page.insertBefore(wrap, page.firstChild);
+  // Fresh session → clear any prior auto-fill tracking so the next suggestion
+  // is free to populate the date field. Also defer a suggest run in case the
+  // user already has c-fournisseur + bons pre-selected from a deep-link.
+  _lastSuggestedEcheance = '';
+  setTimeout(function(){ try{ suggestEcheance(); }catch(e){} }, 50);
 }
 
 // Big prominent tab bar for the cheque section (list / new / print).

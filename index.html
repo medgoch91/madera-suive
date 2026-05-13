@@ -4188,6 +4188,26 @@ function renderDashboard(){
   const topFour=Object.entries(fMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
   window._dashTopProdNames=topProducts.map(function(x){return x[0];});
   window._dashTopFourNames=topFour.map(function(x){return x[0];});
+  // Month-over-month delta per top supplier (current calendar month vs prior).
+  const _nowD = new Date();
+  const _curMK = _nowD.getFullYear()+'-'+String(_nowD.getMonth()+1).padStart(2,'0');
+  const _pDate = new Date(_nowD.getFullYear(), _nowD.getMonth()-1, 1);
+  const _prvMK = _pDate.getFullYear()+'-'+String(_pDate.getMonth()+1).padStart(2,'0');
+  const _topFourMoM = {};
+  topFour.forEach(function(x){
+    const nm = x[0];
+    let mt=0, mp=0;
+    bons.forEach(function(b){
+      if(b.fournisseur!==nm) return;
+      const k = String(b.date||'').slice(0,7);
+      if(k===_curMK) mt += Number(b.total||0);
+      else if(k===_prvMK) mp += Number(b.total||0);
+    });
+    let d = null;
+    if(mp>0.005) d = Math.round(((mt-mp)/mp)*100);
+    else if(mt>0.005) d = 100;
+    _topFourMoM[nm] = d;
+  });
 
   // ── Dépenses par chantier (based on date-filtered bons) ──
   const chMap={};
@@ -4434,10 +4454,16 @@ function renderDashboard(){
           ${topFour.length?topFour.map(function(x,idx){
             const pct=topFour[0][1]>0?(x[1]/topFour[0][1]*100):0;
             const medals=['#facc15','#a3a3a3','#cd7f32','transparent','transparent'];
+            const mom = _topFourMoM[x[0]];
+            const momCol = (mom!=null && mom>0) ? '#ef4444' : (mom!=null && mom<0) ? '#10b981' : 'var(--text3)';
+            const momIcon = (mom!=null && mom>0) ? '▲' : (mom!=null && mom<0) ? '▼' : '–';
+            const momBadge = (mom==null)
+              ? ''
+              : '<span title="مقارنة هاد الشهر مع الشهر السابق" style="display:inline-flex;align-items:center;gap:2px;background:'+momCol+'18;color:'+momCol+';font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;white-space:nowrap;margin-inline-start:6px">'+momIcon+' '+(mom>0?'+':'')+mom+'%</span>';
             return '<div onclick="openFournisseurDetail(_dashTopFourNames['+idx+'])" title="اضغط للتفاصيل" style="padding:10px 20px;display:flex;align-items:center;gap:12px;cursor:pointer;transition:background 0.15s" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">'
               +'<div style="width:22px;height:22px;border-radius:50%;background:'+medals[idx]+';color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+(idx+1)+'</div>'
               +'<div style="flex:1;min-width:0">'
-                +'<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+x[0]+'</div>'
+                +'<div style="font-size:13px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center">'+x[0]+momBadge+'</div>'
                 +'<div style="height:4px;background:var(--bg3);border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;width:'+pct.toFixed(0)+'%;background:linear-gradient(90deg,#9333ea,#f59e0b);border-radius:2px"></div></div>'
               +'</div>'
               +'<div style="font-size:13px;font-weight:700;color:#f59e0b;letter-spacing:-0.3px;white-space:nowrap">'+fmtK(x[1])+' <span style="font-size:9px;color:var(--text3)">DH</span></div>'
@@ -6743,6 +6769,86 @@ function _fourIsBounced(c){ return c.status==='مرتجع'; }
 function _fourPaidDate(c){ return c.paid_at || c.date || ''; }
 function _fourBonAmt(b){ return Number(b.totalNet||b.total||0); }
 
+// Returns the last `n` calendar months ending at the current month, as an
+// array of {key:'YYYY-MM', label:'MMM YY', purchases, paid, delta}.
+// purchases = sum of bons.totalNet whose date falls in the month
+// paid      = sum of cheques.montant whose paid_at (fallback date) falls in
+//             the month AND status is مدفوع
+// delta is the +/- % vs the previous month's purchases (purchase trend).
+function fourMonthlySeries(nom, n){
+  n = n || 12;
+  const fb = bons.filter(b => b.fournisseur===nom);
+  const fc = cheques.filter(c => c.fournisseur===nom);
+  // Build month buckets — newest LAST so chart x-axis flows oldest → newest
+  const today = new Date();
+  const months = [];
+  for(let i=n-1; i>=0; i--){
+    const d = new Date(today.getFullYear(), today.getMonth()-i, 1);
+    const y = d.getFullYear();
+    const m = d.getMonth()+1;
+    const key = y+'-'+String(m).padStart(2,'0');
+    const labelMonths = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Aoû','Sep','Oct','Nov','Déc'];
+    months.push({key, label:labelMonths[d.getMonth()]+' '+String(y).slice(2), purchases:0, paid:0});
+  }
+  const idxByKey = {};
+  months.forEach((mo,i)=>{ idxByKey[mo.key]=i; });
+  // Aggregate purchases
+  fb.forEach(b=>{
+    const d = String(b.date||'');
+    if(d.length<7) return;
+    const k = d.slice(0,7);
+    if(idxByKey[k]!=null){
+      months[idxByKey[k]].purchases += _fourBonAmt(b);
+    }
+  });
+  // Aggregate paid cheques — use paid_at when present (status=مدفوع), fallback to issue date
+  fc.forEach(c=>{
+    if(!_fourIsPaid(c)) return;
+    const d = String(_fourPaidDate(c)||'');
+    if(d.length<7) return;
+    const k = d.slice(0,7);
+    if(idxByKey[k]!=null){
+      months[idxByKey[k]].paid += Number(c.montant||0);
+    }
+  });
+  // Delta vs previous month (purchases)
+  months.forEach((mo,i)=>{
+    if(i===0){ mo.delta = null; return; }
+    const prev = months[i-1].purchases;
+    if(prev<=0){ mo.delta = mo.purchases>0 ? 100 : 0; return; }
+    mo.delta = Math.round(((mo.purchases - prev) / prev) * 100);
+  });
+  return months;
+}
+
+// Render a compact SVG bar chart for the monthly comparison panel.
+// 2 bars per month (purchases blue, paid green).
+function fourMonthlyBarsSVG(series){
+  if(!series||!series.length) return '';
+  const maxV = Math.max(1, ...series.map(s=>Math.max(s.purchases, s.paid)));
+  const w=720, h=180, padL=44, padR=12, padT=12, padB=28;
+  const cw = w-padL-padR, ch = h-padT-padB;
+  const slotW = cw / series.length;
+  const barW = Math.max(4, slotW*0.36);
+  const gridY = [0,0.25,0.5,0.75,1].map(f=>{
+    const y = padT + ch - f*ch;
+    const v = maxV*f;
+    return '<line x1="'+padL+'" x2="'+(w-padR)+'" y1="'+y+'" y2="'+y+'" stroke="currentColor" stroke-opacity="0.08"/>'
+      +'<text x="'+(padL-6)+'" y="'+(y+3)+'" text-anchor="end" font-size="9" fill="currentColor" opacity="0.5" font-family="Cairo">'+fmtK(v)+'</text>';
+  }).join('');
+  const bars = series.map((s,i)=>{
+    const xCenter = padL + i*slotW + slotW/2;
+    const hPurchases = (s.purchases/maxV) * ch;
+    const hPaid      = (s.paid/maxV) * ch;
+    const yP = padT + ch - hPurchases;
+    const yQ = padT + ch - hPaid;
+    return '<rect x="'+(xCenter-barW-1)+'" y="'+yP+'" width="'+barW+'" height="'+Math.max(0,hPurchases)+'" rx="2" fill="#9333ea" opacity="0.85"><title>'+s.label+' — مشتريات: '+fmt(s.purchases)+'</title></rect>'
+      +'<rect x="'+(xCenter+1)+'" y="'+yQ+'" width="'+barW+'" height="'+Math.max(0,hPaid)+'" rx="2" fill="#10b981" opacity="0.85"><title>'+s.label+' — مدفوع: '+fmt(s.paid)+'</title></rect>'
+      +'<text x="'+xCenter+'" y="'+(h-10)+'" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.55" font-family="Cairo">'+s.label+'</text>';
+  }).join('');
+  return '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;display:block">'+gridY+bars+'</svg>';
+}
+
 function fourStats(nom, fromISO, toISO){
   const fb = bons.filter(b=>b.fournisseur===nom);
   const fc = cheques.filter(c=>c.fournisseur===nom);
@@ -6899,12 +7005,36 @@ function renderFournisseurs(){
   const toISO   = df.to   || '';
   const allNoms=[...new Set([...fournisseurs.map(f=>f.nom),...bons.map(b=>b.fournisseur)])];
 
+  // Month-key helpers for the "this month vs last month" columns
+  const _now = new Date();
+  const _thisMK = _now.getFullYear()+'-'+String(_now.getMonth()+1).padStart(2,'0');
+  const _prevDate = new Date(_now.getFullYear(), _now.getMonth()-1, 1);
+  const _prevMK = _prevDate.getFullYear()+'-'+String(_prevDate.getMonth()+1).padStart(2,'0');
+
   const all=allNoms.map(nom=>{
     const fi=fournisseurs.find(f=>f.nom===nom)||{id:null,nom,tel:'',ville:'',cat:'مورد',stat:'نشيط',email:'',notes:''};
     const s=fourStats(nom, fromISO, toISO);
-    return{...fi, ...s};
+    // Compact monthly columns (independent of the date filter — always
+    // calendar-this-month vs calendar-prev-month so the YoY/MoM read is
+    // stable when the user changes the date range).
+    let mThis=0, mPrev=0;
+    bons.forEach(b=>{
+      if(b.fournisseur!==nom) return;
+      const k = String(b.date||'').slice(0,7);
+      if(k===_thisMK) mThis += _fourBonAmt(b);
+      else if(k===_prevMK) mPrev += _fourBonAmt(b);
+    });
+    let mDelta = null;
+    if(mPrev>0.005) mDelta = Math.round(((mThis-mPrev)/mPrev)*100);
+    else if(mThis>0.005) mDelta = 100;
+    return {...fi, ...s, mThis, mPrev, mDelta};
   }).filter(f=>(!fourFilter||f.stat===fourFilter||f.cat===fourFilter)&&(!search||(f.nom||'').toLowerCase().includes(search)||(f.tel||'').includes(search)||(f.ville||'').toLowerCase().includes(search)))
-  .sort((a,b)=>b.soldeNow-a.soldeNow);
+  .sort((a,b)=>{
+    const so = window._fourSort || 'solde';
+    if(so==='mThis') return (Number(b.mThis)||0)-(Number(a.mThis)||0);
+    if(so==='mDelta') return (Number(b.mDelta)||0)-(Number(a.mDelta)||0);
+    return b.soldeNow-a.soldeNow;
+  });
 
   const sumK = (k)=>all.reduce((s,f)=>s+f[k],0);
   const totOpen=sumK('openingBal'), totAch=sumK('achatsPeriod'), totPay=sumK('payePeriod'), totSol=sumK('soldeNow');
@@ -6967,6 +7097,9 @@ function renderFournisseurs(){
               <th style="text-align:left" title="رصيد افتتاحي قبل الفترة">🔒 افتتاحي</th>
               <th style="text-align:left" title="مشتريات خلال الفترة">📦 مشتريات</th>
               <th style="text-align:left" title="مدفوع نقدا خلال الفترة">✅ مدفوع</th>
+              <th style="text-align:left;cursor:pointer" title="مشتريات هاد الشهر — كليكي للترتيب" onclick="window._fourSort=(window._fourSort==='mThis'?'solde':'mThis');renderFournisseurs()">📅 هاد الشهر</th>
+              <th style="text-align:left" title="مشتريات الشهر السابق">⏮️ سابق</th>
+              <th style="text-align:left;cursor:pointer" title="تغيير % مقارنة بالشهر السابق — كليكي للترتيب" onclick="window._fourSort=(window._fourSort==='mDelta'?'solde':'mDelta');renderFournisseurs()">Δ %</th>
               <th style="text-align:left" title="الرصيد الحالي = إجمالي المشتريات − إجمالي المدفوع (مدى الحياة)">⚖️ الرصيد</th>
               <th>إجراءات</th>
             </tr></thead>
@@ -6977,6 +7110,9 @@ function renderFournisseurs(){
                 if(f.pendingTotal>0.005)  chips.push('<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(245,158,11,0.12);color:var(--amber);font-size:10.5px;font-weight:600" title="شيكات وقعتها وما تخلصاوش بعد">📝 معلق '+fmt(f.pendingTotal)+'</span>');
                 if(f.enCompteTotal>0.005) chips.push('<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(147,51,234,0.12);color:var(--accent);font-size:10.5px;font-weight:600" title="بونات بلا أي شيك">💼 ف الحساب '+fmt(f.enCompteTotal)+'</span>');
                 const cellMuted = v => v<0.005 ? '<td style="color:var(--text3);text-align:left">—</td>' : '<td style="text-align:left;font-weight:600">'+fmt(v)+'</td>';
+                const _dCol = (f.mDelta!=null && f.mDelta>0) ? 'var(--red)'
+                           : (f.mDelta!=null && f.mDelta<0) ? 'var(--green)' : 'var(--text3)';
+                const _dTxt = (f.mDelta==null) ? '—' : ((f.mDelta>0?'+':'')+f.mDelta+'%');
                 return '<tr>'
                   +'<td style="cursor:pointer" onclick="openFModal(\''+n+'\')">'
                     +'<div style="font-weight:700">'+f.nom+'</div>'
@@ -6985,6 +7121,9 @@ function renderFournisseurs(){
                   + cellMuted(f.openingBal)
                   + cellMuted(f.achatsPeriod)
                   + cellMuted(f.payePeriod)
+                  + cellMuted(f.mThis)
+                  + cellMuted(f.mPrev)
+                  +'<td style="text-align:left;font-weight:700;color:'+_dCol+';white-space:nowrap">'+_dTxt+'</td>'
                   +'<td style="text-align:left;font-weight:800;color:'+soldeColor(f.soldeNow)+'" title="الرصيد الحالي">'+soldeIcon(f.soldeNow)+' '+fmt(Math.abs(f.soldeNow))+'</td>'
                   +'<td><div style="display:flex;gap:6px">'
                     +'<button class="btn-ghost" onclick="openFModal(\''+n+'\')">👁️</button>'
@@ -6993,7 +7132,7 @@ function renderFournisseurs(){
                   +'</div></td>'
                 +'</tr>';
               }).join('')}
-              ${!all.length?'<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">لا توجد نتائج</div></div></td></tr>':''}
+              ${!all.length?'<tr><td colspan="9"><div class="empty-state"><div class="empty-icon">🏢</div><div class="empty-title">لا توجد نتائج</div></div></td></tr>':''}
             </tbody>
           </table>
           ${all.length?'<div style="padding:10px 16px;font-size:12px;color:var(--text3);border-top:1px solid var(--border);display:flex;justify-content:space-between;flex-wrap:wrap;gap:14px;align-items:center">'
@@ -7206,6 +7345,58 @@ function openFModal(nom){
       +_kpiCell('💼','ف الحساب',_stats.enCompteTotal, 'var(--purple)','بونات بلا أي شيك (مدى الحياة)')
       +_kpiCell('⚖️','الرصيد',  _stats.soldeNow, _soldeColor, 'الرصيد الحالي = مشتريات − مدفوع (مدى الحياة)')
     +'</div>'
+  +'</div>';
+
+  // ── Monthly comparison (last 12 months) ───────────────────
+  const _monthly = fourMonthlySeries(nom, 12);
+  const _totP = _monthly.reduce((s,m)=>s+m.purchases,0);
+  const _totQ = _monthly.reduce((s,m)=>s+m.paid,0);
+  // Find last non-zero month for "this vs prior" callout
+  const _last = _monthly[_monthly.length-1];
+  const _prev = _monthly[_monthly.length-2];
+  const _dCol = (_last && _last.delta!=null && _last.delta>0) ? 'var(--red)'
+              : (_last && _last.delta!=null && _last.delta<0) ? 'var(--green)' : 'var(--text3)';
+  const _dArrow = (_last && _last.delta!=null && _last.delta>0) ? '📈'
+                : (_last && _last.delta!=null && _last.delta<0) ? '📉' : '—';
+  const _deltaTxt = (_last && _last.delta!=null)
+    ? _dArrow+' '+(_last.delta>0?'+':'')+_last.delta+'%'
+    : '—';
+
+  html += '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--text)">📊 مقارنة شهرية — <span style="color:var(--text2);font-weight:500">آخر 12 شهر</span></div>'
+      +'<div style="display:flex;gap:8px;align-items:center;font-size:11px">'
+        +'<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#9333ea;opacity:0.85"></span><span style="color:var(--text2)">مشتريات</span></span>'
+        +'<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:#10b981;opacity:0.85"></span><span style="color:var(--text2)">مدفوع</span></span>'
+      +'</div>'
+    +'</div>'
+    +'<div style="color:var(--text)">'+fourMonthlyBarsSVG(_monthly)+'</div>'
+    // KPI strip below chart: 12-month totals + this-month delta
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:10px">'
+      +'<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px"><div style="font-size:10px;color:var(--text3);font-weight:700">📦 مشتريات 12 شهر</div><div style="font-size:15px;font-weight:800;color:var(--accent);margin-top:2px">'+fmt(_totP)+'</div></div>'
+      +'<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px"><div style="font-size:10px;color:var(--text3);font-weight:700">✅ مدفوع 12 شهر</div><div style="font-size:15px;font-weight:800;color:var(--green);margin-top:2px">'+fmt(_totQ)+'</div></div>'
+      +'<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px 12px"><div style="font-size:10px;color:var(--text3);font-weight:700">'+(_last?escB(_last.label):'هاد الشهر')+' vs '+(_prev?escB(_prev.label):'سابق')+'</div><div style="font-size:15px;font-weight:800;color:'+_dCol+';margin-top:2px">'+_deltaTxt+'</div></div>'
+    +'</div>'
+    // Detailed monthly table (collapsed by default)
+    +'<details style="margin-top:10px"><summary style="cursor:pointer;font-size:12px;color:var(--text2);padding:6px 4px;user-select:none">📋 تفاصيل الشهور</summary>'
+      +'<div style="overflow-x:auto;margin-top:8px"><table class="data-table" style="margin:0;min-width:520px;font-size:12px">'
+        +'<thead><tr><th>الشهر</th><th style="text-align:left">📦 مشتريات</th><th style="text-align:left">✅ مدفوع</th><th style="text-align:left">⚖️ فرق</th><th style="text-align:left">Δ vs M−1</th></tr></thead><tbody>'
+        + _monthly.slice().reverse().map(function(mo,i){
+            const arr = _monthly.slice().reverse();
+            const diff = mo.purchases - mo.paid;
+            const diffCol = diff>0.005?'var(--red)':(diff<-0.005?'var(--green)':'var(--text3)');
+            const dCol = mo.delta>0?'var(--red)':(mo.delta<0?'var(--green)':'var(--text3)');
+            const dTxt = mo.delta==null?'—':((mo.delta>0?'+':'')+mo.delta+'%');
+            return '<tr>'
+              +'<td style="white-space:nowrap;color:var(--text2)">'+escB(mo.label)+'</td>'
+              +'<td style="text-align:left;font-weight:700;color:var(--accent);white-space:nowrap">'+fmt(mo.purchases)+'</td>'
+              +'<td style="text-align:left;font-weight:700;color:var(--green);white-space:nowrap">'+fmt(mo.paid)+'</td>'
+              +'<td style="text-align:left;font-weight:700;color:'+diffCol+';white-space:nowrap">'+(diff>=0?'+':'−')+fmt(Math.abs(diff))+'</td>'
+              +'<td style="text-align:left;font-weight:700;color:'+dCol+';white-space:nowrap">'+dTxt+'</td>'
+            +'</tr>';
+          }).join('')
+        +'</tbody></table></div>'
+    +'</details>'
   +'</div>';
 
   // ── Inline ledger ─────────────────────────────────────────

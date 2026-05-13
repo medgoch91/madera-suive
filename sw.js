@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v137-effet-lettres-wrap';
+const CACHE = 'suivi-v138-fournisseurs-monthly';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

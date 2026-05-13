@@ -7055,14 +7055,14 @@ function openFModal(nom){
         +'<button class="btn-ghost" onclick="openFReleve(\''+n+'\')" title="رلوفي للطباعة (مدى الحياة)">🖨️ PDF</button>'
       +'</div>'
     +'</div>'
-    +'<div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--border)">'
+    +'<div style="background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">'
       +(_from || _to
-        ?'<div style="padding:8px 14px;background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between"><span>🔒 رصيد افتتاحي '+(_from?'('+fmtDate(_from)+')':'')+'</span><b style="color:var(--text)">'+fmt(_ledger.opening)+'</b></div>'
+        ?'<div style="padding:8px 14px;background:rgba(147,51,234,0.08);border-bottom:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between;border-radius:var(--radius-sm) var(--radius-sm) 0 0"><span>🔒 رصيد افتتاحي '+(_from?'('+fmtDate(_from)+')':'')+'</span><b style="color:var(--text)">'+fmt(_ledger.opening)+'</b></div>'
         :'')
       +(_hasLed
-        ? '<table class="data-table" style="margin:0"><thead><tr><th>التاريخ</th><th>التفاصيل</th><th style="text-align:left">المبلغ</th><th style="text-align:left">الرصيد</th></tr></thead><tbody>'+_ledRows+'</tbody></table>'
+        ? '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch"><table class="data-table" style="margin:0;min-width:520px"><thead><tr><th>التاريخ</th><th>التفاصيل</th><th style="text-align:left">المبلغ</th><th style="text-align:left">الرصيد</th></tr></thead><tbody>'+_ledRows+'</tbody></table></div>'
         : '<div style="padding:24px;text-align:center;color:var(--text3);font-size:13px">لا توجد عمليات في هذه الفترة</div>')
-      +'<div style="padding:10px 14px;background:rgba(239,68,68,0.06);border-top:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between"><span>⚖️ الرصيد '+(_to?'('+fmtDate(_to)+')':'الحالي')+'</span><b style="color:'+_soldeColor+';font-size:14px">'+fmt(_ledger.closing)+'</b></div>'
+      +'<div style="padding:10px 14px;background:rgba(239,68,68,0.06);border-top:1px solid var(--border);font-size:12px;color:var(--text2);display:flex;justify-content:space-between;border-radius:0 0 var(--radius-sm) var(--radius-sm)"><span>⚖️ الرصيد '+(_to?'('+fmtDate(_to)+')':'الحالي')+'</span><b style="color:'+_soldeColor+';font-size:14px">'+fmt(_ledger.closing)+'</b></div>'
     +'</div>'
   +'</div>';
 
@@ -7131,8 +7131,8 @@ function openFModal(nom){
         : '')
     + '</div>';
   if (_fbSorted.length) {
-    html += '<div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;max-height:300px;overflow-y:auto;border:1px solid var(--border)">'
-      + '<table class="data-table" style="margin:0">'
+    html += '<div style="background:var(--bg3);border-radius:var(--radius-sm);max-height:300px;overflow:auto;border:1px solid var(--border);-webkit-overflow-scrolling:touch">'
+      + '<table class="data-table" style="margin:0;min-width:520px">'
       + '<thead><tr><th>التاريخ</th><th>الرقم</th><th style="text-align:center">سلع</th><th style="text-align:left">المجموع</th><th>الحالة</th></tr></thead>'
       + '<tbody>'
       + _fbSorted.map(b => {

@@ -7596,8 +7596,11 @@ const CHEQUE_CFG_DEFAULTS = {
 const EFFET_CFG_DEFAULTS = {
   echeance: {top:5,  left:141, width:28,  size:11, spacing:0,   align:'left',   font:'mono',  weight:700},
   montant:  {top:12, left:141, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
+  // lettres1 wraps freely on effet — 3+ visual lines fit at width:39mm. lettres2
+  // stays unused (parked off the visible area) so it can't accidentally print
+  // duplicate text on top of the wrapped lettres1.
   lettres1: {top:26, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  lettres2: {top:32, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  lettres2: {top:90, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
   ordre:    {top:24, left:70,  width:50,  size:12, spacing:0,   align:'left',   font:'serif', weight:600},
   ville:    {top:34, left:44,  width:25,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
   date:     {top:34, left:70,  width:25,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
@@ -8041,8 +8044,8 @@ function renderPrintCheque(){
               ${!bgImg?(isEffet?'<div style="text-align:center;color:#7c3aed"><div style="font-size:36px">📜</div><div style="font-size:13px;margin-top:6px">Effet / ورقة</div><div style="font-size:11px;margin-top:4px">ارفع صورة الورقة</div></div>':'<div style="text-align:center;color:#999"><div style="font-size:36px">🏦</div><div style="font-size:13px;margin-top:6px">Crédit du Maroc</div><div style="font-size:11px;margin-top:4px">ارفع صورة الشيك</div></div>'):''}
             </div>
             <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
-            <div id="pf-lettres1" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
-            <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
+            <div id="pf-lettres1" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
+            <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
             <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
             <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
             <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
@@ -8200,14 +8203,20 @@ function updatePrintPreview(){
   s('pf-montant',montant?fmtMontantCheque(montant):'');
   s('pf-date',date?fmtDate(date):'');
   const words=toWordsFR(montant);
-  // Line 1 fits ~60 chars (from 40mm to 125mm). Overflow on line 2 full width.
-  const LMAX=60;
+  // Cheque has two printed underlines at different y positions, so we split
+  // the words into l1 (~60 chars max) + l2 (the overflow). The effet has a
+  // single narrow lettres area; we put the whole phrase in l1 and let CSS
+  // wrap handle multi-line — that's why the wrap class was added on those
+  // divs. l2 stays empty in effet mode.
   let l1=words, l2='';
-  if(words.length>LMAX){
-    const brk = words.lastIndexOf(' ',LMAX);
-    const cut = (brk>20) ? brk : LMAX;
-    l1 = words.slice(0,cut);
-    l2 = words.slice(cut).trim();
+  if(printMode!=='effet'){
+    const LMAX=60;
+    if(words.length>LMAX){
+      const brk = words.lastIndexOf(' ',LMAX);
+      const cut = (brk>20) ? brk : LMAX;
+      l1 = words.slice(0,cut);
+      l2 = words.slice(cut).trim();
+    }
   }
   // Close the amount line with trailing dashes — prevents anyone adding text after
   if(words){ if(l2) l2 += CHEQUE_WORDS_FILLER; else l1 += CHEQUE_WORDS_FILLER; }
@@ -8229,13 +8238,17 @@ function buildChequePrintHTML(d){
   const ville = ((d.ville||'').toString().trim()) || 'Agadir';
   const date = d.date||'';
   const words = toWordsFR(montant);
-  const LMAX = 60;
+  // Effet: single wrap area, put everything in l1.
+  // Cheque: two stacked underlines, split at ~60 chars.
   let l1 = words, l2 = '';
-  if(words.length > LMAX){
-    const brk = words.lastIndexOf(' ', LMAX);
-    const cut = (brk > 20) ? brk : LMAX;
-    l1 = words.slice(0, cut);
-    l2 = words.slice(cut).trim();
+  if(d.type!=='effet'){
+    const LMAX = 60;
+    if(words.length > LMAX){
+      const brk = words.lastIndexOf(' ', LMAX);
+      const cut = (brk > 20) ? brk : LMAX;
+      l1 = words.slice(0, cut);
+      l2 = words.slice(cut).trim();
+    }
   }
   if(words){ if(l2) l2 += CHEQUE_WORDS_FILLER; else l1 += CHEQUE_WORDS_FILLER; }
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -8263,12 +8276,13 @@ function buildChequePrintHTML(d){
     body{font-family:'Times New Roman',serif;color:#000;}
     .w{width:176mm;height:80mm;position:relative;background:#fff;overflow:hidden;}
     .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
+    .f.wrap{white-space:normal;overflow:visible;line-height:1.25;}
     .mono{font-family:'Courier New',monospace;}
     .serif{font-family:'Times New Roman',serif;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
-    <div class="f ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>
-    <div class="f ${cl('lettres2')}" style="${fs('lettres2')}">${esc(l2.toUpperCase())}</div>
+    <div class="f wrap ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>
+    <div class="f wrap ${cl('lettres2')}" style="${fs('lettres2')}">${esc(l2.toUpperCase())}</div>
     <div class="f ${cl('ordre')}" style="${fs('ordre')}">${esc(ordre.toUpperCase())}</div>
     <div class="f ${cl('ville')}" style="${fs('ville')}">${esc(ville.toUpperCase())}</div>
     <div class="f ${cl('date')}" style="${fs('date')}">${esc(fmtDate(date))}</div>

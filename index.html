@@ -5527,7 +5527,9 @@ function openBonModal(id){
   const priceMismatch = Number(b.total||0) > 0 && Math.abs(lignesSum - Number(b.total)) > 0.5;
   const missingName = (b.lignes||[]).some(l => !l.nom || !String(l.nom).trim());
   const isBroken = priceMismatch || missingName;
-  document.getElementById('modal-main-c').innerHTML=`
+  var _modalC = document.getElementById('modal-main-c');
+  _modalC.classList.add('wide-page');
+  _modalC.innerHTML=`
     <div class="modal-title"><span>📋 ${b.num}${b.skipStock?' <span style="font-size:10px;background:rgba(245,158,11,0.15);color:#f59e0b;padding:3px 9px;border-radius:10px;font-weight:700;margin-inline-start:6px;vertical-align:middle">📦 تاريخي — بلا تأثير على المخزون</span>':''}</span><button class="modal-close" onclick="document.getElementById('modal-main').classList.remove('open')">✕</button></div>
     <div class="info-grid" style="margin-bottom:16px">
       <div class="info-item"><div class="info-item-lbl">الفورنيسور</div><div class="info-item-val">${b.fournisseur}</div></div>
@@ -5558,13 +5560,15 @@ function openBonModal(id){
       </div>
       <button class="btn btn-accent" style="padding:8px 14px;font-size:12px" onclick="repairBon(${b.id})">🔧 إصلاح</button>
     </div>`:''}
-    <table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden">
+    <div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:auto;-webkit-overflow-scrolling:touch">
+    <table class="data-table" style="margin:0;min-width:600px">
       <thead><tr><th>السلعة</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr></thead>
       <tbody>
         ${b.lignes.map(l=>`<tr><td style="font-weight:600">${bonGetLineName(l)}</td><td style="color:var(--text2)">${l.unite||''}</td><td style="text-align:center">${l.qte}</td><td style="text-align:center">${fmtN(l.prix)}</td><td style="color:var(--accent);font-weight:700">${fmt(l.qte*l.prix)}</td></tr>`).join('')}
         <tr style="background:var(--bg4)"><td colspan="4" style="font-weight:700">المجموع</td><td style="color:var(--accent);font-weight:800;font-size:15px">${fmt(b.total)}</td></tr>
       </tbody>
     </table>
+    </div>
     ${(function(){
       var hasPhoto=!!b.photoPath;
       var url=hasPhoto?bonPhotoUrl(b.photoPath):'';

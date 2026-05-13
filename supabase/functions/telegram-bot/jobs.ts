@@ -114,11 +114,11 @@ export async function jobWorkersEod(): Promise<Response> {
 
   const presN = pres?.length ?? 0;
   const pcN   = pcPres?.length ?? 0;
-  if (presN === 0 && pcN === 0) {
-    return new Response(JSON.stringify({ ok: true, job: 'workers_eod', skipped: 'empty' }));
-  }
 
   let text = `🧑‍🔧 *خلاصة الخدامة — ${today}*\n`;
+  if (presN === 0 && pcN === 0) {
+    text += '\n_ما كاينش حركة اليوم_\n';
+  }
 
   if (presN > 0) {
     text += '\n*👥 الأجراء:*\n';
@@ -168,6 +168,100 @@ export async function jobWorkersEod(): Promise<Response> {
       text += `✅ ${nom} · ${r.pc_nom} · ${qte} × ${fmtMoney(prix)} = *${fmtMoney(cost)} د.م.*\n`;
     }
     text += `\n📦 المجموع: ${totalQte} قطعة · *${fmtMoney(totalCost)} د.م.*\n`;
+  }
+
+  // ── Cumulative unpaid balance per worker (since last tasweya) ─────
+  // What the user owes RIGHT NOW. Resets to 0 when a tasweya is recorded.
+  // Same logic as the in-app salaries page so the boss sees one consistent
+  // running total: gross since last tasweya − unpaid avances.
+  type Salarie = { id: number; nom?: string; prenom?: string; salaire_base?: number; taux_hsup?: number };
+  type SalPres = { salarie_id: number; date: string; statut?: string; heures_supp?: number; taux_horaire?: number };
+  type SalTas  = { salarie_id: number; date_to?: string; period_to?: string; date_paiement?: string };
+  type SalAv   = { salarie_id: number; montant: number; rembourse?: boolean };
+  type PcOuv   = { id: number; nom?: string };
+  type PcPres  = { ouvrier_id: number; date: string; qte: number; prix: number };
+  type PcTas   = { ouvrier_id: number; date_to?: string };
+  type PcAv    = { ouvrier_id: number; montant: number; rembourse?: boolean };
+
+  const [salList, allSalPres, salTas, salAv, pcList, allPcPres, pcTas, pcAv] = await Promise.all([
+    sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup').then(r => (r.data || []) as Salarie[]),
+    sb.from('salarie_presences').select('salarie_id,date,statut,heures_supp,taux_horaire').lte('date', today).then(r => (r.data || []) as SalPres[]),
+    sb.from('salarie_taswiyas').select('salarie_id,date_to,period_to,date_paiement').then(r => (r.data || []) as SalTas[]),
+    sb.from('salarie_avances').select('salarie_id,montant,rembourse').then(r => (r.data || []) as SalAv[]),
+    sb.from('ouvriers_pc').select('id,nom').then(r => (r.data || []) as PcOuv[]),
+    sb.from('ouvrier_pc_presences').select('ouvrier_id,date,qte,prix').lte('date', today).then(r => (r.data || []) as PcPres[]),
+    sb.from('pc_taswiyas').select('ouvrier_id,date_to').then(r => (r.data || []) as PcTas[]),
+    sb.from('pc_avances').select('ouvrier_id,montant,rembourse').then(r => (r.data || []) as PcAv[]),
+  ]);
+
+  const lastSalTaswiyaCutoff = (salId: number): string => {
+    const rows = salTas.filter(t => Number(t.salarie_id) === salId);
+    if (!rows.length) return '0000-01-01';
+    return rows.map(t => String(t.date_to || t.period_to || '')).sort().pop() || '0000-01-01';
+  };
+  const lastPcTaswiyaCutoff = (pcId: number): string => {
+    const rows = pcTas.filter(t => Number(t.ouvrier_id) === pcId);
+    if (!rows.length) return '0000-01-01';
+    return rows.map(t => String(t.date_to || '')).sort().pop() || '0000-01-01';
+  };
+
+  const salLines: { name: string; gross: number; avances: number; net: number }[] = [];
+  for (const s of salList) {
+    const cutoff = lastSalTaswiyaCutoff(s.id);
+    const myPres = allSalPres.filter(p => Number(p.salarie_id) === s.id && String(p.date) > cutoff);
+    if (!myPres.length) continue;
+    const base = Number(s.salaire_base || 0);
+    let gross = 0;
+    for (const p of myPres) {
+      const mult = p.statut === 'present' ? 1 : p.statut === 'demi' ? 0.5 : 0;
+      gross += mult * base;
+      const hs = Number(p.heures_supp || 0);
+      const tx = Number(p.taux_horaire || s.taux_hsup || 0);
+      gross += hs * tx;
+    }
+    if (gross <= 0.005) continue;
+    const av = salAv.filter(a => Number(a.salarie_id) === s.id && !a.rembourse).reduce((t, a) => t + Number(a.montant || 0), 0);
+    const fullName = ((s.nom || '?') + (s.prenom ? ' ' + s.prenom : '')).trim();
+    salLines.push({ name: fullName, gross, avances: av, net: gross - av });
+  }
+
+  const pcLines: { name: string; gross: number; avances: number; net: number }[] = [];
+  for (const o of pcList) {
+    const cutoff = lastPcTaswiyaCutoff(o.id);
+    const myPres = allPcPres.filter(p => Number(p.ouvrier_id) === o.id && String(p.date) > cutoff);
+    if (!myPres.length) continue;
+    const gross = myPres.reduce((t, p) => t + Number(p.qte || 0) * Number(p.prix || 0), 0);
+    if (gross <= 0.005) continue;
+    const av = pcAv.filter(a => Number(a.ouvrier_id) === o.id && !a.rembourse).reduce((t, a) => t + Number(a.montant || 0), 0);
+    pcLines.push({ name: o.nom || ('PC #' + o.id), gross, avances: av, net: gross - av });
+  }
+
+  if (salLines.length || pcLines.length) {
+    const fmtSign = (n: number) => (n >= 0 ? fmtMoney(n) : '−' + fmtMoney(Math.abs(n)));
+    text += '\n━━━━━━━━━━━━━━━━━━\n*💰 المعلق التراكمي — كيخلصو غادي:*\n';
+    let bigTotal = 0;
+    if (salLines.length) {
+      text += '\n👥 أجراء:\n';
+      salLines.sort((a, b) => b.net - a.net);
+      for (const l of salLines) {
+        bigTotal += l.net;
+        text += `• ${l.name} → *${fmtSign(l.net)} د.م.*`;
+        if (l.avances > 0.005) text += `  _(إجمالي ${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
+        text += '\n';
+      }
+    }
+    if (pcLines.length) {
+      text += '\n👷 PCs:\n';
+      pcLines.sort((a, b) => b.net - a.net);
+      for (const l of pcLines) {
+        bigTotal += l.net;
+        text += `• ${l.name} → *${fmtSign(l.net)} د.م.*`;
+        if (l.avances > 0.005) text += `  _(${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
+        text += '\n';
+      }
+    }
+    text += `\n🎯 *المجموع المعلق: ${fmtSign(bigTotal)} د.م.*\n`;
+    text += `_ℹ️ كيتراكم كل يوم. كيرجع 0 ملي تسجل تسوية._`;
   }
 
   const sent = await broadcastTelegram(text);

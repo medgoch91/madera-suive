@@ -5013,6 +5013,7 @@ function renderBons(){
               <td>
                 <div style="display:flex;gap:6px">
                   <button class="btn-ghost" onclick="openBonModal(${b.id})" title="تفاصيل">👁️</button>
+                  ${!b.chequeId?`<button class="btn-ghost" onclick="bonCreateTaswiya(${b.id})" title="إنشاء تسوية لهاد البون مباشرة" style="color:#10b981">💳</button>`:''}
                   <button class="btn-ghost" onclick="printBon(${b.id})" title="طباعة">🖨️</button>
                   ${!b.chequeId?`<button class="btn-ghost" onclick="openEditBon(${b.id})" title="تعديل" style="color:var(--accent)">✏️</button>`:''}
                   <button class="btn-ghost" onclick="deleteBon(${b.id})" title="حذف" style="color:var(--red)">🗑️</button>
@@ -5714,10 +5715,27 @@ function preFillChequeFromBon(bonId){
   const b=bons.find(x=>x.id===bonId);if(!b)return;
   setTimeout(function(){
     const fi=document.getElementById('c-fournisseur');
-    const mo=document.getElementById('c-montant');
-    if(fi)fi.value=b.fournisseur;
-    if(mo)mo.value=b.total;
+    if(fi) fi.value=b.fournisseur;
+    // Load the free bons of this fournisseur into the picker, then narrow the
+    // selection to JUST this bon so the user lands with the right row checked
+    // and the montant + suggested échéance already computed.
+    try{ loadFreeBons(); }catch(e){}
+    selectedBonIds = [bonId];
+    try{
+      const free = bons.filter(function(x){return x.fournisseur===b.fournisseur && !x.chequeId;});
+      renderFreeBons(free);
+    }catch(e){}
+    try{ updateChequeTotal(); }catch(e){}
+    try{ suggestEcheance(); }catch(e){}
   },100);
+}
+
+// Convenience entrypoint used by the bon view modal's "💳 تسوية" button.
+// Closes the modal, navigates to the new-cheque page, then pre-fills.
+function bonCreateTaswiya(bonId){
+  try{ document.getElementById('modal-main').classList.remove('open'); }catch(e){}
+  try{ showPage('new-cheque', null); }catch(e){}
+  preFillChequeFromBon(bonId);
 }
 
 function openBonModal(id){
@@ -5793,8 +5811,9 @@ function openBonModal(id){
       <button class="btn btn-accent" style="flex:1;min-width:100px" onclick="printBon(${b.id})">🖨️ طباعة</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)" onclick="cloneBon(${b.id})" title="نسخ كقالب جديد">📑 استنساخ</button>
       ${!b.chequeId?`
+      <button class="btn" style="flex:1.4;min-width:140px;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:none;font-weight:700" onclick="bonCreateTaswiya(${b.id})" title="إنشاء شيك/ورقة لهاد البون مباشرة">💳 إنشاء تسوية</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(147,51,234,0.1);color:var(--accent);border:1px solid rgba(147,51,234,0.3)" onclick="document.getElementById('modal-main').classList.remove('open');openEditBon(${b.id})">✏️ تعديل</button>
-      <button class="btn" style="flex:1;min-width:100px;background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3)" onclick="openLinkCheque(${b.id})">🔗 ربط بشيك</button>
+      <button class="btn" style="flex:1;min-width:100px;background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3)" onclick="openLinkCheque(${b.id})" title="ربط ب شيك موجود">🔗 ربط</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(232,64,64,0.1);color:var(--red);border:1px solid rgba(232,64,64,0.3)" onclick="document.getElementById('modal-main').classList.remove('open');deleteBon(${b.id})">🗑️ حذف</button>`:''}
     </div>
     ${!b.chequeId?`<div id="link-cheque-zone" style="display:none;margin-top:12px;background:var(--bg3);border-radius:var(--radius-sm);padding:14px;border:1px solid var(--border)"></div>`:''}

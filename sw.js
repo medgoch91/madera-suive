@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v139-payment-terms';
+const CACHE = 'suivi-v140-bon-direct-taswiya';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

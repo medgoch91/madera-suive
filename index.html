@@ -1330,7 +1330,14 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
                   <div class="nb-head-sub">ابحث أو اختر من القائمة</div>
                 </div>
               </div>
-              <div id="nb-supplier-badge"></div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <button type="button" id="nb-scan-btn" onclick="document.getElementById('nb-scan-file').click()" title="صور البون بالكاميرا وعبيها أوتوماتيك"
+                  style="padding:8px 14px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px">
+                  📷 صوّر بون
+                </button>
+                <input type="file" id="nb-scan-file" accept="image/*" capture="environment" style="display:none" onchange="nbScanBon(event)">
+                <div id="nb-supplier-badge"></div>
+              </div>
             </div>
             <div class="nb-body">
               <div class="nb-grid nb-grid-3">
@@ -11812,6 +11819,84 @@ function bonAddLine(){
     const inputs = document.querySelectorAll('#bon-cards-body .bni-nom');
     if(inputs.length) inputs[inputs.length-1].focus();
   }, 60);
+}
+
+// 📷 Scan a paper bon → Anthropic vision API → pre-fill the new-bon form.
+// Always asks for confirmation before clobbering an already-filled form.
+async function nbScanBon(ev){
+  const file = ev && ev.target && ev.target.files && ev.target.files[0];
+  ev.target.value = ''; // allow re-pick the same file
+  if(!file) return;
+  // Confirm overwrite if user already has anything entered
+  const hasContent = (document.getElementById('b-num')||{value:''}).value.trim()
+    || (document.getElementById('b-fournisseur')||{value:''}).value.trim()
+    || (Array.isArray(bonLignes) && bonLignes.some(function(l){ return l && (l.nom || l.qte>0 || l.prix>0); }));
+  if(hasContent && !confirm('عندك حقول معمرين. صورة البون غادي تعوضهم — تأكيد؟')) return;
+
+  // Image size sanity check (Claude vision caps ~5MB per image)
+  if(file.size > 5 * 1024 * 1024){
+    try{ toast('⚠️ الصورة كبيرة جداً (>5MB) — حاول واحدة أصغر','warning'); }catch(e){}
+    return;
+  }
+  try{ if(typeof showLoader==='function') showLoader('🤖 جاري قراية البون...'); }catch(e){}
+
+  // File → base64 data URL
+  const reader = new FileReader();
+  reader.onerror = function(){
+    try{ hideLoader(); }catch(e){}
+    try{ toast('⚠️ ما قدرتش نقرا الصورة','error'); }catch(e){}
+  };
+  reader.onload = async function(){
+    try{
+      const dataUrl = reader.result;
+      const bearer = (typeof window!=='undefined' && window._sbAccessToken) || SB_KEY;
+      const res = await fetch(SB_URL + '/functions/v1/parse-bon', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'apikey': SB_KEY, 'Authorization': 'Bearer ' + bearer },
+        body: JSON.stringify({ image: dataUrl }),
+      });
+      const out = await res.json();
+      try{ hideLoader(); }catch(e){}
+      if(!out || !out.ok){
+        const msg = (out && out.error) ? String(out.error).slice(0,200) : 'فشل التحليل';
+        try{ toast('⚠️ '+msg,'error'); }catch(e){}
+        console.error('parse-bon failed', out);
+        return;
+      }
+      const b = out.bon || {};
+      // Pre-fill scalar fields
+      const setV = function(id, v){ const el=document.getElementById(id); if(el && v!=null && String(v).trim()) el.value=String(v); };
+      setV('b-num', b.num);
+      setV('b-date', b.date);
+      setV('b-fournisseur', b.fournisseur);
+      setV('b-note', b.note);
+      // Replace lignes with parsed entries (if any)
+      const lignes = Array.isArray(b.lignes) ? b.lignes : [];
+      if(lignes.length){
+        bonLignes = lignes.map(function(l){
+          return {
+            articleId: null,
+            nom: l && l.nom ? String(l.nom) : '',
+            ref: l && l.ref ? String(l.ref) : '',
+            unite: l && l.unite ? String(l.unite) : 'قطعة',
+            qte: Number((l && l.qte) || 0) || 0,
+            prix: Number((l && l.prix) || 0) || 0,
+          };
+        });
+      }
+      try{ bonRenderLines(); }catch(e){}
+      try{ calcBonTotals(); }catch(e){}
+      try{ nbUpdateStep(); }catch(e){}
+      try{ bonSaveDraft(); }catch(e){}
+      const n = lignes.length;
+      try{ toast('✅ تم استخراج '+n+' سلعة — تحقق وعدل قبل ما تحفظ','success'); }catch(e){}
+    }catch(err){
+      try{ hideLoader(); }catch(e){}
+      console.error('nbScanBon', err);
+      try{ toast('⚠️ خطأ: '+(err && err.message ? err.message : err),'error'); }catch(e){}
+    }
+  };
+  reader.readAsDataURL(file);
 }
 
 function bonRemoveLine(i){

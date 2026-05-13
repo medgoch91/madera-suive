@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v142-bon-direct-effet';
+const CACHE = 'suivi-v143-scan-bon-vision';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

@@ -1,6 +1,6 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v134-articles-table-view';
-const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
+const CACHE = 'suivi-v135-effet-template';
+const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).catch(()=>{}));

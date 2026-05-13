@@ -7558,11 +7558,14 @@ function saveReglement(nom){
 
 // ===== PRINT CHEQUE PAGE =====
 let chequeImg = localStorage.getItem('cheque_bg_img')||'chqq-bg.jpg';
-let effetImg  = localStorage.getItem('effet_bg_img')||'';
+let effetImg  = localStorage.getItem('effet_bg_img')||'effet-bg.jpg';
 let printMode = 'cheque'; // 'cheque' | 'effet'
 let printHistory = (function(){ try{ return JSON.parse(localStorage.getItem('print_history')||'[]'); }catch(e){ return []; } })();
 function setPrintMode(m){
   printMode = (m==='effet')?'effet':'cheque';
+  // Swap to the right calibration set so D-pad / preview reflect this mode's
+  // saved positions (effet ↔ cheque positions stay independent).
+  chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque;
   try{ renderPrintCheque(); }catch(e){}
 }
 function pcBgSrc(){ return printMode==='effet' ? effetImg : chequeImg; }
@@ -7578,6 +7581,25 @@ const CHEQUE_CFG_DEFAULTS = {
   // Image-only field — only top/left/width/height honored (size/align/font ignored)
   signature:{top:52, left:133, width:38, height:20, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
+// First-pass defaults for the CDM Lettre de change template (effet-bg.jpg).
+// The effet layout is different from the cheque — Date d'échéance is top-right,
+// Montant en chiffres is mid-right with DH suffix, "Le bénéficiaire" is centered,
+// "Lieu et date de création" is centered too, "Cachet et signature du tireur"
+// bottom-right. These are educated starting points — user fine-tunes with the
+// D-pad just like for cheque, but the storage key is separate (effet_cfg)
+// so calibrating effet doesn't clobber the cheque calibration and vice versa.
+const EFFET_CFG_DEFAULTS = {
+  montant:  {top:8,  left:115, width:30,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
+  lettres1: {top:16, left:115, width:62,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  lettres2: {top:22, left:115, width:62,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  ordre:    {top:14, left:55,  width:55,  size:11, spacing:0,   align:'left',   font:'serif', weight:600},
+  ville:    {top:23, left:55,  width:30,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  date:     {top:8,  left:175, width:22,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
+  signature:{top:38, left:140, width:38, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
+};
+// Which storage key to use for the active print mode.
+function _pcStorageKey(){ return printMode==='effet' ? 'effet_cfg' : 'cheque_cfg'; }
+function _pcDefaults(){ return printMode==='effet' ? EFFET_CFG_DEFAULTS : CHEQUE_CFG_DEFAULTS; }
 // Global step for D-pad movements (mm). Persists.
 let chqCfgStep = parseFloat(localStorage.getItem('cheque_cfg_step'))||0.5;
 function setChqStep(v){
@@ -7592,55 +7614,65 @@ function setChqStep(v){
     el.style.borderColor = active ? 'var(--accent)' : 'var(--border)';
   });
 }
-let chequeCfg = (function(){
-  const out = JSON.parse(JSON.stringify(CHEQUE_CFG_DEFAULTS));
+// Loads a config (cheque or effet) — merges per-field user calibration over
+// the factory defaults so newly-added fields/props don't crash.
+function _pcLoadCfg(storageKey, defaults){
+  const out = JSON.parse(JSON.stringify(defaults));
   let raw = {};
-  try{ raw = JSON.parse(localStorage.getItem('cheque_cfg')||'{}'); }catch(e){}
+  try{ raw = JSON.parse(localStorage.getItem(storageKey)||'{}'); }catch(e){}
   Object.keys(out).forEach(k=>{ out[k] = {...out[k], ...(raw[k]||{})}; });
-  // One-time migration v3 — align defaults to measured CDM cheque (chqq-bg.jpg) zones
-  const migKey = 'cheque_cfg_mig_v3';
-  if(!localStorage.getItem(migKey)){
-    // Only reset a field if it still matches a previous factory default (user never calibrated it)
-    const prevDefaults = [
-      // v1 defaults
-      {montant:{top:3,left:133,width:25,align:'center'}, lettres1:{top:17,left:40,width:80}, lettres2:{top:23,left:8,width:160}, ordre:{top:28,left:30,width:130}, ville:{top:39,left:117,width:22}, date:{top:39,left:148,width:22}},
-      // v2 defaults (previous iteration)
-      {montant:{top:3,left:133,width:25,align:'center'}, lettres1:{top:16,left:40,width:80}, lettres2:{top:25,left:8,width:160}, ordre:{top:28,left:30,width:130}, ville:{top:39,left:120,width:22}, date:{top:39,left:145,width:25}}
-    ];
-    const matchesAny = (field, propsToCheck) => prevDefaults.some(prev => {
-      const p = prev[field]; if(!p) return false;
-      return Object.keys(p).every(k => Math.abs((out[field][k]||0) - p[k]) < 0.01 || out[field][k] === p[k]);
-    });
-    ['montant','lettres1','lettres2','ordre','ville','date'].forEach(f=>{
-      if(matchesAny(f)){
-        Object.assign(out[f], CHEQUE_CFG_DEFAULTS[f]);
-      }
-    });
-    localStorage.setItem(migKey,'1');
-    localStorage.setItem('cheque_cfg', JSON.stringify(out));
-  }
-  // Auto-heal: force a minimum vertical gap between lettres1 and lettres2 based on font size
-  // (pt→mm ≈ 0.353; with line-height 1.4 an 11pt line occupies ~5.4mm; add a 1mm safety margin)
+  // Auto-heal: force a minimum vertical gap between lettres1 and lettres2.
   const sz1 = parseFloat(out.lettres1.size)||11;
   const minGap = Math.max(7, sz1 * 0.7);
   if((out.lettres2.top - out.lettres1.top) < minGap){
     out.lettres2.top = +(out.lettres1.top + minGap).toFixed(2);
   }
   return out;
+}
+// Both configs live side-by-side. `chequeCfg` is the ACTIVE one and swaps
+// in `setPrintMode` so the existing pc-field code reads from the right place.
+let _pcCfgCheque = (function(){
+  const out = _pcLoadCfg('cheque_cfg', CHEQUE_CFG_DEFAULTS);
+  // One-time migration v3 — align defaults to measured CDM cheque (chqq-bg.jpg) zones
+  const migKey = 'cheque_cfg_mig_v3';
+  if(!localStorage.getItem(migKey)){
+    const prevDefaults = [
+      {montant:{top:3,left:133,width:25,align:'center'}, lettres1:{top:17,left:40,width:80}, lettres2:{top:23,left:8,width:160}, ordre:{top:28,left:30,width:130}, ville:{top:39,left:117,width:22}, date:{top:39,left:148,width:22}},
+      {montant:{top:3,left:133,width:25,align:'center'}, lettres1:{top:16,left:40,width:80}, lettres2:{top:25,left:8,width:160}, ordre:{top:28,left:30,width:130}, ville:{top:39,left:120,width:22}, date:{top:39,left:145,width:25}}
+    ];
+    const matchesAny = (field) => prevDefaults.some(prev => {
+      const p = prev[field]; if(!p) return false;
+      return Object.keys(p).every(k => Math.abs((out[field][k]||0) - p[k]) < 0.01 || out[field][k] === p[k]);
+    });
+    ['montant','lettres1','lettres2','ordre','ville','date'].forEach(f=>{
+      if(matchesAny(f)) Object.assign(out[f], CHEQUE_CFG_DEFAULTS[f]);
+    });
+    localStorage.setItem(migKey,'1');
+    localStorage.setItem('cheque_cfg', JSON.stringify(out));
+  }
+  return out;
 })();
+let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);
+let chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque;
+// Keep both copies in sync with whatever the active one mutates to.
+function _pcSyncActive(){
+  if(printMode==='effet') _pcCfgEffet = chequeCfg; else _pcCfgCheque = chequeCfg;
+}
 const CHEQUE_FIELD_LABELS = {montant:'💰 المبلغ',lettres1:'📝 الحروف ١',lettres2:'📝 الحروف ٢',ordre:'👤 المستفيد',ville:'📍 المدينة',date:'📅 التاريخ'};
 
 function setChqCfg(field,prop,val){
   if(!chequeCfg[field])return;
   chequeCfg[field][prop] = (prop==='align'||prop==='font') ? val : (parseFloat(val)||0);
-  localStorage.setItem('cheque_cfg', JSON.stringify(chequeCfg));
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
   applyChqCfgToPreview();
   refreshChqFieldUI(field,prop);
 }
 function nudgeChqCfg(field,prop,delta){
   if(!chequeCfg[field])return;
   chequeCfg[field][prop] = Math.round(((chequeCfg[field][prop]||0)+delta)*10)/10;
-  localStorage.setItem('cheque_cfg', JSON.stringify(chequeCfg));
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
   applyChqCfgToPreview();
   refreshChqFieldUI(field,prop);
 }
@@ -7655,8 +7687,9 @@ function refreshChqFieldUI(field,prop){
 }
 function resetChqCfg(){
   if(!confirm('استرجاع جميع الإعدادات الافتراضية للكتابة؟'))return;
-  chequeCfg = JSON.parse(JSON.stringify(CHEQUE_CFG_DEFAULTS));
-  localStorage.setItem('cheque_cfg', JSON.stringify(chequeCfg));
+  chequeCfg = JSON.parse(JSON.stringify(_pcDefaults()));
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
   renderPrintCheque();
 }
 
@@ -7682,11 +7715,15 @@ function applyChequeTemplate(name){
   const tpls = loadChequeTemplates();
   if(!tpls[name]){ toast('Template غير موجود','error'); return; }
   chequeCfg = JSON.parse(JSON.stringify(tpls[name]));
-  // Fill missing keys from defaults
-  Object.keys(CHEQUE_CFG_DEFAULTS).forEach(k=>{
-    chequeCfg[k] = {...CHEQUE_CFG_DEFAULTS[k], ...(chequeCfg[k]||{})};
+  // Fill missing keys from the ACTIVE-mode defaults (effet vs cheque) so a
+  // template saved under one mode can be loaded under the other without
+  // missing properties.
+  const _defs = _pcDefaults();
+  Object.keys(_defs).forEach(k=>{
+    chequeCfg[k] = {..._defs[k], ...(chequeCfg[k]||{})};
   });
-  localStorage.setItem('cheque_cfg', JSON.stringify(chequeCfg));
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
   localStorage.setItem('cheque_active_template', name);
   toast(`✅ Template "${name}" محمّل`,'success');
   renderPrintCheque();

@@ -7581,21 +7581,27 @@ const CHEQUE_CFG_DEFAULTS = {
   // Image-only field — only top/left/width/height honored (size/align/font ignored)
   signature:{top:52, left:133, width:38, height:20, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
-// First-pass defaults for the CDM Lettre de change template (effet-bg.jpg).
-// The effet layout is different from the cheque — Date d'échéance is top-right,
-// Montant en chiffres is mid-right with DH suffix, "Le bénéficiaire" is centered,
-// "Lieu et date de création" is centered too, "Cachet et signature du tireur"
-// bottom-right. These are educated starting points — user fine-tunes with the
-// D-pad just like for cheque, but the storage key is separate (effet_cfg)
-// so calibrating effet doesn't clobber the cheque calibration and vice versa.
+// Defaults calibrated against the CDM Lettre de change template (effet-bg.jpg,
+// 1800×818 ≈ 176×80mm). Positions measured from a real filled effet supplied
+// by the user (Bénéficiaire GADIMAT, échéance 03/07/2026, 31.268,16 DH).
+// The layout differs from the cheque:
+//   - Date d'échéance: top-right (separate `echeance` field — effet only)
+//   - Montant en chiffres: right side, below échéance
+//   - Montant en lettres: right side, wraps onto 2 lines
+//   - Le bénéficiaire: centered, mid-height
+//   - Lieu (ville) + Date de création: same row, centered
+//   - Signature/cachet: bottom-right
+// Storage is `effet_cfg` (separate from `cheque_cfg`) so calibrating effet
+// doesn't clobber the cheque calibration and vice versa.
 const EFFET_CFG_DEFAULTS = {
-  montant:  {top:8,  left:115, width:30,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
-  lettres1: {top:16, left:115, width:62,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  lettres2: {top:22, left:115, width:62,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  ordre:    {top:14, left:55,  width:55,  size:11, spacing:0,   align:'left',   font:'serif', weight:600},
-  ville:    {top:23, left:55,  width:30,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  date:     {top:8,  left:175, width:22,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
-  signature:{top:38, left:140, width:38, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
+  echeance: {top:5,  left:141, width:28,  size:11, spacing:0,   align:'left',   font:'mono',  weight:700},
+  montant:  {top:12, left:141, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
+  lettres1: {top:26, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  lettres2: {top:32, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  ordre:    {top:24, left:70,  width:50,  size:12, spacing:0,   align:'left',   font:'serif', weight:600},
+  ville:    {top:34, left:44,  width:25,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  date:     {top:34, left:70,  width:25,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
+  signature:{top:50, left:140, width:35, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
 // Which storage key to use for the active print mode.
 function _pcStorageKey(){ return printMode==='effet' ? 'effet_cfg' : 'cheque_cfg'; }
@@ -7658,7 +7664,7 @@ let chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque;
 function _pcSyncActive(){
   if(printMode==='effet') _pcCfgEffet = chequeCfg; else _pcCfgCheque = chequeCfg;
 }
-const CHEQUE_FIELD_LABELS = {montant:'💰 المبلغ',lettres1:'📝 الحروف ١',lettres2:'📝 الحروف ٢',ordre:'👤 المستفيد',ville:'📍 المدينة',date:'📅 التاريخ'};
+const CHEQUE_FIELD_LABELS = {montant:'💰 المبلغ',lettres1:'📝 الحروف ١',lettres2:'📝 الحروف ٢',ordre:'👤 المستفيد',ville:'📍 المدينة',date:'📅 التاريخ',echeance:'⏰ الاستحقاق'};
 
 function setChqCfg(field,prop,val){
   if(!chequeCfg[field])return;
@@ -7856,11 +7862,14 @@ function findDuplicatePrint(ordre, montant, date){
   ) || null;
 }
 function applyChqCfgToPreview(){
-  const map = {montant:'pf-montant',lettres1:'pf-lettres1',lettres2:'pf-lettres2',ordre:'pf-ordre',ville:'pf-ville',date:'pf-date'};
+  const map = {montant:'pf-montant',lettres1:'pf-lettres1',lettres2:'pf-lettres2',ordre:'pf-ordre',ville:'pf-ville',date:'pf-date',echeance:'pf-echeance'};
   Object.keys(map).forEach(k=>{
     const el = document.getElementById(map[k]);
     if(!el) return;
     const c = chequeCfg[k];
+    // echeance only exists in effet mode — hide its preview element otherwise.
+    if(!c){ el.style.display='none'; return; }
+    el.style.display = '';
     el.style.top = c.top+'mm';
     el.style.left = c.left+'mm';
     el.style.width = c.width+'mm';
@@ -7873,7 +7882,9 @@ function applyChqCfgToPreview(){
   // Signature intentionally NOT rendered on cheque preview (matches print output).
 }
 function renderChqCfgPanel(){
-  const fields = ['montant','lettres1','lettres2','ordre','ville','date'];
+  const fields = (printMode==='effet')
+    ? ['montant','lettres1','lettres2','ordre','ville','date','echeance']
+    : ['montant','lettres1','lettres2','ordre','ville','date'];
   const stepOpts = [0.1, 0.5, 1, 2];
 
   // Compact D-pad — step-aware (uses chqCfgStep global)
@@ -8035,6 +8046,7 @@ function renderPrintCheque(){
             <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
             <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
             <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
+            <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
           </div>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — نفس المقاسات د الطباعة (176mm × 80mm)</div>
@@ -8204,6 +8216,9 @@ function updatePrintPreview(){
   s('pf-ville',ville.toUpperCase());
   s('pf-lettres1',l1.toUpperCase());
   s('pf-lettres2',l2.toUpperCase());
+  // Effet only: also render the Date d'échéance (top-right of CDM lettre)
+  const ech = g('pc-echeance');
+  s('pf-echeance', (printMode==='effet' && ech) ? fmtDate(ech) : '');
   const prev=document.getElementById('pc-lettres-preview');if(prev)prev.textContent=words||'—';
 }
 
@@ -8229,6 +8244,12 @@ function buildChequePrintHTML(d){
     return `top:${c.top}mm;left:${c.left}mm;width:${c.width}mm;font-size:${c.size}pt;text-align:${c.align};font-weight:${c.weight||600};letter-spacing:${c.spacing||0}px;`;
   };
   const cl = k => chequeCfg[k].font==='mono' ? 'mono' : 'serif';
+  // Effet-only field: Date d'échéance. Top-right of the CDM lettre de change.
+  const isEffetPrint = (d.type==='effet') && chequeCfg.echeance;
+  const echeance = d.echeance||'';
+  const echHTML = (isEffetPrint && echeance)
+    ? `<div class="f ${cl('echeance')}" style="${fs('echeance')}">${esc(fmtDate(echeance))}</div>`
+    : '';
   // Signature intentionally NOT printed on cheque — security (a lost/scanned cheque
   // bearing a digital signature is trivially forgeable). Kept in factSociete for facture use.
   return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title><style>
@@ -8251,6 +8272,7 @@ function buildChequePrintHTML(d){
     <div class="f ${cl('ordre')}" style="${fs('ordre')}">${esc(ordre.toUpperCase())}</div>
     <div class="f ${cl('ville')}" style="${fs('ville')}">${esc(ville.toUpperCase())}</div>
     <div class="f ${cl('date')}" style="${fs('date')}">${esc(fmtDate(date))}</div>
+    ${echHTML}
   </div><script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);};<\/script></body></html>`;
 }
 

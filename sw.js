@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v135-effet-template';
+const CACHE = 'suivi-v136-effet-echeance-field';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

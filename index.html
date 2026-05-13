@@ -5359,7 +5359,9 @@ function openEditBon(id){
   const _usedNoms=new Set((b.lignes||[]).filter(function(l){return l.articleId==null&&l.nom;}).map(function(l){return String(l.nom).trim().toLowerCase();}));
   const artsOpts=(articles||[]).filter(function(a){return !_usedIds.has(a.id)&&!_usedNoms.has(String(a.nom||'').trim().toLowerCase());}).slice().sort(function(a,b){return String(a.nom).localeCompare(String(b.nom),'ar');})
     .map(function(a){return '<option value="'+a.id+'">'+escB(a.nom)+(a.ref?' · '+escB(a.ref):'')+'</option>';}).join('');
-  document.getElementById('modal-main-c').innerHTML=`
+  var _modalC = document.getElementById('modal-main-c');
+  _modalC.classList.add('wide-page');
+  _modalC.innerHTML=`
     <div class="modal-title"><span>✏️ تعديل البون — ${b.num}</span><button class="modal-close" onclick="document.getElementById('modal-main').classList.remove('open')">✕</button></div>
     <div class="info-grid" style="margin-bottom:16px">
       <div><label style="font-size:11px;color:var(--text2);display:block;margin-bottom:5px">رقم البون</label><input class="field-inp" id="eb-num" value="${b.num}"></div>
@@ -5374,10 +5376,12 @@ function openEditBon(id){
       </div>
     </div>
     <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">السلع:</div>
-    <table class="data-table" style="background:var(--bg3);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:10px">
-      <thead><tr><th>السلعة</th><th>الكمية</th><th>السعر</th><th>المجموع</th><th style="width:50px"></th></tr></thead>
-      <tbody id="eb-lines"></tbody>
-    </table>
+    <div style="background:var(--bg3);border-radius:var(--radius-sm);overflow:auto;margin-bottom:10px;-webkit-overflow-scrolling:touch">
+      <table class="data-table" style="margin:0;min-width:560px">
+        <thead><tr><th>السلعة</th><th>الكمية</th><th>السعر</th><th>المجموع</th><th style="width:50px"></th></tr></thead>
+        <tbody id="eb-lines"></tbody>
+      </table>
+    </div>
     <div style="background:var(--bg3);border:1px dashed var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;display:grid;grid-template-columns:1fr 80px 100px auto;gap:8px;align-items:end">
       <div>
         <label style="font-size:10px;color:var(--text3);font-weight:700;display:block;margin-bottom:3px">➕ زيد سلعة</label>

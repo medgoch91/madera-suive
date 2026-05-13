@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v122-prix-mirror-splinks';
+const CACHE = 'suivi-v123-editbon-wide-page';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

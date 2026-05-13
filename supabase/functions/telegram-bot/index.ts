@@ -13,6 +13,7 @@ import {
   jobChequesDueMorning, jobChequesTodayPing,
   jobWorkersEod, jobMonthlyReport, jobDailyReport, jobCaisseEod,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
+  jobOverdueCheques, jobUpcomingCheques, jobStockCritical, jobWeeklyDigest,
   debugWorkerBreakdown, debugWorkersEodText,
 } from './jobs.ts';
 import { handleChequeCallback, handleKhlasCallback } from './callbacks.ts';
@@ -60,6 +61,10 @@ Deno.serve(async (req: Request) => {
       case 'backup_telegram':     return await jobBackupTelegram();     // for ad-hoc testing
       case 'backup_gdrive':       return await jobBackupGdrive();       // for ad-hoc testing
       case 'backup_ftp':          return await jobBackupFtp();          // for ad-hoc testing
+      case 'overdue_cheques':     return await jobOverdueCheques();
+      case 'upcoming_cheques':    return await jobUpcomingCheques();
+      case 'stock_critical':      return await jobStockCritical();
+      case 'weekly_digest':       return await jobWeeklyDigest();
       default:
         return new Response(JSON.stringify({ error: 'unknown cron job', cronJob }), { status: 400 });
     }

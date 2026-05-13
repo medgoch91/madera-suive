@@ -995,3 +995,211 @@ export async function jobBackupAll(): Promise<Response> {
   const ftp = await ftpRes.json().catch(() => ({}));
   return new Response(JSON.stringify({ ok: true, telegram: tg, gdrive: gd, ftp }));
 }
+
+// ── overdue_cheques — 09h Casa daily ───────────────────────────
+// Lists cheques whose echeance is in the past AND status != مدفوع.
+// Each row gets an inline keyboard (تخلص / أجّل) for one-tap action.
+type ChqRow = { id: number; num?: string; fournisseur?: string; montant?: number; type?: string; echeance?: string; status?: string };
+export async function jobOverdueCheques(): Promise<Response> {
+  const today = todayCasa();
+  const { data } = await sb.from('cheques')
+    .select('id,num,fournisseur,montant,type,echeance,status')
+    .lt('echeance', today).neq('status', 'مدفوع').order('echeance', { ascending: true });
+  const list = (data || []) as ChqRow[];
+  if (!list.length) {
+    return new Response(JSON.stringify({ ok: true, job: 'overdue_cheques', skipped: 'none' }));
+  }
+  const { data: subs } = await sb.from('bot_subscribers').select('chat_id');
+  const chatIds = (subs ?? []).map((s: { chat_id: number }) => s.chat_id);
+  // One umbrella message + per-cheque rows is noisy. Send ONE message that
+  // summarizes count + total, with action buttons per top 8.
+  const total = list.reduce((s, c) => s + safeNum(c.montant), 0);
+  const dayDiff = (iso: string): number => {
+    const a = new Date(iso + 'T12:00:00Z').getTime();
+    const b = new Date(today + 'T12:00:00Z').getTime();
+    return Math.round((b - a) / 86400000);
+  };
+  let text = `⚠️ *${list.length} تسوية ف التأخير* — *${fmtMoney(total)} د.م.*\n\n`;
+  const top = list.slice(0, 10);
+  for (const c of top) {
+    const lbl = (c.type === 'effet' ? '📜' : '💳');
+    const d = dayDiff(String(c.echeance || ''));
+    text += `${lbl} #${c.num} · ${c.fournisseur} · *${fmtMoney(c.montant)} د.م.* · ⏳ ${d} يوم\n`;
+  }
+  if (list.length > 10) text += `\n_… و ${list.length - 10} أخرى_\n`;
+  const replyMarkup: TgInlineKeyboard = {
+    inline_keyboard: top.slice(0, 5).map((c) => [
+      { text: `✅ ${c.num}`, callback_data: `CHQPAID:${c.id}` },
+      { text: `📅 +7ج ${c.num}`, callback_data: `CHQDEFER:${c.id}` },
+    ]),
+  };
+  let sent = 0;
+  for (const chatId of chatIds) {
+    try { await sendMessage(chatId, text, { parseMode: 'Markdown', replyMarkup }); sent++; }
+    catch (e) { console.error('overdue_cheques send fail', e); }
+  }
+  await sendWebPush('⚠️ شيكات متأخرة', `${list.length} شيك · ${fmtMoney(total)} د.م.`, './#cheques', 'overdue');
+  return new Response(JSON.stringify({ ok: true, job: 'overdue_cheques', telegram: sent, count: list.length, total }));
+}
+
+// ── upcoming_cheques — 09h Casa daily ──────────────────────────
+// Pre-warning J-7 + J-3 + tomorrow. Two pre-alert windows: 3-day inner
+// (urgent), 7-day outer (heads-up). Today's cheques are already handled
+// by jobChequesDueMorning + jobChequesTodayPing.
+export async function jobUpcomingCheques(): Promise<Response> {
+  const today = todayCasa();
+  const addDays = (n: number): string => {
+    const d = new Date(today + 'T12:00:00Z');
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const in7 = addDays(7);
+  const { data } = await sb.from('cheques')
+    .select('id,num,fournisseur,montant,type,echeance,status')
+    .gt('echeance', today).lte('echeance', in7).neq('status', 'مدفوع').order('echeance', { ascending: true });
+  const list = (data || []) as ChqRow[];
+  if (!list.length) {
+    return new Response(JSON.stringify({ ok: true, job: 'upcoming_cheques', skipped: 'none' }));
+  }
+  const total = list.reduce((s, c) => s + safeNum(c.montant), 0);
+  // Split into <=3-day inner (urgent ⚠️) and 4-7 day outer (heads-up 📅)
+  const inner: ChqRow[] = [];
+  const outer: ChqRow[] = [];
+  for (const c of list) {
+    const eTime = new Date(String(c.echeance) + 'T12:00:00Z').getTime();
+    const tTime = new Date(today + 'T12:00:00Z').getTime();
+    const days = Math.round((eTime - tTime) / 86400000);
+    if (days <= 3) inner.push(c); else outer.push(c);
+  }
+  let text = `🔔 *${list.length} تسوية جايا* — *${fmtMoney(total)} د.م.* خلال 7 أيام\n`;
+  const fmtRow = (c: ChqRow, days: number) => {
+    const lbl = c.type === 'effet' ? '📜' : '💳';
+    return `${lbl} #${c.num} · ${c.fournisseur} · *${fmtMoney(c.montant)}* · 📅 بعد ${days}ج (${c.echeance})\n`;
+  };
+  if (inner.length) {
+    text += '\n⚠️ *مستعجل (≤3 أيام):*\n';
+    for (const c of inner) {
+      const days = Math.max(0, Math.round((new Date(String(c.echeance) + 'T12:00:00Z').getTime() - new Date(today + 'T12:00:00Z').getTime()) / 86400000));
+      text += fmtRow(c, days);
+    }
+  }
+  if (outer.length) {
+    text += '\n📅 *قريب (4-7 أيام):*\n';
+    for (const c of outer) {
+      const days = Math.round((new Date(String(c.echeance) + 'T12:00:00Z').getTime() - new Date(today + 'T12:00:00Z').getTime()) / 86400000);
+      text += fmtRow(c, days);
+    }
+  }
+  text += '\n_💡 حضّر الكاش / السلف قبل ما يحلو._';
+  const sent = await broadcastTelegram(text);
+  await sendWebPush('🔔 شيكات قادمة', `${list.length} خلال 7 أيام · ${fmtMoney(total)} د.م.`, './#cheques', 'upcoming-cheques');
+  return new Response(JSON.stringify({ ok: true, job: 'upcoming_cheques', telegram: sent, count: list.length, total }));
+}
+
+// ── stock_critical — 08h Casa daily ────────────────────────────
+// Lists articles whose stock fell below stock_min. Capped at top 10 by
+// criticity (ratio stock / stock_min ascending — most-broken first).
+type ArtRow = { id: number; nom?: string; ref?: string; unite?: string; stock?: number | null; stock_min?: number | null; cat?: string };
+export async function jobStockCritical(): Promise<Response> {
+  const { data } = await sb.from('articles')
+    .select('id,nom,ref,unite,stock,stock_min,cat')
+    .is('deleted_at', null)
+    .not('stock_min', 'is', null);
+  const list = (data || []) as ArtRow[];
+  const critical = list.filter(a => {
+    const sm = Number(a.stock_min || 0);
+    const s  = Number(a.stock || 0);
+    return sm > 0 && s < sm;
+  });
+  if (!critical.length) {
+    return new Response(JSON.stringify({ ok: true, job: 'stock_critical', skipped: 'none' }));
+  }
+  // Sort by ratio (smallest first = most critical, including out-of-stock=0)
+  critical.sort((a, b) => {
+    const ra = Number(a.stock || 0) / Math.max(1, Number(a.stock_min || 1));
+    const rb = Number(b.stock || 0) / Math.max(1, Number(b.stock_min || 1));
+    return ra - rb;
+  });
+  const top = critical.slice(0, 10);
+  let text = `📦 *${critical.length} سلعة ف خطر مخزون*\n\n`;
+  for (const a of top) {
+    const s = Number(a.stock || 0);
+    const sm = Number(a.stock_min || 0);
+    const icon = s <= 0 ? '🔴' : '🟡';
+    text += `${icon} *${a.nom}* — \`${s}\` / ${sm} ${a.unite || ''}\n`;
+  }
+  if (critical.length > 10) text += `\n_… و ${critical.length - 10} أخرى_`;
+  text += '\n\n_💡 احجز عند موردك قبل ما يوقف الإنتاج._';
+  const sent = await broadcastTelegram(text);
+  await sendWebPush('📦 مخزون منخفض', `${critical.length} سلعة تحت الحد الأدنى`, './#articles', 'stock-critical');
+  return new Response(JSON.stringify({ ok: true, job: 'stock_critical', telegram: sent, count: critical.length }));
+}
+
+// ── weekly_digest — Sunday 19h Casa ─────────────────────────────
+// Week-over-week comparison (sun→sat) for spending, inflow, workers paid.
+export async function jobWeeklyDigest(): Promise<Response> {
+  const today = todayCasa();
+  // Compute current week (Sun → today inclusive) and prior week (full Sun → Sat)
+  const todayD = new Date(today + 'T12:00:00Z');
+  const dow = todayD.getUTCDay(); // 0=Sun
+  const curStart = new Date(todayD);
+  curStart.setUTCDate(todayD.getUTCDate() - dow);
+  const prevEnd = new Date(curStart);
+  prevEnd.setUTCDate(curStart.getUTCDate() - 1);
+  const prevStart = new Date(prevEnd);
+  prevStart.setUTCDate(prevEnd.getUTCDate() - 6);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const curFrom = iso(curStart), prevFrom = iso(prevStart), prevTo = iso(prevEnd);
+
+  // Bons in each window (totalNet preferred, fallback total)
+  type BonR = { date?: string; total?: number; total_net?: number };
+  const { data: bonsAll } = await sb.from('bons').select('date,total,total_net').gte('date', prevFrom).lte('date', today).is('deleted_at', null);
+  const bons = (bonsAll || []) as BonR[];
+  // Cheques paid in each window (by paid_at, fallback date)
+  type ChR = { date?: string; paid_at?: string; status?: string; montant?: number };
+  const { data: chAll } = await sb.from('cheques').select('date,paid_at,status,montant').gte('date', prevFrom).lte('date', today);
+  const cheques = (chAll || []) as ChR[];
+  // Factures issued in each window
+  type FacR = { date?: string; total_ttc?: number; statut?: string };
+  const { data: facAll } = await sb.from('factures').select('date,total_ttc,statut').gte('date', prevFrom).lte('date', today).is('deleted_at', null);
+  const factures = (facAll || []) as FacR[];
+
+  const inRange = (d: string | undefined, from: string, to: string): boolean => {
+    if (!d) return false;
+    return d >= from && d <= to;
+  };
+  const sumBons = (from: string, to: string) =>
+    bons.filter(b => inRange(b.date, from, to)).reduce((s, b) => s + safeNum(b.total_net ?? b.total), 0);
+  const sumPaid = (from: string, to: string) =>
+    cheques.filter(c => c.status === 'مدفوع' && inRange(c.paid_at || c.date, from, to)).reduce((s, c) => s + safeNum(c.montant), 0);
+  const sumFact = (from: string, to: string) =>
+    factures.filter(f => inRange(f.date, from, to)).reduce((s, f) => s + safeNum(f.total_ttc), 0);
+
+  const curBons = sumBons(curFrom, today);
+  const prvBons = sumBons(prevFrom, prevTo);
+  const curPaid = sumPaid(curFrom, today);
+  const prvPaid = sumPaid(prevFrom, prevTo);
+  const curFact = sumFact(curFrom, today);
+  const prvFact = sumFact(prevFrom, prevTo);
+  const delta = (a: number, b: number) => b > 0.005 ? Math.round(((a - b) / b) * 100) : (a > 0.005 ? 100 : 0);
+  const deltaTxt = (a: number, b: number) => {
+    const d = delta(a, b);
+    if (b <= 0.005 && a <= 0.005) return '';
+    const arrow = d > 0 ? '📈' : d < 0 ? '📉' : '➡️';
+    return ` ${arrow} ${d > 0 ? '+' : ''}${d}%`;
+  };
+
+  let text = `📊 *تقرير الأسبوع — ${curFrom} → ${today}*\n`;
+  text += `\n📦 مشتريات (Bons): *${fmtMoney(curBons)} د.م.*${deltaTxt(curBons, prvBons)}\n`;
+  text += `   _الأسبوع السابق: ${fmtMoney(prvBons)} د.م._\n`;
+  text += `\n✅ مدفوع (Cheques): *${fmtMoney(curPaid)} د.م.*${deltaTxt(curPaid, prvPaid)}\n`;
+  text += `   _الأسبوع السابق: ${fmtMoney(prvPaid)} د.م._\n`;
+  text += `\n🧾 فواتير (CA): *${fmtMoney(curFact)} د.م.*${deltaTxt(curFact, prvFact)}\n`;
+  text += `   _الأسبوع السابق: ${fmtMoney(prvFact)} د.م._\n`;
+  const net = curFact - curBons;
+  const netCol = net >= 0 ? '🟢' : '🔴';
+  text += `\n${netCol} *الفرق (CA − دفعات): ${fmtMoney(net)} د.م.*\n`;
+  const sent = await broadcastTelegram(text);
+  await sendWebPush('📊 تقرير الأسبوع', `CA ${fmtMoney(curFact)} · مشتريات ${fmtMoney(curBons)}`, './#dashboard', 'weekly-digest');
+  return new Response(JSON.stringify({ ok: true, job: 'weekly_digest', telegram: sent }));
+}

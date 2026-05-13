@@ -5481,6 +5481,7 @@ function openEditBon(id){
     </div>
     <button class="btn btn-accent" style="width:100%;padding:12px" onclick="saveEditBon(${id})">💾 حفظ التعديلات</button>
     <div id="eb-msg" style="text-align:center;font-size:12px;margin-top:8px"></div>
+    <div style="text-align:center;font-size:10px;color:var(--text3);margin-top:6px;opacity:0.6">v133 • bon #${id}</div>
   `;
   document.getElementById('modal-main').classList.add('open');
   _renderEditBonRows(id);
@@ -5503,12 +5504,25 @@ function updateEditLine(bonId,i,field,val){
 
 function saveEditBon(id){
   const b=bons.find(x=>x.id===id);if(!b)return;
+  // Safety net: if the user selected an article in the "+زيد سلعة" dropdown
+  // but never clicked the ➕ إضافة button, auto-add it BEFORE saving so the
+  // intended new line actually reaches the bon. This was the most likely
+  // cause of "I clicked save but the line never showed up" reports.
+  try{
+    var _pendingSel = document.getElementById('eb-new-art');
+    var _pendingAid = _pendingSel ? Number(_pendingSel.value) : 0;
+    if(_pendingAid){
+      console.log('[saveEditBon] auto-adding pending dropdown selection aid='+_pendingAid);
+      editAddLine(id);
+    }
+  }catch(_){}
   b.num=document.getElementById('eb-num').value.trim()||b.num;
   b.date=document.getElementById('eb-date').value||b.date;
   b.fournisseur=document.getElementById('eb-fournisseur').value.trim()||b.fournisseur;
   b.note=document.getElementById('eb-note').value.trim();
   var _chRaw=(document.getElementById('eb-chantier')||{value:''}).value;
   b.chantierId = _chRaw ? Number(_chRaw) : null;
+  console.log('[saveEditBon] starting save', {id:id, lignesCount:b.lignes.length, lignes:b.lignes});
   b.total=b.lignes.reduce((s,l)=>s+Number(l.qte||0)*Number(l.prix||0),0);
   // Re-derive totalNet from the new total + existing remise. Without this,
   // total_net carries over the stale value from the bon's previous state and

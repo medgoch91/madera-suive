@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v132-purge-stale-queue';
+const CACHE = 'suivi-v133-autoadd-pending-line';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

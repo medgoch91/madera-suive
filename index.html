@@ -406,6 +406,15 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   animation:modalIn 0.22s cubic-bezier(.4,0,.2,1);
   direction:rtl;
 }
+/* Wide variant — used for "page-like" modals (fournisseur detail etc.)
+   so 4-col tables + KPI grids fit without horizontal scroll. */
+.modal-box.wide-page{
+  width:min(96vw, 1180px);max-width:96vw;max-height:94vh;
+}
+.modal-box.wide-page .info-grid{grid-template-columns:repeat(4, 1fr);}
+@media (max-width: 900px){
+  .modal-box.wide-page .info-grid{grid-template-columns:1fr 1fr;}
+}
 @keyframes modalIn{from{opacity:0;transform:scale(0.93) translateY(16px);}to{opacity:1;transform:scale(1) translateY(0);}}
 .modal-title{font-size:16px;font-weight:700;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;letter-spacing:-0.2px;}
 .modal-close{
@@ -1975,7 +1984,26 @@ async function drainSbQueue(){
 
 window.addEventListener('online', function(){ drainSbQueue(); });
 window.addEventListener('offline', function(){ _updateOfflineBadge(); });
-window.addEventListener('DOMContentLoaded', function(){ _updateOfflineBadge(); if(navigator.onLine!==false) drainSbQueue(); try{applyI18n();}catch(e){} });
+window.addEventListener('DOMContentLoaded', function(){
+  _updateOfflineBadge();
+  if(navigator.onLine!==false) drainSbQueue();
+  try{applyI18n();}catch(e){}
+  // Auto-clean `.wide-page` (and any other modal-scope classes we add) from
+  // #modal-main-c whenever #modal-main loses its `.open` class — so the next
+  // modal that opens starts from the default 500px width again, without
+  // having to touch all 20+ close handlers.
+  try{
+    var ov = document.getElementById('modal-main');
+    if(ov && typeof MutationObserver==='function'){
+      new MutationObserver(function(){
+        if(!ov.classList.contains('open')){
+          var c = document.getElementById('modal-main-c');
+          if(c) c.classList.remove('wide-page');
+        }
+      }).observe(ov, {attributes:true, attributeFilter:['class']});
+    }
+  }catch(e){}
+});
 
 // ── Client-side rate limiting (defense-in-depth; real protection is RLS/server-side) ──
 var _sbRateWrites = [];   // timestamps of recent writes
@@ -7195,7 +7223,9 @@ function openFModal(nom){
     +'<tbody>'+(fc.slice(0,5).map(c=>'<tr><td>'+c.num+'</td><td>'+fmtDate(c.date)+'</td><td style="color:var(--accent);font-weight:600">'+fmt(c.montant)+'</td><td>'+badgeC(c.status)+'</td></tr>').join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text3)">لا توجد شيكات</td></tr>')
     +'</tbody></table>';
 
-  document.getElementById('modal-main-c').innerHTML=html;
+  var _modalC = document.getElementById('modal-main-c');
+  _modalC.innerHTML=html;
+  _modalC.classList.add('wide-page');
   const todayEl=document.getElementById('rg-date');
   if(todayEl)todayEl.valueAsDate=new Date();
   document.getElementById('modal-main').classList.add('open');

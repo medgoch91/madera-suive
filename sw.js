@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v119-four-ledger-overflow';
+const CACHE = 'suivi-v120-four-modal-wide';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

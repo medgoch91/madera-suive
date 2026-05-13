@@ -183,7 +183,10 @@ export async function jobWorkersEod(): Promise<Response> {
   type PcTas   = { ouvrier_id: number; date_to?: string };
   type PcAv    = { ouvrier_id: number; montant: number; rembourse?: boolean };
 
-  const [salList, allSalPres, salTas, salAv, pcList, allPcPres, pcTas, pcAv] = await Promise.all([
+  type SubOrder = { technician_name?: string; quantity_received?: number; labor_cost_per_piece_ttc?: number };
+  type TechPay  = { technician_name?: string; amount?: number };
+
+  const [salList, allSalPres, salTas, salAv, pcList, allPcPres, pcTas, pcAv, subOrders, techPays] = await Promise.all([
     sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup').then(r => (r.data || []) as Salarie[]),
     sb.from('salarie_presences').select('salarie_id,date,statut,heures_supp,taux_horaire').lte('date', today).then(r => (r.data || []) as SalPres[]),
     sb.from('salarie_taswiyas').select('salarie_id,date_to,period_to,date_paiement').then(r => (r.data || []) as SalTas[]),
@@ -192,6 +195,8 @@ export async function jobWorkersEod(): Promise<Response> {
     sb.from('ouvrier_pc_presences').select('ouvrier_id,date,qte,prix').lte('date', today).then(r => (r.data || []) as PcPres[]),
     sb.from('pc_taswiyas').select('ouvrier_id,date_to').then(r => (r.data || []) as PcTas[]),
     sb.from('pc_avances').select('ouvrier_id,montant,rembourse').then(r => (r.data || []) as PcAv[]),
+    sb.from('subcontracting_orders').select('technician_name,quantity_received,labor_cost_per_piece_ttc').then(r => (r.data || []) as SubOrder[]),
+    sb.from('technician_payments').select('technician_name,amount').then(r => (r.data || []) as TechPay[]),
   ]);
 
   const lastSalTaswiyaCutoff = (salId: number): string => {
@@ -236,7 +241,34 @@ export async function jobWorkersEod(): Promise<Response> {
     pcLines.push({ name: o.nom || ('PC #' + o.id), gross, avances: av, net: gross - av });
   }
 
-  if (salLines.length || pcLines.length) {
+  // Subcontracted technicians (électricité à distance) — running due:
+  //   earned = Σ subcontracting_orders.quantity_received × labor_cost_per_piece_ttc
+  //   paid   = Σ technician_payments.amount
+  //   due    = max(0, earned − paid)
+  // We list techs with a strictly positive due so the digest only shows what
+  // remains to pay (negative balances are credits and not actionable here).
+  const techMap: Record<string, { earned: number; paid: number }> = {};
+  for (const o of subOrders) {
+    const name = String(o.technician_name || '').trim();
+    if (!name) continue;
+    const earned = Number(o.quantity_received || 0) * Number(o.labor_cost_per_piece_ttc || 0);
+    if (!techMap[name]) techMap[name] = { earned: 0, paid: 0 };
+    techMap[name].earned += earned;
+  }
+  for (const p of techPays) {
+    const name = String(p.technician_name || '').trim();
+    if (!name) continue;
+    if (!techMap[name]) techMap[name] = { earned: 0, paid: 0 };
+    techMap[name].paid += Number(p.amount || 0);
+  }
+  const techLines: { name: string; earned: number; paid: number; due: number }[] = [];
+  for (const name of Object.keys(techMap)) {
+    const r = techMap[name];
+    const due = r.earned - r.paid;
+    if (due > 0.005) techLines.push({ name, earned: r.earned, paid: r.paid, due });
+  }
+
+  if (salLines.length || pcLines.length || techLines.length) {
     const fmtSign = (n: number) => (n >= 0 ? fmtMoney(n) : '−' + fmtMoney(Math.abs(n)));
     text += '\n━━━━━━━━━━━━━━━━━━\n*💰 المعلق التراكمي — كيخلصو غادي:*\n';
     let bigTotal = 0;
@@ -258,6 +290,14 @@ export async function jobWorkersEod(): Promise<Response> {
         text += `• ${l.name} → *${fmtSign(l.net)} د.م.*`;
         if (l.avances > 0.005) text += `  _(${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
         text += '\n';
+      }
+    }
+    if (techLines.length) {
+      text += '\n🛠️ تقنيون (électricité à distance):\n';
+      techLines.sort((a, b) => b.due - a.due);
+      for (const l of techLines) {
+        bigTotal += l.due;
+        text += `• ${l.name} → *${fmtMoney(l.due)} د.م.*  _(${fmtMoney(l.earned)} − دفعات ${fmtMoney(l.paid)})_\n`;
       }
     }
     text += `\n🎯 *المجموع المعلق: ${fmtSign(bigTotal)} د.م.*\n`;

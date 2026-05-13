@@ -8910,34 +8910,41 @@ function renderArticles(){
       +'</div>';
   };
 
+  // Spreadsheet-style row (Procom-like): Ref | Name | Unit | Family | Price | Stock | Actions
   const renderRow = a => {
     const fps=getFNoms().map(f=>{const p=prix[a.id+'_'+f];return p?{f,p}:null;}).filter(Boolean);
-    const ph = getArtPhoto(a.id);
-    const thumb = ph
-      ? '<img src="'+ph+'" onclick="showArtPhoto('+a.id+',event)" style="width:34px;height:34px;border-radius:6px;object-fit:cover;flex-shrink:0;cursor:zoom-in;border:1px solid var(--border)">'
-      : '<div style="width:34px;height:34px;border-radius:6px;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;color:var(--text3)">📦</div>';
     const minP = fps.length ? Math.min.apply(null, fps.map(x=>Number(x.p))) : null;
     const priceTxt = minP!=null
-      ? '<span style="font-weight:700;color:var(--accent);font-size:12px;white-space:nowrap">\u2066'+fmtN(minP)+' DH\u2069</span>'
+      ? '<span style="font-weight:700;color:var(--accent);font-size:12.5px;white-space:nowrap">\u2066'+fmtN(minP)+' DH\u2069</span>'
       : '<span style="font-size:11px;color:var(--text3)">—</span>';
     const stockN = getArtStock(a.id);
     const sBadge = stockBadgeHtml(a.id);
     const isSel = artSelected.has(a.id);
     const chk = '<input type="checkbox" '+(isSel?'checked':'')+' onclick="event.stopPropagation()" onchange="artToggleSel('+a.id+',this.checked,event)" style="cursor:pointer;width:15px;height:15px;flex-shrink:0;accent-color:var(--accent)">';
-    return '<div class="article-row clickable" onclick="openArticleModal('+a.id+')" style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:'+(isSel?'rgba(147,51,234,0.1)':'var(--bg2)')+';border:1px solid '+(isSel?'var(--accent)':'var(--border)')+';border-radius:8px;cursor:pointer;transition:background 0.15s">'
-      +chk
-      +thumb
-      +'<div style="min-width:0;flex:1">'
-        +'<div style="display:flex;align-items:center;gap:6px"><div style="font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1" title="'+escB(a.nom)+'">'+escB(a.nom)+'</div>'+sBadge+'</div>'
-        +'<div style="font-size:10px;color:var(--text2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escB(a.unite||'')+(a.ref?' · <span style="font-family:monospace">'+escB(a.ref)+'</span>':'')+(stockN!=null?' · '+stockN+' قطعة':'')+'</div>'
-      +'</div>'
-      +'<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0">'
-        +priceTxt
-        +'<span style="font-size:10px;color:var(--text3)">'+fps.length+' سعر</span>'
-      +'</div>'
-      +'<button class="btn-ghost" onclick="showArtCardMenu('+a.id+',event)" style="padding:4px 6px;font-size:14px;border-radius:6px;line-height:1;flex-shrink:0" title="المزيد">⋯</button>'
-    +'</div>';
+    const stockTxt = stockN!=null
+      ? '<span style="font-size:12.5px;font-weight:600">'+stockN+'</span>'
+      : '<span style="color:var(--text3);font-size:11px">—</span>';
+    return '<tr class="art-trow" onclick="openArticleModal('+a.id+')" style="cursor:pointer;background:'+(isSel?'rgba(147,51,234,0.10)':'transparent')+';border-bottom:1px solid var(--border)">'
+      +'<td style="padding:8px 10px;width:32px" onclick="event.stopPropagation()">'+chk+'</td>'
+      +'<td style="padding:8px 10px;font-family:ui-monospace,SFMono-Regular,monospace;font-size:11px;color:var(--text3);white-space:nowrap">'+escB(a.ref||'—')+'</td>'
+      +'<td style="padding:8px 10px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><div dir=\"auto\" style="font-size:13px;font-weight:700;color:var(--text);word-break:break-word" title="'+escB(a.nom)+'">'+escB(a.nom)+'</div>'+sBadge+'</div></td>'
+      +'<td style="padding:8px 10px;font-size:12px;color:var(--text2);white-space:nowrap">'+escB(a.unite||'')+'</td>'
+      +'<td style="padding:8px 10px;font-size:12px;color:var(--text2);white-space:nowrap">'+escB(a.cat||'—')+'</td>'
+      +'<td style="padding:8px 10px;text-align:left;white-space:nowrap">'+priceTxt+'<div style="font-size:10px;color:var(--text3);margin-top:1px">'+fps.length+' سعر</div></td>'
+      +'<td style="padding:8px 10px;text-align:center;white-space:nowrap">'+stockTxt+'</td>'
+      +'<td style="padding:8px 10px;width:36px" onclick="event.stopPropagation()"><button class="btn-ghost" onclick="showArtCardMenu('+a.id+',event)" style="padding:4px 6px;font-size:14px;border-radius:6px;line-height:1" title="المزيد">⋯</button></td>'
+    +'</tr>';
   };
+  const _renderRowsTableHead = '<thead><tr style="background:var(--bg3);border-bottom:2px solid var(--border)">'
+    +'<th style="padding:9px 10px;width:32px"></th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:right;letter-spacing:0.4px">المرجع</th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:right;letter-spacing:0.4px">الاسم</th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:right;letter-spacing:0.4px">الوحدة</th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:right;letter-spacing:0.4px">العائلة</th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:left;letter-spacing:0.4px">السعر</th>'
+    +'<th style="padding:9px 10px;font-size:10.5px;font-weight:700;color:var(--text3);text-align:center;letter-spacing:0.4px">المخزون</th>'
+    +'<th style="padding:9px 10px;width:36px"></th>'
+  +'</tr></thead>';
 
   const groupsHtml = groupKeys.length
     ? groupKeys.map(f => {
@@ -8950,7 +8957,7 @@ function renderArticles(){
               +'<button class="btn-ghost" style="margin-right:auto;font-size:12px;padding:4px 10px" onclick="renameFamily(\''+safe+'\')" title="إعادة تسمية">✏️ إعادة تسمية</button>'
             +'</div>'
             +(articleView==='list'
-              ? '<div class="articles-list" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px">'+groups[f].map(renderRow).join('')+'</div>'
+              ? '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:auto;-webkit-overflow-scrolling:touch"><table class="articles-table" style="width:100%;border-collapse:collapse;min-width:760px;direction:rtl">'+_renderRowsTableHead+'<tbody>'+groups[f].map(renderRow).join('')+'</tbody></table></div>'
               : '<div class="articles-grid">'+groups[f].map(renderCard).join('')+'</div>')
           +'</div>';
       }).join('')

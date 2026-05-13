@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v129-editbon-price-autofill-debug';
+const CACHE = 'suivi-v130-editbon-verify-reload';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

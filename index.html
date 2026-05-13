@@ -5524,12 +5524,20 @@ function saveEditBon(id){
         cheque_id:editedBon.chequeId||null, chantier_id:editedBon.chantierId||null,
         lignes:editedBon.lignes||[], skip_stock: !!editedBon.skipStock,
       };
-      console.log('[saveEditBon] PATCH bons/id='+editedBon.id, {lignesCount:data.lignes.length, total:data.total, payload:data});
+      console.log('[saveEditBon] PATCH bons/id='+editedBon.id, {lignesSent:data.lignes.length, total:data.total, payload:data});
       const res = await sbFetch('bons?id=eq.'+editedBon.id, 'PATCH', data);
-      console.log('[saveEditBon] response', res);
+      console.log('[saveEditBon] PATCH response', res);
       if(res && res.__sbError){ throw new Error(res.msg || ('HTTP '+res.status)); }
-      if(Array.isArray(res) && res[0]){
-        const norm = _normBon(res[0]);
+      // Read the bon back from the server to see what's REALLY there post-PATCH.
+      // If lignes is shorter than what we sent, something on the server is
+      // stripping it (RLS, trigger, weird default) — surface that immediately
+      // instead of letting the user re-discover it next time they open the bon.
+      const verify = await sbFetch('bons','GET',null,'id=eq.'+editedBon.id+'&select=lignes,total,total_net');
+      const vRow = Array.isArray(verify) && verify[0];
+      const lignesGot = vRow && Array.isArray(vRow.lignes) ? vRow.lignes.length : -1;
+      console.log('[saveEditBon] verify reload', {sent:data.lignes.length, got:lignesGot, row:vRow});
+      if(vRow){
+        const norm = _normBon(Object.assign({id:editedBon.id, num:editedBon.num, fournisseur:editedBon.fournisseur, date:editedBon.date, note:editedBon.note, statut:editedBon.statut, cheque_id:editedBon.chequeId, chantier_id:editedBon.chantierId, photo_path:editedBon.photoPath, skip_stock:editedBon.skipStock}, vRow));
         const i = bons.findIndex(function(x){ return x.id===editedBon.id; });
         if(i>=0) bons[i] = norm;
       }
@@ -5538,7 +5546,11 @@ function saveEditBon(id){
       document.getElementById('modal-main').classList.remove('open');
       renderBons(); updateSidebar();
       try{ hideLoader(); }catch(_){}
-      try{ toast('✅ تم حفظ التعديلات','success'); }catch(_){}
+      if(lignesGot >=0 && lignesGot < data.lignes.length){
+        try{ toast('⚠️ السرفر سجل '+lignesGot+' سلعة من '+data.lignes.length+' — حاول مرة أخرى','error'); }catch(_){}
+      } else {
+        try{ toast('✅ تم حفظ التعديلات ('+lignesGot+' سلعة)','success'); }catch(_){}
+      }
     }catch(err){
       try{ hideLoader(); }catch(_){}
       console.error('saveEditBon failed:', err);

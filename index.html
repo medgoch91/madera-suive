@@ -1470,7 +1470,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
             <div class="card-title" id="nc-card-title">✏️ تسوية جديدة</div>
             <div style="margin-bottom:14px">
               <label class="field-lbl">الفورنيسور *</label>
-              <div class="ac-wrap"><input class="field-inp" id="c-fournisseur" placeholder="اسم الفورنيسور" autocomplete="off" oninput="acInput('c-fournisseur','ac-c');loadFreeBons()" onblur="setTimeout(()=>acHide('ac-c'),150)">
+              <div class="ac-wrap"><input class="field-inp" id="c-fournisseur" placeholder="اسم الفورنيسور" autocomplete="off" oninput="acInput('c-fournisseur','ac-c');loadFreeBons();try{suggestEcheance();}catch(e){}" onblur="setTimeout(()=>acHide('ac-c'),150)">
               <div class="ac-list" id="ac-c" style="display:none"></div></div>
             </div>
             <div style="margin-bottom:14px">
@@ -1489,7 +1489,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
                 </div>
               </div>
               <div><label class="field-lbl">تاريخ الإصدار *</label><input class="field-inp" id="c-date" type="date"></div>
-              <div id="c-echeance-wrap"><label class="field-lbl">الاستحقاق *</label><input class="field-inp" id="c-echeance" type="date"></div>
+              <div id="c-echeance-wrap"><label class="field-lbl">الاستحقاق *</label><input class="field-inp" id="c-echeance" type="date" oninput="suggestEcheance()"><div id="c-echeance-hint" style="display:none;font-size:11px;color:var(--text2);margin-top:4px;padding:5px 8px;background:rgba(147,51,234,0.06);border:1px solid rgba(147,51,234,0.18);border-radius:6px"></div></div>
               <div><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" id="c-montant" type="number" placeholder="0.00"></div>
               <div><label class="field-lbl">الحالة</label>
                 <select class="field-inp" id="c-status"><option value="معلق">معلق</option><option value="مدفوع">مدفوع</option><option value="مرفوض">مرفوض</option></select>
@@ -2246,7 +2246,7 @@ function _normCheque(c){
 }
 function _normFour(f){
   if(!f) return f;
-  return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
+  return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[],paymentTermsDays:(f.payment_terms_days!=null?Number(f.payment_terms_days):null)};
 }
 
 let articles=[];
@@ -2722,7 +2722,7 @@ async function sbSaveCheque(cheque){
 }
 
 async function sbSaveFournisseur(f){
-  const data={nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
+  const data={nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[],payment_terms_days:(f.paymentTermsDays!=null&&f.paymentTermsDays!==''?Number(f.paymentTermsDays):null)};
   if(f.id && fournisseurs.find(x=>x.id===f.id)){
     await sbFetch('fournisseurs?id=eq.'+f.id,'PATCH',data);
   } else {
@@ -3900,6 +3900,41 @@ function updateChequeTotal(){
   if(el)el.textContent=fmt(t);
   const cm=document.getElementById('c-montant');
   if(cm)cm.value=t||'';
+  try{ suggestEcheance(); }catch(e){}
+}
+
+// Auto-suggest the échéance date based on the fournisseur's payment_terms_days
+// and the latest selected bon date. User can override — we only fill if the
+// échéance is empty (so a manual entry is never clobbered).
+function suggestEcheance(){
+  const echEl = document.getElementById('c-echeance');
+  if(!echEl) return;
+  const hintEl = document.getElementById('c-echeance-hint');
+  const nom = (document.getElementById('c-fournisseur')||{value:''}).value.trim();
+  const four = nom ? (fournisseurs||[]).find(function(f){return f.nom===nom;}) : null;
+  const days = four && four.paymentTermsDays!=null ? Number(four.paymentTermsDays)||0 : 0;
+  // Pick the LATEST date among selected bons (so the suggestion respects the
+  // most recent purchase — that's the day from which the supplier's terms tick).
+  let latestBonDate = '';
+  selectedBonIds.forEach(function(id){
+    const b = bons.find(function(x){return x.id===id;});
+    if(b && b.date && (!latestBonDate || b.date>latestBonDate)) latestBonDate = b.date;
+  });
+  if(!days || !latestBonDate){
+    if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
+    return;
+  }
+  // Compute base + days at noon UTC to avoid DST drift.
+  const d = new Date(latestBonDate+'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate()+days);
+  const iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  // Only auto-fill when the user hasn't typed anything yet, but always show the hint.
+  if(!echEl.value) echEl.value = iso;
+  if(hintEl){
+    hintEl.style.display = 'block';
+    hintEl.innerHTML = '💡 آجال '+nom+': <b>'+days+' يوم</b> من <b>'+fmtDate(latestBonDate)+'</b> = <b style="color:var(--accent)">'+fmtDate(iso)+'</b>'
+      +(echEl.value && echEl.value!==iso ? ' <span style="color:var(--amber)">⚠️ غادي تتأخر</span>' : '');
+  }
 }
 
 // ===== DASHBOARD =====
@@ -7167,6 +7202,18 @@ function renderFournisseurs(){
               <option value="متوقف">متوقف</option>
             </select>
           </div>
+          <div class="form-full">
+            <label class="field-lbl">⏳ آجال الدفع (بالأيام)</label>
+            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <input class="field-inp" id="four-payment-terms" type="number" min="0" step="1" placeholder="مثلا 120" style="flex:1;min-width:90px">
+              <button type="button" onclick="document.getElementById('four-payment-terms').value=''" style="padding:6px 10px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-family:Cairo,sans-serif">نقد</button>
+              <button type="button" onclick="document.getElementById('four-payment-terms').value=30" style="padding:6px 10px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-family:Cairo,sans-serif">30</button>
+              <button type="button" onclick="document.getElementById('four-payment-terms').value=60" style="padding:6px 10px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-family:Cairo,sans-serif">60</button>
+              <button type="button" onclick="document.getElementById('four-payment-terms').value=90" style="padding:6px 10px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-family:Cairo,sans-serif">90</button>
+              <button type="button" onclick="document.getElementById('four-payment-terms').value=120" style="padding:6px 10px;font-size:11px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text2);cursor:pointer;font-family:Cairo,sans-serif">120</button>
+            </div>
+            <div style="font-size:10.5px;color:var(--text3);margin-top:5px">ℹ️ ملي تدير شيك لهاد المورد، الاستحقاق غادي يتحسب أوتو: تاريخ البون + هاد الأيام</div>
+          </div>
           <div class="form-full"><label class="field-lbl">ملاحظات</label><input class="field-inp" id="four-notes" placeholder="..."></div>
         </div>
         <div style="margin-top:14px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border)">
@@ -7197,6 +7244,7 @@ function openEditFournisseur(nom){
   setV('four-cat',f.cat||'مورد');
   setV('four-stat',f.stat||'نشيط');
   setV('four-notes',f.notes||'');
+  setV('four-payment-terms',f.paymentTermsDays!=null?f.paymentTermsDays:'');
   _fourFormFamilies = Array.isArray(f.families) ? f.families.slice() : [];
   fourFormRenderFamilyChips();
   const title=document.getElementById('four-form-title');
@@ -7210,6 +7258,7 @@ function saveFournisseurForm(){
   const msg=document.getElementById('msg-four');
   if(!nom){msg.style.color='var(--red)';msg.textContent='الاسم مطلوب';return;}
 
+  const _ptRaw = (document.getElementById('four-payment-terms')||{value:''}).value;
   const data={
     nom,
     tel:document.getElementById('four-tel').value.trim(),
@@ -7219,6 +7268,7 @@ function saveFournisseurForm(){
     stat:document.getElementById('four-stat').value,
     notes:document.getElementById('four-notes').value.trim(),
     families:(_fourFormFamilies||[]).slice(),
+    paymentTermsDays:(_ptRaw==='' ? null : Number(_ptRaw)),
   };
 
   if(editId){
@@ -7251,9 +7301,9 @@ function saveFournisseurForm(){
           msg.style.color='var(--green)';msg.textContent='✅ تم التعديل!';
         }
       } else {
-        const newF={nom:data.nom,tel:data.tel,email:data.email,ville:data.ville,cat:data.cat,stat:data.stat,notes:data.notes,families:data.families};
-        const res=await sbFetch('fournisseurs','POST',newF);
-        if(res&&res[0]){newF.id=res[0].id;fournisseurs.push(newF);}
+        const newF={nom:data.nom,tel:data.tel,email:data.email,ville:data.ville,cat:data.cat,stat:data.stat,notes:data.notes,families:data.families,paymentTermsDays:data.paymentTermsDays};
+        await sbSaveFournisseur(newF);
+        fournisseurs.push(newF);
         msg.style.color='var(--green)';msg.textContent='✅ تم الإضافة!';
       }
       hideLoader();
@@ -7269,7 +7319,7 @@ function saveFournisseurForm(){
 }
 
 function resetFournisseurForm(){
-  ['four-nom','four-tel','four-email','four-ville','four-notes','four-edit-id'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['four-nom','four-tel','four-email','four-ville','four-notes','four-edit-id','four-payment-terms'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const cat=document.getElementById('four-cat');if(cat)cat.value='مورد';
   const stat=document.getElementById('four-stat');if(stat)stat.value='نشيط';
   _fourFormFamilies = [];
@@ -7314,6 +7364,7 @@ function openFModal(nom){
     +'<div class="info-item"><div class="info-item-lbl">الإيميل</div><div class="info-item-val" style="font-size:12px">'+(fi.email||'—')+'</div></div>'
     +'<div class="info-item"><div class="info-item-lbl">المدينة</div><div class="info-item-val">'+(fi.ville||'—')+'</div></div>'
     +'<div class="info-item"><div class="info-item-lbl">التصنيف / الحالة</div><div class="info-item-val">'+(fi.cat||'—')+' — <span style="color:'+statColor+'">'+(fi.stat||'نشيط')+'</span></div></div>'
+    +'<div class="info-item"><div class="info-item-lbl">⏳ آجال الدفع</div><div class="info-item-val">'+(fi.paymentTermsDays!=null?'<b style="color:var(--accent)">'+fi.paymentTermsDays+' يوم</b>':'<span style="color:var(--text3)">نقد / غير محدد</span>')+'</div></div>'
     +'</div>';
 
   // ── 6-KPI panel + inline ledger ───────────────────────────

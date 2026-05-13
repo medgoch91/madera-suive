@@ -13,12 +13,28 @@ import {
   jobChequesDueMorning, jobChequesTodayPing,
   jobWorkersEod, jobMonthlyReport, jobDailyReport, jobCaisseEod,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
+  debugWorkerBreakdown,
 } from './jobs.ts';
 import { handleChequeCallback, handleKhlasCallback } from './callbacks.ts';
 
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   const cronJob = url.searchParams.get('cron');
+  const debugWorker = url.searchParams.get('debug_worker');
+
+  // Authenticated debug — returns a JSON breakdown of one worker's cumulative
+  // payable so we can reconcile the bot's number against what the app shows.
+  if (debugWorker) {
+    const secret = req.headers.get('x-cron-secret');
+    const expected = Deno.env.get('CRON_SECRET');
+    if (!expected || secret !== expected) {
+      return new Response('unauthorized', { status: 401 });
+    }
+    const payload = await debugWorkerBreakdown(debugWorker);
+    return new Response(JSON.stringify(payload, null, 2), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   if (cronJob) {
     const secret = req.headers.get('x-cron-secret');

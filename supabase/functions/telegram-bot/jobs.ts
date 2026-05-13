@@ -330,6 +330,129 @@ export async function jobWorkersEod(): Promise<Response> {
   }));
 }
 
+// ── Debug — return the per-worker cumulative breakdown as JSON. Gated by
+// the cron-secret in index.ts; useful for reconciling against the in-app
+// KPI when a discrepancy is reported.
+export async function debugWorkerBreakdown(name: string): Promise<unknown> {
+  const today = todayCasa();
+  const needle = String(name || '').trim().toLowerCase();
+
+  const [salList, salPres, salTas, salAv, pcList, pcPres, pcTas, pcAv, subOrders, techPays] = await Promise.all([
+    sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup').then(r => (r.data || []) as Array<{id:number;nom?:string;prenom?:string;salaire_base?:number;taux_hsup?:number}>),
+    sb.from('salarie_presences').select('salarie_id,date,statut,heures_supp,taux_horaire').lte('date', today).then(r => (r.data || []) as Array<{salarie_id:number;date:string;statut?:string;heures_supp?:number;taux_horaire?:number}>),
+    sb.from('salarie_taswiyas').select('salarie_id,date_from,date_to,date_paiement,montant').then(r => (r.data || []) as Array<{salarie_id:number;date_from?:string;date_to?:string;date_paiement?:string;montant?:number}>),
+    sb.from('salarie_avances').select('salarie_id,date,montant,rembourse').then(r => (r.data || []) as Array<{salarie_id:number;date?:string;montant:number;rembourse?:boolean}>),
+    sb.from('ouvriers_pc').select('id,nom').then(r => (r.data || []) as Array<{id:number;nom?:string}>),
+    sb.from('ouvrier_pc_presences').select('ouvrier_id,date,qte,prix,pc_nom').lte('date', today).then(r => (r.data || []) as Array<{ouvrier_id:number;date:string;qte:number;prix:number;pc_nom?:string}>),
+    sb.from('pc_taswiyas').select('ouvrier_id,date_from,date_to,montant').then(r => (r.data || []) as Array<{ouvrier_id:number;date_from?:string;date_to?:string;montant?:number}>),
+    sb.from('pc_avances').select('ouvrier_id,date,montant,rembourse').then(r => (r.data || []) as Array<{ouvrier_id:number;date?:string;montant:number;rembourse?:boolean}>),
+    sb.from('subcontracting_orders').select('technician_name,quantity_received,labor_cost_per_piece_ttc').then(r => (r.data || []) as Array<{technician_name?:string;quantity_received?:number;labor_cost_per_piece_ttc?:number}>),
+    sb.from('technician_payments').select('technician_name,amount').then(r => (r.data || []) as Array<{technician_name?:string;amount?:number}>),
+  ]);
+
+  // ── Salarie match ─────────────────────────────────────────────
+  const matchSal = salList.find(s => {
+    const full = ((s.nom || '') + (s.prenom ? ' ' + s.prenom : '')).trim().toLowerCase();
+    return full.includes(needle) || (s.nom || '').toLowerCase().includes(needle);
+  });
+  let salReport: unknown = null;
+  if (matchSal) {
+    const tasRows = salTas.filter(t => Number(t.salarie_id) === matchSal.id);
+    const cutoff = tasRows.length
+      ? tasRows.map(t => String(t.date_to || '')).sort().pop() || '0000-01-01'
+      : '0000-01-01';
+    const myPres = salPres.filter(p => Number(p.salarie_id) === matchSal.id && String(p.date) > cutoff);
+    const base = Number(matchSal.salaire_base || 0);
+    let gross = 0;
+    const presBreakdown = myPres.map(p => {
+      const mult = p.statut === 'present' ? 1 : p.statut === 'demi' ? 0.5 : 0;
+      const wage = mult * base;
+      const hs = Number(p.heures_supp || 0);
+      const tx = Number(p.taux_horaire || matchSal.taux_hsup || 0);
+      const hsupCost = hs * tx;
+      gross += wage + hsupCost;
+      return { date: p.date, statut: p.statut, mult, wage, hsup: hs, tx, hsupCost, line: wage + hsupCost };
+    });
+    const unpaidAv = salAv.filter(a => Number(a.salarie_id) === matchSal.id && !a.rembourse);
+    const av = unpaidAv.reduce((t, a) => t + Number(a.montant || 0), 0);
+    salReport = {
+      kind: 'salarie',
+      id: matchSal.id,
+      name: ((matchSal.nom || '') + (matchSal.prenom ? ' ' + matchSal.prenom : '')).trim(),
+      salaire_base: base,
+      lastTaswiya: tasRows.sort((a, b) => String(a.date_to||'').localeCompare(String(b.date_to||''))).slice(-1)[0] || null,
+      cutoff,
+      presences_since_cutoff: presBreakdown,
+      unpaid_avances: unpaidAv,
+      gross,
+      avances: av,
+      payable: Math.max(0, gross - av),
+      rollover: Math.max(0, av - gross),
+    };
+  }
+
+  // ── PC match ──────────────────────────────────────────────────
+  const matchPc = pcList.find(o => (o.nom || '').toLowerCase().includes(needle));
+  let pcReport: unknown = null;
+  if (matchPc) {
+    const tasRows = pcTas.filter(t => Number(t.ouvrier_id) === matchPc.id);
+    const cutoff = tasRows.length
+      ? tasRows.map(t => String(t.date_to || '')).sort().pop() || '0000-01-01'
+      : '0000-01-01';
+    const myPres = pcPres.filter(p => Number(p.ouvrier_id) === matchPc.id && String(p.date) > cutoff);
+    let gross = 0;
+    const presBreakdown = myPres.map(p => {
+      const line = Number(p.qte || 0) * Number(p.prix || 0);
+      gross += line;
+      return { date: p.date, pc_nom: p.pc_nom, qte: p.qte, prix: p.prix, line };
+    });
+    const unpaidAv = pcAv.filter(a => Number(a.ouvrier_id) === matchPc.id && !a.rembourse);
+    const av = unpaidAv.reduce((t, a) => t + Number(a.montant || 0), 0);
+    pcReport = {
+      kind: 'pc',
+      id: matchPc.id,
+      name: matchPc.nom,
+      lastTaswiya: tasRows.sort((a, b) => String(a.date_to||'').localeCompare(String(b.date_to||''))).slice(-1)[0] || null,
+      cutoff,
+      presences_since_cutoff: presBreakdown,
+      unpaid_avances: unpaidAv,
+      gross,
+      avances: av,
+      payable: Math.max(0, gross - av),
+      rollover: Math.max(0, av - gross),
+    };
+  }
+
+  // ── Technician match (subcontracting) ─────────────────────────
+  const techNames = Array.from(new Set([
+    ...subOrders.map(o => String(o.technician_name || '').trim()),
+    ...techPays.map(p => String(p.technician_name || '').trim()),
+  ].filter(Boolean)));
+  const matchTech = techNames.find(n => n.toLowerCase().includes(needle));
+  let techReport: unknown = null;
+  if (matchTech) {
+    const orders = subOrders.filter(o => String(o.technician_name).trim() === matchTech);
+    const payments = techPays.filter(p => String(p.technician_name).trim() === matchTech);
+    const earned = orders.reduce((t, o) => t + Number(o.quantity_received || 0) * Number(o.labor_cost_per_piece_ttc || 0), 0);
+    const paid = payments.reduce((t, p) => t + Number(p.amount || 0), 0);
+    techReport = {
+      kind: 'technician',
+      name: matchTech,
+      earned,
+      paid,
+      due: Math.max(0, earned - paid),
+      orders,
+      payments,
+    };
+  }
+
+  return {
+    today,
+    query: name,
+    matches: { salarie: salReport, pc: pcReport, technician: techReport },
+  };
+}
+
 // ── daily_report — 20:30 Casa, full business-day digest ───────
 // Comprehensive end-of-day digest covering every meaningful transaction
 // for today: spending (bons d'entrée), inflow (cheques + factures),

@@ -13,7 +13,7 @@ import {
   jobChequesDueMorning, jobChequesTodayPing,
   jobWorkersEod, jobMonthlyReport, jobDailyReport, jobCaisseEod,
   jobBackupTelegram, jobBackupGdrive, jobBackupFtp, jobBackupAll,
-  debugWorkerBreakdown,
+  debugWorkerBreakdown, debugWorkersEodText,
 } from './jobs.ts';
 import { handleChequeCallback, handleKhlasCallback } from './callbacks.ts';
 
@@ -34,6 +34,13 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify(payload, null, 2), {
       headers: { 'Content-Type': 'application/json' },
     });
+  }
+  if (url.searchParams.get('debug_text') === '1') {
+    const secret = req.headers.get('x-cron-secret');
+    const expected = Deno.env.get('CRON_SECRET');
+    if (!expected || secret !== expected) return new Response('unauthorized', { status: 401 });
+    const t = await debugWorkersEodText();
+    return new Response(t, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
   }
 
   if (cronJob) {

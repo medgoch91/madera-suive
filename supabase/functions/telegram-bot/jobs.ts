@@ -99,7 +99,11 @@ const _STATUS_LABELS: Record<string, { icon: string; lbl: string }> = {
   demi:    { icon: '🟠', lbl: 'نصف نهار' },
 };
 
-export async function jobWorkersEod(): Promise<Response> {
+export async function debugWorkersEodText(): Promise<string> {
+  return await buildWorkersEodText();
+}
+
+async function buildWorkersEodText(): Promise<string> {
   const today = todayCasa();
 
   // Embedded FK select: salarie_presences.salarie_id → salaries
@@ -176,7 +180,7 @@ export async function jobWorkersEod(): Promise<Response> {
   // running total: gross since last tasweya − unpaid avances.
   type Salarie = { id: number; nom?: string; prenom?: string; salaire_base?: number; taux_hsup?: number };
   type SalPres = { salarie_id: number; date: string; statut?: string; heures_supp?: number; taux_horaire?: number };
-  type SalTas  = { salarie_id: number; date_to?: string; period_to?: string; date_paiement?: string };
+  type SalTas  = { salarie_id: number; date_to?: string; date_paiement?: string };
   type SalAv   = { salarie_id: number; montant: number; rembourse?: boolean };
   type PcOuv   = { id: number; nom?: string };
   type PcPres  = { ouvrier_id: number; date: string; qte: number; prix: number };
@@ -189,7 +193,7 @@ export async function jobWorkersEod(): Promise<Response> {
   const [salList, allSalPres, salTas, salAv, pcList, allPcPres, pcTas, pcAv, subOrders, techPays] = await Promise.all([
     sb.from('salaries').select('id,nom,prenom,salaire_base,taux_hsup').then(r => (r.data || []) as Salarie[]),
     sb.from('salarie_presences').select('salarie_id,date,statut,heures_supp,taux_horaire').lte('date', today).then(r => (r.data || []) as SalPres[]),
-    sb.from('salarie_taswiyas').select('salarie_id,date_to,period_to,date_paiement').then(r => (r.data || []) as SalTas[]),
+    sb.from('salarie_taswiyas').select('salarie_id,date_to,date_paiement').then(r => (r.data || []) as SalTas[]),
     sb.from('salarie_avances').select('salarie_id,montant,rembourse').then(r => (r.data || []) as SalAv[]),
     sb.from('ouvriers_pc').select('id,nom').then(r => (r.data || []) as PcOuv[]),
     sb.from('ouvrier_pc_presences').select('ouvrier_id,date,qte,prix').lte('date', today).then(r => (r.data || []) as PcPres[]),
@@ -202,7 +206,7 @@ export async function jobWorkersEod(): Promise<Response> {
   const lastSalTaswiyaCutoff = (salId: number): string => {
     const rows = salTas.filter(t => Number(t.salarie_id) === salId);
     if (!rows.length) return '0000-01-01';
-    return rows.map(t => String(t.date_to || t.period_to || '')).sort().pop() || '0000-01-01';
+    return rows.map(t => String(t.date_to || '')).sort().pop() || '0000-01-01';
   };
   const lastPcTaswiyaCutoff = (pcId: number): string => {
     const rows = pcTas.filter(t => Number(t.ouvrier_id) === pcId);
@@ -323,10 +327,14 @@ export async function jobWorkersEod(): Promise<Response> {
     text += `\n_ℹ️ كيتراكم كل يوم. كيرجع 0 ملي تسجل تسوية._`;
   }
 
+  return text;
+}
+
+export async function jobWorkersEod(): Promise<Response> {
+  const text = await buildWorkersEodText();
   const sent = await broadcastTelegram(text);
   return new Response(JSON.stringify({
     ok: true, job: 'workers_eod', telegram: sent,
-    salaries: presN, pcs: pcN,
   }));
 }
 

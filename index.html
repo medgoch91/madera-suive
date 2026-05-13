@@ -2828,6 +2828,8 @@ function setNewChequeType(type){
   if(sb) sb.innerHTML='💾 '+(type==='cheque'?'حفظ الشيك':(type==='effet'?'حفظ الورقة':'حفظ الدفعة'));
   // Auto-suggest num for current type
   suggestNextChequeNum(true);
+  // Refresh échéance hint — applies for cheque/effet, hidden for espèce.
+  try{ if(t.hasEcheance) suggestEcheance(); }catch(e){}
 }
 
 // Suggest the next number based on current type (or existing prefix pattern)
@@ -5032,7 +5034,8 @@ function renderBons(){
               <td>
                 <div style="display:flex;gap:6px">
                   <button class="btn-ghost" onclick="openBonModal(${b.id})" title="تفاصيل">👁️</button>
-                  ${!b.chequeId?`<button class="btn-ghost" onclick="bonCreateTaswiya(${b.id})" title="إنشاء تسوية لهاد البون مباشرة" style="color:#10b981">💳</button>`:''}
+                  ${!b.chequeId?`<button class="btn-ghost" onclick="bonCreateTaswiya(${b.id},'cheque')" title="إنشاء شيك لهاد البون" style="color:#06b6d4">💳</button>`:''}
+                  ${!b.chequeId?`<button class="btn-ghost" onclick="bonCreateTaswiya(${b.id},'effet')" title="إنشاء ورقة لهاد البون" style="color:#8b5cf6">📜</button>`:''}
                   <button class="btn-ghost" onclick="printBon(${b.id})" title="طباعة">🖨️</button>
                   ${!b.chequeId?`<button class="btn-ghost" onclick="openEditBon(${b.id})" title="تعديل" style="color:var(--accent)">✏️</button>`:''}
                   <button class="btn-ghost" onclick="deleteBon(${b.id})" title="حذف" style="color:var(--red)">🗑️</button>
@@ -5749,12 +5752,21 @@ function preFillChequeFromBon(bonId){
   },100);
 }
 
-// Convenience entrypoint used by the bon view modal's "💳 تسوية" button.
-// Closes the modal, navigates to the new-cheque page, then pre-fills.
-function bonCreateTaswiya(bonId){
+// Convenience entrypoint used by the bon view modal's "💳 تسوية" buttons.
+// Closes the modal, navigates to the new-cheque page, switches to the
+// requested type (cheque | effet | espece), then pre-fills fournisseur +
+// bon + montant + suggested échéance.
+function bonCreateTaswiya(bonId, type){
+  type = (type==='effet' || type==='espece') ? type : 'cheque';
   try{ document.getElementById('modal-main').classList.remove('open'); }catch(e){}
   try{ showPage('new-cheque', null); }catch(e){}
-  preFillChequeFromBon(bonId);
+  // Defer type switch + prefill so the new-cheque page is mounted and
+  // setNewChequeType (called by showPage for new-cheque) doesn't get
+  // overwritten by a race.
+  setTimeout(function(){
+    try{ setNewChequeType(type); }catch(e){}
+    preFillChequeFromBon(bonId);
+  }, 30);
 }
 
 function openBonModal(id){
@@ -5830,7 +5842,8 @@ function openBonModal(id){
       <button class="btn btn-accent" style="flex:1;min-width:100px" onclick="printBon(${b.id})">🖨️ طباعة</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(59,130,246,0.1);color:#3b82f6;border:1px solid rgba(59,130,246,0.3)" onclick="cloneBon(${b.id})" title="نسخ كقالب جديد">📑 استنساخ</button>
       ${!b.chequeId?`
-      <button class="btn" style="flex:1.4;min-width:140px;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:none;font-weight:700" onclick="bonCreateTaswiya(${b.id})" title="إنشاء شيك/ورقة لهاد البون مباشرة">💳 إنشاء تسوية</button>
+      <button class="btn" style="flex:1.2;min-width:130px;background:linear-gradient(135deg,#06b6d4,#0891b2);color:#fff;border:none;font-weight:700" onclick="bonCreateTaswiya(${b.id},'cheque')" title="إنشاء شيك لهاد البون مباشرة">💳 شيك</button>
+      <button class="btn" style="flex:1.2;min-width:130px;background:linear-gradient(135deg,#8b5cf6,#7c3aed);color:#fff;border:none;font-weight:700" onclick="bonCreateTaswiya(${b.id},'effet')" title="إنشاء ورقة (effet) لهاد البون مباشرة">📜 ورقة</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(147,51,234,0.1);color:var(--accent);border:1px solid rgba(147,51,234,0.3)" onclick="document.getElementById('modal-main').classList.remove('open');openEditBon(${b.id})">✏️ تعديل</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(16,185,129,0.1);color:#10b981;border:1px solid rgba(16,185,129,0.3)" onclick="openLinkCheque(${b.id})" title="ربط ب شيك موجود">🔗 ربط</button>
       <button class="btn" style="flex:1;min-width:100px;background:rgba(232,64,64,0.1);color:var(--red);border:1px solid rgba(232,64,64,0.3)" onclick="document.getElementById('modal-main').classList.remove('open');deleteBon(${b.id})">🗑️ حذف</button>`:''}

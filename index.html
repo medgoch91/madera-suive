@@ -2181,6 +2181,44 @@ function sbParseError(raw){
 }
 
 // ── In-memory cache ──────────────────────────────────────────
+// DB rows use snake_case; in-memory objects use camelCase. These helpers
+// translate between them — used both on initial load AND when realtime
+// pushes UPDATE events (otherwise a Supabase row would silently replace
+// the normalized one, dropping chequeId/totalNet/etc.).
+function _normBon(b){
+  if(!b) return b;
+  return {
+    id:b.id, num:b.num, fournisseur:b.fournisseur,
+    date:b.date, note:b.note||'',
+    statut:b.statut||'Bon',
+    chequeId:b.cheque_id||null,
+    chantierId:b.chantier_id||null,
+    lignes:Array.isArray(b.lignes)?b.lignes:(b.lignes?JSON.parse(b.lignes):[]),
+    total:parseFloat(b.total)||0,
+    totalNet:parseFloat(b.total_net)||0,
+    photoPath:b.photo_path||null,
+    skipStock:!!b.skip_stock,
+  };
+}
+function _normCheque(c){
+  if(!c) return c;
+  return {
+    id:c.id, num:c.num, fournisseur:c.fournisseur,
+    montant:parseFloat(c.montant)||0,
+    date:c.date, echeance:c.echeance||'',
+    status:c.status||'معلق',
+    type:c.type||'cheque',
+    paid_at:c.paid_at||null,
+    chantierId:c.chantier_id||null,
+    bonIds:Array.isArray(c.bon_ids)?c.bon_ids:(c.bon_ids?JSON.parse(c.bon_ids):[]),
+    photoPath:c.photo_path||null,
+  };
+}
+function _normFour(f){
+  if(!f) return f;
+  return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
+}
+
 let articles=[];
 let prix={};
 let bons=[];
@@ -2330,38 +2368,9 @@ async function loadAllData(){
       prix[p.article_id+'_'+p.fournisseur] = parseFloat(p.prix);
     });
 
-    bons = (bonsRows||[]).map(function(b){
-      return {
-        id:b.id, num:b.num, fournisseur:b.fournisseur,
-        date:b.date, note:b.note||'',
-        statut:b.statut||'Bon',
-        chequeId:b.cheque_id||null,
-        chantierId:b.chantier_id||null,
-        lignes:Array.isArray(b.lignes)?b.lignes:(b.lignes?JSON.parse(b.lignes):[]),
-        total:parseFloat(b.total)||0,
-        totalNet:parseFloat(b.total_net)||0,
-        photoPath:b.photo_path||null,
-        skipStock:!!b.skip_stock,
-      };
-    });
-
-    cheques = (chRows||[]).map(function(c){
-      return {
-        id:c.id, num:c.num, fournisseur:c.fournisseur,
-        montant:parseFloat(c.montant)||0,
-        date:c.date, echeance:c.echeance||'',
-        status:c.status||'معلق',
-        type:c.type||'cheque',
-        paid_at:c.paid_at||null,
-        chantierId:c.chantier_id||null,
-        bonIds:Array.isArray(c.bon_ids)?c.bon_ids:(c.bon_ids?JSON.parse(c.bon_ids):[]),
-        photoPath:c.photo_path||null,
-      };
-    });
-
-    fournisseurs = (fourRows||[]).map(function(f){
-      return {id:f.id,nom:f.nom,tel:f.tel||'',ville:f.ville||'',email:f.email||'',cat:f.cat||'مورد',stat:f.stat||'نشيط',notes:f.notes||'',families:Array.isArray(f.families)?f.families:[]};
-    });
+    bons         = (bonsRows||[]).map(_normBon);
+    cheques      = (chRows||[]).map(_normCheque);
+    fournisseurs = (fourRows||[]).map(_normFour);
 
     nextBId = bons.length ? Math.max(...bons.map(b=>b.id))+1 : 1;
     saveCacheLS();
@@ -21781,12 +21790,19 @@ function _rtApply(table, event, row){
     case 'fournisseurs':  arr = (typeof fournisseurs !== 'undefined') ? fournisseurs : null; break;
   }
   if(!arr) return;
+  // Normalize snake_case → camelCase for tables that use a normalized
+  // in-memory shape. Without this, an UPDATE from realtime silently drops
+  // chequeId/totalNet/skipStock/etc. and breaks list filters + detail views.
+  var norm = (table==='bons' ? _normBon
+            : table==='cheques' ? _normCheque
+            : table==='fournisseurs' ? _normFour
+            : function(x){ return x; });
   if(event === 'INSERT'){
     // Skip duplicates (local optimistic insert may have already added it)
-    if(!arr.some(function(x){ return String(x.id) === String(row.id); })) arr.unshift(row);
+    if(!arr.some(function(x){ return String(x.id) === String(row.id); })) arr.unshift(norm(row));
   } else if(event === 'UPDATE'){
     var i = arr.findIndex(function(x){ return String(x.id) === String(row.id); });
-    if(i >= 0) arr[i] = row; else arr.unshift(row);
+    if(i >= 0) arr[i] = norm(row); else arr.unshift(norm(row));
   } else if(event === 'DELETE'){
     var old = row.old || row;
     var j = arr.findIndex(function(x){ return String(x.id) === String(old.id); });

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v126-wide-table-no-ellipsis';
+const CACHE = 'suivi-v127-realtime-normalize';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -5483,13 +5483,47 @@ function saveEditBon(id){
   delete _editBonOriginalLignes[id];
 
   const editedBon=bons.find(x=>x.id===id);
-  if(editedBon){
-    sbSaveBon(editedBon);
-    sendTelegramNotif(editedBon, {edited:true});
-  }
-  document.getElementById('modal-main').classList.remove('open');
-  renderBons();updateSidebar();
-  try{toast('✅ تم حفظ التعديلات','success');}catch(e){}
+  if(!editedBon){ return; }
+  // Await the save so we can surface a server error instead of silently
+  // toasting "تم الحفظ" while the new line never reached Supabase. We also
+  // sync local state with the returned row (via _normBon) so the in-memory
+  // bon matches what the server actually persisted — eliminates the
+  // "added line vanishes after refresh" race when realtime arrives late
+  // or the PATCH response differs from what we pushed.
+  try{ if(typeof showLoader==='function') showLoader('💾 جاري الحفظ...'); }catch(_){}
+  const _doSave = async function(){
+    try{
+      const data={
+        num:editedBon.num, fournisseur:editedBon.fournisseur, date:editedBon.date,
+        note:editedBon.note||'', statut:editedBon.statut||'Bon',
+        remise_type:editedBon.remiseType||'%', remise_val:editedBon.remiseVal||0,
+        total:editedBon.total||0, total_net:editedBon.totalNet||editedBon.total||0,
+        cheque_id:editedBon.chequeId||null, chantier_id:editedBon.chantierId||null,
+        lignes:editedBon.lignes||[], skip_stock: !!editedBon.skipStock,
+      };
+      const res = await sbFetch('bons?id=eq.'+editedBon.id, 'PATCH', data);
+      if(res && res.__sbError){ throw new Error(res.msg || ('HTTP '+res.status)); }
+      if(Array.isArray(res) && res[0]){
+        const norm = _normBon(res[0]);
+        const i = bons.findIndex(function(x){ return x.id===editedBon.id; });
+        if(i>=0) bons[i] = norm;
+      }
+      try{ saveCacheLS(); }catch(_){}
+      try{ sendTelegramNotif(editedBon, {edited:true}); }catch(_){}
+      document.getElementById('modal-main').classList.remove('open');
+      renderBons(); updateSidebar();
+      try{ hideLoader(); }catch(_){}
+      try{ toast('✅ تم حفظ التعديلات','success'); }catch(_){}
+    }catch(err){
+      try{ hideLoader(); }catch(_){}
+      console.error('saveEditBon failed:', err);
+      const emsg = (err && err.message) ? err.message : String(err);
+      try{ toast('⚠️ ما تخزنش: '+emsg.slice(0,120), 'error'); }catch(_){}
+      const msgEl = document.getElementById('eb-msg');
+      if(msgEl){ msgEl.style.color='var(--red)'; msgEl.textContent='⚠️ خطأ: '+emsg; }
+    }
+  };
+  _doSave();
 }
 
 function openLinkCheque(bonId){

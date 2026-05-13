@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v127-realtime-normalize';
+const CACHE = 'suivi-v128-editbon-await-save';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

@@ -5525,6 +5525,8 @@ function saveEditBon(id){
         lignes:editedBon.lignes||[], skip_stock: !!editedBon.skipStock,
       };
       console.log('[saveEditBon] PATCH bons/id='+editedBon.id, {lignesSent:data.lignes.length, total:data.total, payload:data});
+      // Tag this bon as recently saved so the realtime echo doesn't undo it
+      try{ _rtRecentSave[String(editedBon.id)] = Date.now(); }catch(_){}
       const res = await sbFetch('bons?id=eq.'+editedBon.id, 'PATCH', data);
       console.log('[saveEditBon] PATCH response', res);
       if(res && res.__sbError){ throw new Error(res.msg || ('HTTP '+res.status)); }
@@ -21849,6 +21851,9 @@ window.addEventListener('keydown', function(e){
 // jobs). Keeps the in-memory arrays + current view fresh without polling.
 // ═══════════════════════════════════════════════════════════════════
 var _rtChannels = [];
+// Map of recently saved bon ids → timestamp. Used to ignore realtime echo
+// events that would clobber the lignes we just patched ourselves.
+var _rtRecentSave = {};
 function _rtApply(table, event, row){
   // Map table → in-memory array. Update it in place, then rerender the active page.
   var arr = null, id = row && (row.id !== undefined ? row.id : row.old?.id);
@@ -21873,7 +21878,24 @@ function _rtApply(table, event, row){
     if(!arr.some(function(x){ return String(x.id) === String(row.id); })) arr.unshift(norm(row));
   } else if(event === 'UPDATE'){
     var i = arr.findIndex(function(x){ return String(x.id) === String(row.id); });
-    if(i >= 0) arr[i] = norm(row); else arr.unshift(norm(row));
+    // Anti-clobber: if we JUST saved this bon ourselves, ignore the echo
+    // — saveEditBon already updated bons[i] from a fresh server read. A
+    // stale realtime event would otherwise undo our just-saved lignes.
+    if(table==='bons' && i>=0 && _rtRecentSave[String(row.id)] && (Date.now() - _rtRecentSave[String(row.id)] < 8000)){
+      console.log('[realtime] skip own-echo for bons/id='+row.id, {ageMs:(Date.now()-_rtRecentSave[String(row.id)])});
+      return;
+    }
+    if(i >= 0){
+      var prev = arr[i];
+      arr[i] = norm(row);
+      if(table==='bons'){
+        var pn = (prev && prev.lignes && prev.lignes.length)||0;
+        var nn = (arr[i].lignes && arr[i].lignes.length)||0;
+        console.log('[realtime] UPDATE bons/id='+row.id, {prevLignes:pn, newLignes:nn});
+      }
+    } else {
+      arr.unshift(norm(row));
+    }
   } else if(event === 'DELETE'){
     var old = row.old || row;
     var j = arr.findIndex(function(x){ return String(x.id) === String(old.id); });

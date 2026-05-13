@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v130-editbon-verify-reload';
+const CACHE = 'suivi-v131-rt-anti-clobber';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

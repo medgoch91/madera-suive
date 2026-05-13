@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v131-rt-anti-clobber';
+const CACHE = 'suivi-v132-purge-stale-queue';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

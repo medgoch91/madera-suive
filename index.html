@@ -1958,6 +1958,18 @@ function _sbQueuePush(op){
   q.push(Object.assign({}, op, {queuedAt:new Date().toISOString()}));
   _sbQueueSave(q);
 }
+// Remove any queued PATCH for `bons?id=eq.<id>` so a fresh save can't be
+// undone by a stale offline-queue replay. Returns count purged.
+function _sbQueuePurgeBon(id){
+  try{
+    var q=_sbQueueLoad();
+    var key='bons?id=eq.'+id;
+    var keep=q.filter(function(op){ return !(op && op.table===key && op.method==='PATCH'); });
+    var purged = q.length - keep.length;
+    if(purged>0){ _sbQueueSave(keep); console.warn('[queue] purged '+purged+' stale PATCH(es) for '+key); }
+    return purged;
+  }catch(e){ console.warn('[queue] purge failed', e); return 0; }
+}
 function sbQueueCount(){ return _sbQueueLoad().length; }
 function _updateOfflineBadge(){
   var el=document.getElementById('offline-badge');
@@ -1978,7 +1990,25 @@ function _updateOfflineBadge(){
 async function drainSbQueue(){
   if(navigator.onLine===false){ _updateOfflineBadge(); return; }
   var q=_sbQueueLoad();
+  // Drop entries older than 1 hour — they're almost certainly stale at this
+  // point and replaying them would silently overwrite newer in-app edits.
+  // Most legit offline blips resolve in seconds; >1h means something went
+  // very wrong and the user has already moved on.
+  if(q.length){
+    var cutoff = Date.now() - 60*60*1000;
+    var fresh = q.filter(function(op){
+      var t = op && op.queuedAt ? Date.parse(op.queuedAt) : 0;
+      return t && t > cutoff;
+    });
+    if(fresh.length < q.length){
+      console.warn('[queue] dropped '+(q.length-fresh.length)+' stale ops (>1h old)');
+      _sbQueueSave(fresh);
+      q = fresh;
+    }
+  }
   if(!q.length){ _updateOfflineBadge(); return; }
+  console.warn('[queue] draining '+q.length+' queued ops:', q.map(function(op){return op.method+' '+op.table+' (q@'+op.queuedAt+')';}));
+  try{ if(typeof toast==='function') toast('🔄 جاري إعادة إرسال '+q.length+' عملية مخزّنة...','info'); }catch(_){}
   var remain=[];
   for(var i=0;i<q.length;i++){
     var op=q[i];
@@ -5527,6 +5557,12 @@ function saveEditBon(id){
       console.log('[saveEditBon] PATCH bons/id='+editedBon.id, {lignesSent:data.lignes.length, total:data.total, payload:data});
       // Tag this bon as recently saved so the realtime echo doesn't undo it
       try{ _rtRecentSave[String(editedBon.id)] = Date.now(); }catch(_){}
+      // Drop any stale offline-queue PATCH for this bon — otherwise
+      // drainSbQueue() on the next page-load / network blip would replay
+      // an OLD payload (with the pre-edit lignes) and silently revert
+      // our just-saved line. This is the most likely cause of "kygol lia
+      // mhfoud mais walo makaytenregesrach" reports.
+      try{ _sbQueuePurgeBon(editedBon.id); }catch(_){}
       const res = await sbFetch('bons?id=eq.'+editedBon.id, 'PATCH', data);
       console.log('[saveEditBon] PATCH response', res);
       if(res && res.__sbError){ throw new Error(res.msg || ('HTTP '+res.status)); }

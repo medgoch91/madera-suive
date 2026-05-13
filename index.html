@@ -8301,7 +8301,7 @@ function showArtCardMenu(id, ev){
     + mk('📋','تكرار','duplicateArticle('+id+')')
     + mk('📦','المخزون','promptArtStock('+id+')')
     + '<div style="height:1px;background:var(--border);margin:2px 0"></div>'
-    + mk('🗑️','حذف','deleteArticleDirect('+id+')', true);
+    + mk('🔇','خبّي (غير نشط)','deleteArticleDirect('+id+')', true);
   document.body.appendChild(menu);
   setTimeout(function(){
     const closer = function(e){ if(!menu.contains(e.target)){ if(menu.parentNode) menu.remove(); document.removeEventListener('click', closer); } };
@@ -8309,7 +8309,11 @@ function showArtCardMenu(id, ev){
   }, 0);
 }
 function deleteArticleDirect(id){
-  if(!confirm('تأكيد حذف السلعة؟')) return;
+  // Soft-delete (deleted_at = NOW) — same mechanism, friendlier wording.
+  // Article disappears from pickers + catalog but can be restored from
+  // 🗄️ المؤرشف. Photo + stock stay on disk; both cleared from local
+  // cache for tidiness.
+  if(!confirm('خبّي هاد السلعة؟ (تقدر ترجعها من 🗄️ المؤرشف ف أي وقت)')) return;
   articles = articles.filter(a=>a.id!==id);
   delArtPhoto(id);
   delArtStock(id);
@@ -8331,9 +8335,9 @@ function artToggleSelAll(ids, checked){
 function artClearSel(){ artSelected.clear(); renderArticles(); }
 async function artBulkDelete(){
   if(!artSelected.size) return;
-  if(!confirm('حذف '+artSelected.size+' سلعة نهائياً؟')) return;
+  if(!confirm('خبّي '+artSelected.size+' سلعة؟ (تقدر ترجعهم من 🗄️ المؤرشف)')) return;
   const ids = [...artSelected];
-  try{ if(typeof showLoader==='function') showLoader('🗑️ جاري الحذف...'); }catch(e){}
+  try{ if(typeof showLoader==='function') showLoader('🔇 جاري التخبئة...'); }catch(e){}
   try{
     for(const id of ids){
       try{ await sbDeleteArticle(id); }catch(e){}
@@ -8343,7 +8347,7 @@ async function artBulkDelete(){
     articles = articles.filter(a=>!artSelected.has(a.id));
     artSelected.clear();
     try{ if(typeof hideLoader==='function') hideLoader(); }catch(e){}
-    try{ toast('تم حذف '+ids.length+' سلعة','success'); }catch(e){}
+    try{ toast('تم تخبئة '+ids.length+' سلعة','success'); }catch(e){}
     renderArticles();
   }catch(e){
     try{ if(typeof hideLoader==='function') hideLoader(); }catch(ee){}
@@ -8526,12 +8530,39 @@ function addFamilyFromModal(){
     saveHiddenFamilies(hidden);
   }
   const fams = getArticleFamilies();
-  const dl = document.getElementById('ma-cat-list');
-  const chips = document.getElementById('ma-cat-chips');
-  const inp = document.getElementById('ma-cat');
-  if(dl) dl.innerHTML = fams.map(f=>'<option value="'+escB(f)+'">').join('');
-  if(chips) chips.innerHTML = fams.map(f=>'<button type="button" onclick="document.getElementById(\'ma-cat\').value='+JSON.stringify(f).replace(/"/g,'&quot;')+'" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:11px;font-family:Cairo,sans-serif;cursor:pointer">'+escB(f)+'</button>').join('');
-  if(inp) inp.value = name;
+  const sel = document.getElementById('ma-cat');
+  if(sel){
+    sel.innerHTML = '<option value="">— غير مصنف —</option>'
+      + fams.map(f=>'<option value="'+escB(f)+'"'+(f===name?' selected':'')+'>'+escB(f)+'</option>').join('');
+    sel.value = name;
+  }
+  toast('تمت إضافة "'+name+'"','success');
+}
+
+// Inline "add family" from the open-article modal: insert new family, refresh
+// the ea-cat <select> for this article, set it as current, and persist via
+// updateArticleField.
+function _eaPromptNewFamily(id){
+  const nn = prompt('اسم العائلة الجديدة:','');
+  if(nn===null) return;
+  const name = String(nn).trim();
+  if(!name){ toast('الاسم فارغ','warning'); return; }
+  const existing = getArticleFamilies();
+  if(existing.indexOf(name)<0){
+    const list = loadCustomFamilies();
+    list.push(name);
+    saveCustomFamilies(list);
+    const hidden = loadHiddenFamilies().filter(function(x){ return x!==name; });
+    saveHiddenFamilies(hidden);
+  }
+  const fams = getArticleFamilies();
+  const sel = document.getElementById('ea-cat');
+  if(sel){
+    sel.innerHTML = '<option value="">— غير مصنف —</option>'
+      + fams.map(f=>'<option value="'+escB(f)+'"'+(f===name?' selected':'')+'>'+escB(f)+'</option>').join('');
+    sel.value = name;
+    try{ updateArticleField(id, 'cat', name); }catch(e){ console.warn(e); }
+  }
   toast('تمت إضافة "'+name+'"','success');
 }
 
@@ -8760,7 +8791,7 @@ function renderArticles(){
           +'<button class="btn-ghost" onclick="artBulkMoveFamily()" style="font-size:12px;padding:6px 10px">🏷️ عائلة</button>'
           +'<button class="btn-ghost" onclick="artBulkSetStock()" style="font-size:12px;padding:6px 10px">📦 مخزون</button>'
           +'<button class="btn-ghost" onclick="artBulkSetPrice()" style="font-size:12px;padding:6px 10px">💰 سعر</button>'
-          +'<button class="btn-ghost" onclick="artBulkDelete()" style="color:var(--red);font-size:12px;padding:6px 10px">🗑️ حذف</button>'
+          +'<button class="btn-ghost" onclick="artBulkDelete()" style="color:#f59e0b;font-size:12px;padding:6px 10px">🔇 خبّي</button>'
           +'<button class="btn-ghost" onclick="artClearSel()" style="font-size:12px;padding:6px 10px">✖ إلغاء</button>'
         +'</div>'
       : '';
@@ -8837,7 +8868,13 @@ function openArticleModal(id){
   const a=articles.find(x=>x.id===id);if(!a)return;
   const fps=getFNoms().map(f=>({f,p:prix[a.id+'_'+f]||''}));
   let html='<div class="modal-title"><span>📦 '+a.nom+'</span><button class="modal-close" onclick="document.getElementById(\'modal-main\').classList.remove(\'open\')">✕</button></div>';
-  const famOpts = getArticleFamilies().map(f=>'<option value="'+escB(f)+'">').join('');
+  // Build <select> options. Current value may be a family that no longer
+  // appears in getArticleFamilies() (e.g., archived family) — include it as
+  // a fallback option so the dropdown can show the current state.
+  const _famsList = getArticleFamilies();
+  const _curCat = (a.cat || '').trim();
+  const _allFams = (_curCat && _famsList.indexOf(_curCat) < 0) ? [_curCat].concat(_famsList) : _famsList;
+  const famOpts = '<option value="">— غير مصنف —</option>' + _allFams.map(f=>'<option value="'+escB(f)+'"'+(_curCat===f?' selected':'')+'>'+escB(f)+'</option>').join('');
   const curPhoto = getArtPhoto(id);
   html+='<div style="display:flex;gap:12px;align-items:center;background:var(--bg3);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">'
     +'<div id="ea-photo-wrap" style="width:88px;height:88px;border-radius:10px;overflow:hidden;background:var(--bg2);border:1px solid var(--border);flex-shrink:0;position:relative">'
@@ -8858,8 +8895,10 @@ function openArticleModal(id){
       +'<datalist id="ea-unite-list"><option>قطعة</option><option>كغ</option><option>طن</option><option>لتر</option><option>م</option><option>م²</option><option>م³</option><option>كيس</option><option>علبة</option></datalist>'
     +'</div>'
     +'<div class="info-item"><div class="info-item-lbl">العائلة</div>'
-      +'<input class="field-inp" id="ea-cat" value="'+escB(a.cat||'')+'" list="ea-cat-list" placeholder="غير مصنف" style="width:100%" onchange="updateArticleField('+id+',\'cat\',this.value)">'
-      +'<datalist id="ea-cat-list">'+famOpts+'</datalist>'
+      +'<div style="display:flex;gap:6px;align-items:stretch">'
+        +'<select class="field-inp" id="ea-cat" style="flex:1" onchange="updateArticleField('+id+',\'cat\',this.value)">'+famOpts+'</select>'
+        +'<button type="button" onclick="_eaPromptNewFamily('+id+')" title="زيد عائلة جديدة" style="padding:0 12px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:rgba(147,51,234,0.10);color:var(--accent);font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">➕</button>'
+      +'</div>'
     +'</div>'
     +'<div class="info-item" style="grid-column:1/-1"><div class="info-item-lbl">المرجع (REF)</div>'
       +'<input class="field-inp" id="ea-ref" value="'+escB(a.ref||'')+'" placeholder="MDF-001" style="width:100%;font-family:monospace" onchange="updateArticleField('+id+',\'ref\',this.value)">'
@@ -8923,7 +8962,7 @@ function openArticleModal(id){
   }
 
   html+='<div style="margin-top:14px;display:flex;gap:10px">'
-    +'<button class="btn" style="flex:1;background:rgba(232,64,64,0.1);color:var(--red);border:1px solid rgba(232,64,64,0.3)" onclick="deleteArticle('+id+')">🗑️ حذف</button>'
+    +'<button class="btn" style="flex:1;background:rgba(245,158,11,0.1);color:#f59e0b;border:1px solid rgba(245,158,11,0.3)" onclick="deleteArticle('+id+')" title="خبّي / غير نشط — تقدر ترجعها من 🗄️ المؤرشف">🔇 خبّي (غير نشط)</button>'
     +'</div>';
   document.getElementById('modal-main-c').innerHTML=html;
   document.getElementById('modal-main').classList.add('open');
@@ -8961,14 +9000,11 @@ function openAddArticleModal(){
         +'</select></div>'
       +'<div class="form-full"><label class="field-lbl">العائلة / التصنيف</label>'
         +'<div style="display:flex;gap:6px;align-items:stretch">'
-          +'<input class="field-inp" id="ma-cat" list="ma-cat-list" placeholder="اكتب اسم العائلة (جديدة ولا اختر من تحت)" autocomplete="off" style="flex:1">'
+          +'<select class="field-inp" id="ma-cat" style="flex:1">'
+            +'<option value="">— غير مصنف —</option>'
+            + getArticleFamilies().map(f=>'<option value="'+escB(f)+'">'+escB(f)+'</option>').join('')
+          +'</select>'
           +'<button type="button" onclick="addFamilyFromModal()" title="إضافة عائلة جديدة" style="padding:0 14px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:rgba(147,51,234,0.12);color:var(--accent);font-family:Cairo,sans-serif;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">➕ جديدة</button>'
-        +'</div>'
-        +'<datalist id="ma-cat-list">'
-          + getArticleFamilies().map(f=>'<option value="'+escB(f)+'">').join('')
-        +'</datalist>'
-        +'<div id="ma-cat-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">'
-          + getArticleFamilies().map(f=>'<button type="button" onclick="document.getElementById(\'ma-cat\').value='+JSON.stringify(f).replace(/"/g,'&quot;')+'" style="padding:3px 10px;border-radius:14px;border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:11px;font-family:Cairo,sans-serif;cursor:pointer">'+escB(f)+'</button>').join('')
         +'</div>'
       +'</div>'
     +'</div>'
@@ -9057,7 +9093,7 @@ function flashSaved(inp, kind){
 }
 
 function deleteArticle(id){
-  if(!confirm('تأكيد حذف السلعة؟'))return;
+  if(!confirm('خبّي هاد السلعة؟ (تقدر ترجعها من 🗄️ المؤرشف ف أي وقت)'))return;
   articles=articles.filter(a=>a.id!==id);
   delArtPhoto(id);
   delArtStock(id);

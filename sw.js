@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v117-pwa-mobile-bot';
+const CACHE = 'suivi-v118-articles-hide-fams-select';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

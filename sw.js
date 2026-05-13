@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v121-bon-picker-prix-union';
+const CACHE = 'suivi-v122-prix-mirror-splinks';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg'];
 
 self.addEventListener('install', (e) => {

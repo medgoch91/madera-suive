@@ -7357,6 +7357,14 @@ function addPrixFourModal(nom){
   if(p<=0){ toast('أدخل سعر صحيح','warning'); return; }
   prix[artId+'_'+nom] = p;
   sbSavePrix(artId, nom, p);
+  // Mirror into supplier_products so the bon picker sees the link even before
+  // the first bon is saved. Without this, articles linked via "+ ربط" only
+  // existed in legacy `prix` and never surfaced in the new-bon dropdown.
+  const fourObj = fournisseurs.find(function(x){ return x.nom===nom; });
+  if(fourObj && typeof sbUpsertSupplierProduct==='function'){
+    spLinks[fourObj.id+'_'+artId] = p;
+    try{ sbUpsertSupplierProduct(fourObj.id, artId, p); }catch(e){ console.warn(e); }
+  }
   // Refresh modal
   document.getElementById('modal-main').classList.remove('open');
   setTimeout(function(){ openFModal(nom); }, 100);

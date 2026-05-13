@@ -210,11 +210,17 @@ export async function jobWorkersEod(): Promise<Response> {
     return rows.map(t => String(t.date_to || '')).sort().pop() || '0000-01-01';
   };
 
-  const salLines: { name: string; gross: number; avances: number; net: number }[] = [];
+  // Each worker has gross (what they earned since last tasweya), avances
+  // (unpaid advances), payable = max(0, gross − avances), and rollover =
+  // max(0, avances − gross). The bot reports "what's left to pay" (payable)
+  // and surfaces rollover separately so the boss doesn't get a confusing
+  // negative number when an advance exceeded the earnings.
+  type WorkerLine = { name: string; gross: number; avances: number; payable: number; rollover: number };
+
+  const salLines: WorkerLine[] = [];
   for (const s of salList) {
     const cutoff = lastSalTaswiyaCutoff(s.id);
     const myPres = allSalPres.filter(p => Number(p.salarie_id) === s.id && String(p.date) > cutoff);
-    if (!myPres.length) continue;
     const base = Number(s.salaire_base || 0);
     let gross = 0;
     for (const p of myPres) {
@@ -224,21 +230,24 @@ export async function jobWorkersEod(): Promise<Response> {
       const tx = Number(p.taux_horaire || s.taux_hsup || 0);
       gross += hs * tx;
     }
-    if (gross <= 0.005) continue;
     const av = salAv.filter(a => Number(a.salarie_id) === s.id && !a.rembourse).reduce((t, a) => t + Number(a.montant || 0), 0);
+    const payable  = Math.max(0, gross - av);
+    const rollover = Math.max(0, av - gross);
+    if (payable <= 0.005 && rollover <= 0.005) continue;
     const fullName = ((s.nom || '?') + (s.prenom ? ' ' + s.prenom : '')).trim();
-    salLines.push({ name: fullName, gross, avances: av, net: gross - av });
+    salLines.push({ name: fullName, gross, avances: av, payable, rollover });
   }
 
-  const pcLines: { name: string; gross: number; avances: number; net: number }[] = [];
+  const pcLines: WorkerLine[] = [];
   for (const o of pcList) {
     const cutoff = lastPcTaswiyaCutoff(o.id);
     const myPres = allPcPres.filter(p => Number(p.ouvrier_id) === o.id && String(p.date) > cutoff);
-    if (!myPres.length) continue;
     const gross = myPres.reduce((t, p) => t + Number(p.qte || 0) * Number(p.prix || 0), 0);
-    if (gross <= 0.005) continue;
     const av = pcAv.filter(a => Number(a.ouvrier_id) === o.id && !a.rembourse).reduce((t, a) => t + Number(a.montant || 0), 0);
-    pcLines.push({ name: o.nom || ('PC #' + o.id), gross, avances: av, net: gross - av });
+    const payable  = Math.max(0, gross - av);
+    const rollover = Math.max(0, av - gross);
+    if (payable <= 0.005 && rollover <= 0.005) continue;
+    pcLines.push({ name: o.nom || ('PC #' + o.id), gross, avances: av, payable, rollover });
   }
 
   // Subcontracted technicians (électricité à distance) — running due:
@@ -269,27 +278,36 @@ export async function jobWorkersEod(): Promise<Response> {
   }
 
   if (salLines.length || pcLines.length || techLines.length) {
-    const fmtSign = (n: number) => (n >= 0 ? fmtMoney(n) : '−' + fmtMoney(Math.abs(n)));
     text += '\n━━━━━━━━━━━━━━━━━━\n*💰 المعلق التراكمي — كيخلصو غادي:*\n';
     let bigTotal = 0;
+    let bigRollover = 0;
+    const renderWorkerLine = (l: WorkerLine): string => {
+      let line = `• ${l.name} → `;
+      if (l.payable > 0.005) {
+        line += `*${fmtMoney(l.payable)} د.م.*`;
+        if (l.avances > 0.005) line += `  _(${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
+      } else {
+        // Avances exceed gross → nothing to pay this period; show rollover.
+        line += `*0 د.م.*  🔄 _سلف فايضة: ${fmtMoney(l.rollover)} (كتمشي للأسبوع الجاي)_`;
+      }
+      return line + '\n';
+    };
     if (salLines.length) {
       text += '\n👥 أجراء:\n';
-      salLines.sort((a, b) => b.net - a.net);
+      salLines.sort((a, b) => b.payable - a.payable);
       for (const l of salLines) {
-        bigTotal += l.net;
-        text += `• ${l.name} → *${fmtSign(l.net)} د.م.*`;
-        if (l.avances > 0.005) text += `  _(إجمالي ${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
-        text += '\n';
+        bigTotal += l.payable;
+        bigRollover += l.rollover;
+        text += renderWorkerLine(l);
       }
     }
     if (pcLines.length) {
       text += '\n👷 PCs:\n';
-      pcLines.sort((a, b) => b.net - a.net);
+      pcLines.sort((a, b) => b.payable - a.payable);
       for (const l of pcLines) {
-        bigTotal += l.net;
-        text += `• ${l.name} → *${fmtSign(l.net)} د.م.*`;
-        if (l.avances > 0.005) text += `  _(${fmtMoney(l.gross)} − سلف ${fmtMoney(l.avances)})_`;
-        text += '\n';
+        bigTotal += l.payable;
+        bigRollover += l.rollover;
+        text += renderWorkerLine(l);
       }
     }
     if (techLines.length) {
@@ -300,8 +318,9 @@ export async function jobWorkersEod(): Promise<Response> {
         text += `• ${l.name} → *${fmtMoney(l.due)} د.م.*  _(${fmtMoney(l.earned)} − دفعات ${fmtMoney(l.paid)})_\n`;
       }
     }
-    text += `\n🎯 *المجموع المعلق: ${fmtSign(bigTotal)} د.م.*\n`;
-    text += `_ℹ️ كيتراكم كل يوم. كيرجع 0 ملي تسجل تسوية._`;
+    text += `\n🎯 *المجموع المعلق: ${fmtMoney(bigTotal)} د.م.*`;
+    if (bigRollover > 0.005) text += `  _(+ سلف فايضة ${fmtMoney(bigRollover)} كترصد)_`;
+    text += `\n_ℹ️ كيتراكم كل يوم. كيرجع 0 ملي تسجل تسوية._`;
   }
 
   const sent = await broadcastTelegram(text);

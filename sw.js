@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v153-facture-cleanup-en-attente';
+const CACHE = 'suivi-v154-facture-legal-stick-bottom';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

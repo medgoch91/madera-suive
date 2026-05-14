@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v164-fact-side-clickable-date-box';
+const CACHE = 'suivi-v165-facture-no-unpay-button';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

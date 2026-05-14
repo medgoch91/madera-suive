@@ -8609,18 +8609,22 @@ function buildChequePrintHTML(d){
 
 // Send the HTML to the hidden iframe to trigger browser print
 function sendChequeToPrinter(html){
-  let frame = document.getElementById('pc-print-frame');
-  if(!frame){
-    // If the print-cheque page isn't mounted, create a one-shot iframe on body
-    frame = document.createElement('iframe');
-    frame.id = 'pc-print-frame-tmp';
-    frame.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:0;height:0;border:0;';
-    document.body.appendChild(frame);
-    setTimeout(()=>{ try{ frame.remove(); }catch(e){} }, 8000);
+  // Open a dedicated print window. iframe-based printing has a long history
+  // of confusing the browser into printing the PARENT document (the whole
+  // suivi app) instead of the cheque, which is what the user just hit:
+  // "ikhro 2 wra9 ou cheque fih ha wr9a aslan" — 2 pages, no cheque on
+  // either. A standalone window.open is the deterministic fix and matches
+  // the printTaswiyaRow pattern that's been working in production.
+  const w = window.open('', '_blank', 'width=900,height=600');
+  if(!w){
+    try{ toast('⚠️ نافذة الطباعة محظورة — اسمح للموقع بفتح النوافذ المنبثقة','warning'); }catch(e){}
+    return;
   }
-  frame.style.display='block';
-  frame.srcdoc = html;
-  setTimeout(()=>{ frame.style.display='none'; }, 4000);
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // The HTML's inline script tag (window.onload=>window.print()+close)
+  // takes over from here.
 }
 
 function doPrint(){
@@ -8637,9 +8641,9 @@ function doPrint(){
   }
   const ech=document.getElementById('pc-echeance').value;
   const ville=document.getElementById('pc-ville').value.trim();
-  const html = buildChequePrintHTML({ordre, montant, date, ville});
+  const html = buildChequePrintHTML({ordre, montant, date, ville, echeance:ech, type:printMode});
   sendChequeToPrinter(html);
-  printHistory.unshift({id:Date.now(),ordre,montant,date,echeance:ech,status:'غير مدفوع'});
+  printHistory.unshift({id:Date.now(),ordre,montant,date,echeance:ech,type:printMode,status:'غير مدفوع'});
   localStorage.setItem('print_history',JSON.stringify(printHistory.slice(0,50)));
   renderPrintHistory();
   msg.style.color='var(--green)';msg.textContent=dup?'✅ تم إرسال الشيك للطابعة (تكرار)':'✅ تم إرسال الشيك للطابعة';

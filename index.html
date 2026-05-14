@@ -21903,7 +21903,7 @@ function _buildFactureHtml(id){
     .items td{padding:16px 12px;border-bottom:1px solid var(--rule);font-size:13px;}
     .items td.num{text-align:right;font-variant-numeric:tabular-nums;}
     .items .designation{font-weight:500;}
-    .totaux-wrapper{display:grid;grid-template-columns:1fr 320px;gap:30px;margin-top:80px;margin-bottom:35px;}
+    .totaux-wrapper{display:grid;grid-template-columns:1fr 320px;gap:30px;margin-top:160px;margin-bottom:35px;}
     .montant-lettres{padding:20px;background:var(--accent-soft);border-left:3px solid var(--gold);font-size:12px;line-height:1.6;font-style:italic;}
     .montant-lettres strong{font-style:normal;display:block;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);margin-bottom:6px;font-weight:600;}
     .totaux{background:#fff;padding:20px 24px;}
@@ -21946,7 +21946,7 @@ function _buildFactureHtml(id){
       .items{margin-bottom:14px;}
       .items th{padding:8px 9px;font-size:9px;}
       .items td{padding:8px 9px;font-size:11px;}
-      .totaux-wrapper{margin-top:50px;margin-bottom:14px;gap:18px;}
+      .totaux-wrapper{margin-top:100px;margin-bottom:14px;gap:18px;}
       .montant-lettres{padding:10px 14px;font-size:11px;}
       .totaux{padding:10px 14px;}
       .total-row{font-size:11px;padding:4px 0;}
@@ -22072,7 +22072,9 @@ function _buildFactureHtml(id){
         +'</div>':'')
         +'<div class="signatures">'
           +'<div class="signature-box">'
-            +(soc.signature?'<img src="'+soc.signature+'" alt="signature" style="max-height:110px;max-width:240px;display:block;margin:0 auto;object-fit:contain">':'')
+            +(soc.signature
+              ? '<img src="'+escB(soc.signature)+'" alt="signature" crossorigin="anonymous" style="max-height:120px;max-width:260px;display:block;margin:0 auto;object-fit:contain" onerror="this.style.display=\'none\'">'
+              : '<div style="font-size:10px;color:#bbb;letter-spacing:2px">⚠️ Aucune signature configurée<br><span style="font-size:9px">Réglages → Société → Signature</span></div>')
           +'</div>'
         +'</div>'
       +'</footer>'

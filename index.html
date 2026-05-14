@@ -20241,6 +20241,32 @@ let factNewDate=new Date().toISOString().split('T')[0];
 let factNewEcheance='';
 let factNewNotes='';
 let factNewNumOverride=null; // null = auto; integer = explicit user-chosen num (for migration/starting point)
+// When non-null, the new-facture form is in EDIT mode for that facture id.
+// _factSaveNewImpl PATCHes instead of POSTing; factClearDraft / factGoto
+// reset it back to null so the next "+ New" starts fresh.
+let factEditingId=null;
+function factOpenEdit(id){
+  const f=factures.find(function(x){return x.id===id;});
+  if(!f){ try{ toast('الفاتورة غير موجودة','error'); }catch(e){} return; }
+  factEditingId=id;
+  factNewClient=f.client_nom||'';
+  factNewVille=f.client_ville||'';
+  factNewIce=f.client_ice||'';
+  factNewDate=f.date||new Date().toISOString().split('T')[0];
+  factNewEcheance=f.echeance||'';
+  factNewNotes=f.notes||'';
+  const _ls=Array.isArray(f.lignes)?f.lignes.slice():(typeof f.lignes==='string'?JSON.parse(f.lignes||'[]'):[]);
+  factNewLignes=_ls.length?_ls.map(function(l){return Object.assign({},l);}):[factBlankLigne()];
+  while(factNewLignes.length<FACT_MIN_ROWS) factNewLignes.push(factBlankLigne());
+  try{ factMode=f.mode||'ht'; }catch(e){}
+  try{ factLang=f.lang||'fr'; }catch(e){}
+  factNewNumOverride=Number(f.num)||null;
+  try{ factNewAsDevis=(f.statut==='ديفي'); }catch(e){}
+  factSubPage='new';
+  try{ if(typeof uiSaveFactSub==='function') uiSaveFactSub('new'); }catch(e){}
+  renderFactures();
+  try{ toast('✏️ عدّل الفاتورة وكبس "💾 حفظ"','info'); }catch(e){}
+}
 
 // ── Draft persistence (survives page refresh) ──
 const FACT_DRAFT_KEY='fact_new_draft_v1';
@@ -20646,7 +20672,14 @@ function factDuplicate(id){
   renderFactures();
 }
 
-function factGoto(k){factSubPage=k;try{uiSaveFactSub(k);}catch(e){}renderFactures();}
+function factGoto(k){
+  // Leaving the new-facture form drops the "editing" lock so the next
+  // "+ New" doesn't accidentally PATCH the row the user was editing.
+  if(k!=='new') factEditingId=null;
+  factSubPage=k;
+  try{uiSaveFactSub(k);}catch(e){}
+  renderFactures();
+}
 
 // ─── Devis ↔ Facture conversion ──────────────────────────────
 // Facture photo modal — view + replace + share + delete
@@ -20895,7 +20928,7 @@ function buildFactTable(rows){
 
       // Actions
       +'<div style="flex-shrink:0;display:flex;gap:6px;align-items:center">'
-        +'<button onclick="factEditNum('+f.id+')" title="تعديل رقم الفاتورة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(147,51,234,0.3);background:transparent;color:var(--accent);cursor:pointer;font-size:13px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(147,51,234,0.08)\'" onmouseout="this.style.background=\'transparent\'">✏️</button>'
+        +'<button onclick="factOpenEdit('+f.id+')" title="تعديل الفاتورة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(147,51,234,0.3);background:transparent;color:var(--accent);cursor:pointer;font-size:13px;transition:all 0.15s" onmouseover="this.style.background=\'rgba(147,51,234,0.08)\'" onmouseout="this.style.background=\'transparent\'">✏️</button>'
         +'<button onclick="factPrint('+f.id+')" title="طباعة" style="min-width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:14px;transition:all 0.15s" onmouseover="this.style.background=\'var(--bg3)\'" onmouseout="this.style.background=\'transparent\'">🖨</button>'
         +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="min-width:36px;height:36px;border-radius:9px;border:1px solid rgba(6,182,212,0.3);background:rgba(6,182,212,0.08);color:#06b6d4;cursor:pointer;font-size:14px;transition:all 0.15s">📨</button>'
         +'<button onclick="factToggleStatut('+f.id+')" title="'+(isPaid?'تحويل لمعلقة':'تحويل لمدفوعة')+'" style="min-width:36px;height:36px;border-radius:9px;border:1px solid '+(isPaid?'rgba(245,158,11,0.3)':'rgba(34,197,94,0.3)')+';background:transparent;color:'+(isPaid?'var(--amber)':'var(--green)')+';cursor:pointer;font-size:15px;font-weight:700;transition:all 0.15s">'+(isPaid?'↩':'✓')+'</button>'
@@ -21064,7 +21097,8 @@ function renderFactNew(){
         +'<input type="checkbox" '+(factNewAsDevis?'checked':'')+' onchange="factToggleAsDevis(this.checked)" style="margin:0;cursor:pointer;accent-color:#a78bfa">'
         +'<span>📝 احفظ كـ <b style="color:#a78bfa">ديفي</b> (machi facture مباشرة) — ت9دري tحوّلو لفاتورة b3da</span>'
       +'</label>'
-      +'<button id="btn-save-fact" onclick="factSaveNew()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 16px rgba(79,142,247,0.35);transition:opacity 0.15s" onmouseover="this.style.opacity=\'0.9\'" onmouseout="this.style.opacity=\'1\'">💾 حفظ '+(factNewAsDevis?'الديفي':'الفاتورة')+'</button>'
+      +'<button id="btn-save-fact" onclick="factSaveNew()" style="width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border:none;border-radius:12px;font-family:Cairo,sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:8px;box-shadow:0 4px 16px rgba(79,142,247,0.35);transition:opacity 0.15s" onmouseover="this.style.opacity=\'0.9\'" onmouseout="this.style.opacity=\'1\'">'+(factEditingId?('💾 حفظ التعديلات #'+(factNewNumOverride||'')):('💾 حفظ '+(factNewAsDevis?'الديفي':'الفاتورة')))+'</button>'
+      +(factEditingId?'<div style="text-align:center;font-size:11px;color:var(--amber);margin-bottom:8px;padding:6px 10px;background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:8px">✏️ وضع التعديل — الرقم ما كاديرش، الباقي قابل للتعديل</div>':'')
 
       // Cancel button
       +'<button onclick="factGoto(\'list\')" style="width:100%;padding:11px;background:transparent;border:1px solid var(--border);border-radius:12px;font-family:Cairo,sans-serif;font-size:13px;color:var(--text2);cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor=\'var(--text3)\'" onmouseout="this.style.borderColor=\'var(--border)\'">إلغاء</button>'
@@ -21199,6 +21233,38 @@ async function _factSaveNewImpl(){
       });
       var locMax=_yearFacts.length?Math.max.apply(null,_yearFacts.map(function(f){return Number(f.num)||0;})):0;
       return Math.max(srvMax, locMax)+1;
+    }
+
+    // ── EDIT mode: PATCH the existing facture row in place ──
+    if(factEditingId){
+      const existing = factures.find(function(x){return x.id===factEditingId;});
+      if(!existing){ throw new Error('الفاتورة الأصلية ما تلقاوش — '+factEditingId); }
+      const editPayload = {
+        client_id: clt?clt.id:existing.client_id||null,
+        client_nom: clientNom, client_ville: ville, client_ice: ice,
+        date: factNewDate, echeance: factNewEcheance||null,
+        lang: factLang, mode: factMode,
+        lignes: validLignes,
+        total_ht: Math.round(ht*100)/100,
+        total_tva: Math.round(tva*100)/100,
+        total_ttc: Math.round(ttc*100)/100,
+        notes: factNewNotes,
+      };
+      const editRes = await sbFetch('factures?id=eq.'+factEditingId, 'PATCH', editPayload);
+      if(editRes && editRes.__sbError){ throw new Error(sbParseError(editRes.msg)); }
+      // Refresh in-memory row
+      Object.assign(existing, editPayload, {id: factEditingId});
+      existing.lignes = validLignes;
+      saveCacheLS();
+      hideLoader();
+      if(msg){ msg.style.color='var(--green)'; msg.textContent='✅ تم حفظ التعديلات!'; }
+      const savedId = factEditingId;
+      factEditingId = null;
+      factNewLignes=[factBlankLigne(),factBlankLigne(),factBlankLigne(),factBlankLigne()];
+      factNewClient=''; factNewVille=''; factNewIce=''; factNewNotes=''; factNewNumOverride=null;
+      factClearDraft();
+      setTimeout(function(){ factGoto('list'); }, 600);
+      return;
     }
 
     // ── Step 4: COMMIT — save facture with retry on num conflict (max 5 attempts) ──

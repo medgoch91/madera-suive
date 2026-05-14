@@ -21917,9 +21917,9 @@ function _buildFactureHtml(id){
     .footer-block-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:10px;}
     .footer-block-content{font-size:11px;color:var(--muted);line-height:1.7;}
     .footer-block-content strong{color:var(--ink);font-weight:500;}
-    .signatures{display:flex;justify-content:center;margin-top:40px;}
+    .signatures{display:flex;justify-content:center;margin-top:40px;margin-bottom:50px;}
     .signature-box{text-align:center;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
-    .legal-mentions{margin-top:30px;padding-top:20px;border-top:1px solid var(--rule);font-size:9px;color:var(--muted);line-height:1.6;text-align:center;}
+    .legal-mentions{margin-top:60px;padding-top:20px;border-top:1px solid var(--rule);font-size:9px;color:var(--muted);line-height:1.6;text-align:center;}
     .ornament{text-align:center;color:var(--gold);font-size:14px;letter-spacing:20px;margin:15px 0;opacity:0.4;}
     @media print{
       @page{size:A4;margin:0;}
@@ -21952,8 +21952,8 @@ function _buildFactureHtml(id){
       .footer{padding-top:12px;}
       .payment-info{gap:18px;margin-bottom:14px;}
       .footer-block-content{font-size:10px;line-height:1.45;}
-      .signatures{margin-top:18px;}
-      .legal-mentions{margin-top:14px;padding-top:10px;font-size:8px;line-height:1.4;}
+      .signatures{margin-top:22px;margin-bottom:32px;}
+      .legal-mentions{margin-top:36px;padding-top:12px;font-size:8px;line-height:1.4;}
       .ornament{margin:6px 0;}
       /* Stop any descendant from splitting onto a 2nd page */
       .header,.meta-grid,.parties,.party,.totaux-wrapper,.totaux,.montant-lettres,.footer,.payment-info,.signatures{
@@ -21992,7 +21992,7 @@ function _buildFactureHtml(id){
         +'<div class="facture-title-block">'
           +'<div class="facture-label">Facture</div>'
           +'<div class="facture-numero">N° '+numStr+'</div>'
-          +'<span class="status-badge'+(isPaid?' paid':'')+'">'+(isPaid?'Payée':'En attente')+'</span>'
+          +(isPaid?'<span class="status-badge paid">Payée</span>':'')
         +'</div>'
       +'</header>'
 

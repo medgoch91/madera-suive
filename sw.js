@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v152-facture-print-fit-1page';
+const CACHE = 'suivi-v153-facture-cleanup-en-attente';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

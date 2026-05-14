@@ -7899,16 +7899,16 @@ const CHEQUE_CFG_DEFAULTS = {
 // Storage is `effet_cfg` (separate from `cheque_cfg`) so calibrating effet
 // doesn't clobber the cheque calibration and vice versa.
 const EFFET_CFG_DEFAULTS = {
-  echeance: {top:5,  left:141, width:28,  size:11, spacing:0,   align:'left',   font:'mono',  weight:700},
-  montant:  {top:12, left:141, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
-  // lettres1 wraps freely on effet — 3+ visual lines fit at width:39mm. lettres2
+  echeance: {top:5,  left:141, width:25,  size:11, spacing:0,   align:'left',   font:'mono',  weight:700},
+  montant:  {top:13, left:138, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
+  // lettres1 wraps freely on effet — 3+ visual lines fit at width:35mm. lettres2
   // stays unused (parked off the visible area) so it can't accidentally print
   // duplicate text on top of the wrapped lettres1.
-  lettres1: {top:26, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  lettres2: {top:90, left:137, width:39,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  ordre:    {top:24, left:70,  width:50,  size:12, spacing:0,   align:'left',   font:'serif', weight:600},
-  ville:    {top:34, left:44,  width:25,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  date:     {top:34, left:70,  width:25,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
+  lettres1: {top:26, left:140, width:35,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  lettres2: {top:90, left:140, width:35,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  ordre:    {top:25, left:70,  width:50,  size:12, spacing:0,   align:'left',   font:'serif', weight:600},
+  ville:    {top:36, left:46,  width:22,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
+  date:     {top:36, left:69,  width:24,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
   signature:{top:50, left:140, width:35, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
 // Which storage key to use for the active print mode.
@@ -7966,6 +7966,18 @@ let _pcCfgCheque = (function(){
   }
   return out;
 })();
+// One-time migration v2 — earlier builds (v135-v141) shipped first-pass effet
+// positions that didn't actually match the CDM lettre de change template the
+// user supplied. The current EFFET_CFG_DEFAULTS were measured against a real
+// filled effet (GADIMAT, 03/07/2026, 31268.16). Clear the stored effet_cfg
+// once so users on those earlier builds pick up the corrected defaults
+// instead of having their stale calibration override us.
+try{
+  if(!localStorage.getItem('effet_cfg_mig_v2')){
+    localStorage.removeItem('effet_cfg');
+    localStorage.setItem('effet_cfg_mig_v2','1');
+  }
+}catch(e){}
 let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);
 let chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque;
 // Keep both copies in sync with whatever the active one mutates to.

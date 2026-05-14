@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v149-print-one-page-force';
+const CACHE = 'suivi-v150-page-cheque-size-back';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

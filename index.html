@@ -8609,15 +8609,15 @@ function buildChequePrintHTML(d){
     : `<div class="f wrap ${cl('lettres2')}" style="${fs('lettres2')}">${esc(l2.toUpperCase())}</div>`;
   return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title>
     <style>
-    /* Page is the exact cheque size — when the user feeds real cheque
-       paper (176mm × 80mm), the printer prints one cheque per page with
-       NO scaling. When testing on A4, the browser shrinks/letterboxes
-       this small page into the A4 sheet (Mac & Windows do this slightly
-       differently but the *real* cheque paper output is identical). */
-    @page{size:176mm 80mm;margin:0;}
+    /* Use A4 portrait as the virtual page size — that way Mac Chrome and
+       Windows Chrome render identically (no Windows-only scale-down). The
+       cheque content stays fixed at 176mm × 80mm in the top-left of the
+       A4 sheet, so the user can align real cheque paper against the A4
+       edge or feed actual cheque paper sized 176×80mm in the printer
+       (most printers auto-fit; if not, set Custom 176×80mm in dialog). */
+    @page{size:210mm 297mm;margin:0;}
     @media print{
-      html{width:176mm!important;height:80mm!important;max-height:80mm!important;overflow:hidden!important;}
-      body{margin:0!important;padding:0!important;width:176mm!important;height:80mm!important;max-height:80mm!important;overflow:hidden!important;page-break-after:avoid!important;break-after:avoid!important;}
+      html,body{margin:0!important;padding:0!important;}
       body>*:not(.w){display:none!important;}
       .w{page-break-after:avoid!important;page-break-inside:avoid!important;break-after:avoid!important;break-inside:avoid!important;}
     }

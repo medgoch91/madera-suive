@@ -20635,10 +20635,10 @@ function renderFactSideBody(){
         ?'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(34,197,94,0.15);color:var(--green);font-weight:700">✓ مدفوعة</span>'
         :'<span style="font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(245,158,11,0.15);color:var(--amber);font-weight:700">⏳ معلقة</span>');
     var convertBtn=isDevis
-      ? '<button onclick="factConvertDevis('+f.id+')" style="flex:1;padding:5px;background:rgba(147,51,234,0.12);border:1px solid rgba(147,51,234,0.4);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">✅ حول لفاتورة</button>'
-      : (isPaid ? '' : '<button onclick="factToDevis('+f.id+')" title="حول رجوع ل ديفي" style="padding:5px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">📝</button>');
-    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:all 0.15s;cursor:default" '
-      +'onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">'
+      ? '<button onclick="event.stopPropagation();factConvertDevis('+f.id+')" style="flex:1;padding:5px;background:rgba(147,51,234,0.12);border:1px solid rgba(147,51,234,0.4);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">✅ حول لفاتورة</button>'
+      : (isPaid ? '' : '<button onclick="event.stopPropagation();factToDevis('+f.id+')" title="حول رجوع ل ديفي" style="padding:5px 8px;background:transparent;border:1px solid var(--border);border-radius:6px;color:#a78bfa;font-size:10px;font-weight:700;cursor:pointer">📝</button>');
+    return '<div onclick="factOpenEdit('+f.id+')" title="افتح للتعديل" style="background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:all 0.15s;cursor:pointer" '
+      +'onmouseover="this.style.borderColor=\'var(--accent)\';this.style.background=\'rgba(147,51,234,0.06)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'var(--bg3)\'">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'
         +'<div style="font-family:monospace;font-size:11px;font-weight:800;color:'+(isDevis?'#a78bfa':'var(--accent)')+'">'+num+'</div>'
         +badge
@@ -20649,10 +20649,10 @@ function renderFactSideBody(){
         +'<div style="font-size:13px;font-weight:800;color:var(--green)">'+fmtN(Number(f.total_ttc||0))+' DH</div>'
       +'</div>'
       +'<div style="display:flex;gap:4px;margin-top:8px;flex-wrap:wrap">'
-        +'<button onclick="factPrint('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-weight:700;cursor:pointer">🖨️ طبع</button>'
-        +'<button onclick="factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="padding:5px 8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:6px;color:#06b6d4;font-size:10px;font-weight:700;cursor:pointer">📨</button>'
-        +'<button onclick="openFacturePhoto('+f.id+')" title="'+(f.photo_path?'شوف الصورة':'زيد صورة')+'" style="padding:5px 8px;background:'+(f.photo_path?'rgba(16,185,129,0.12)':'transparent')+';border:1px solid '+(f.photo_path?'rgba(16,185,129,0.4)':'var(--border)')+';border-radius:6px;color:'+(f.photo_path?'#10b981':'var(--text2)')+';font-size:10px;font-weight:700;cursor:pointer">📷</button>'
-        +'<button onclick="factDuplicate('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--accent);font-size:10px;font-weight:700;cursor:pointer">📋 نسخ</button>'
+        +'<button onclick="event.stopPropagation();factPrint('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:10px;font-weight:700;cursor:pointer">🖨️ طبع</button>'
+        +'<button onclick="event.stopPropagation();factShareToTelegram('+f.id+')" title="إرسال للتليجرام" style="padding:5px 8px;background:rgba(6,182,212,0.1);border:1px solid rgba(6,182,212,0.3);border-radius:6px;color:#06b6d4;font-size:10px;font-weight:700;cursor:pointer">📨</button>'
+        +'<button onclick="event.stopPropagation();openFacturePhoto('+f.id+')" title="'+(f.photo_path?'شوف الصورة':'زيد صورة')+'" style="padding:5px 8px;background:'+(f.photo_path?'rgba(16,185,129,0.12)':'transparent')+';border:1px solid '+(f.photo_path?'rgba(16,185,129,0.4)':'var(--border)')+';border-radius:6px;color:'+(f.photo_path?'#10b981':'var(--text2)')+';font-size:10px;font-weight:700;cursor:pointer">📷</button>'
+        +'<button onclick="event.stopPropagation();factDuplicate('+f.id+')" style="flex:1;padding:5px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--accent);font-size:10px;font-weight:700;cursor:pointer">📋 نسخ</button>'
         +convertBtn
       +'</div>'
     +'</div>';
@@ -22006,7 +22006,15 @@ function _buildFactureHtml(id){
     .company-info strong{color:var(--ink);font-weight:500;}
     .facture-title-block{text-align:right;}
     .facture-label{font-family:'Fraunces',serif;font-size:42px;font-weight:400;letter-spacing:-1px;line-height:1;margin-bottom:8px;}
-    .facture-numero{display:inline-block;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:1.5px;margin-top:14px;margin-bottom:18px;padding:8px 18px;border:2px solid var(--ink);border-radius:6px;background:#fff;}
+    /* Paired meta-row under the FACTURE title: N° box and date box live
+       side-by-side, mirror-styled. Stacks vertically on the tight print
+       page (see @media print below). */
+    .facture-meta-pair{display:flex;gap:10px;justify-content:flex-end;align-items:stretch;margin-top:14px;margin-bottom:18px;flex-wrap:wrap;}
+    .facture-numero,.facture-date{display:inline-flex;flex-direction:column;align-items:flex-start;gap:2px;padding:8px 14px;border:2px solid var(--ink);border-radius:6px;background:#fff;min-width:120px;}
+    .facture-numero .meta-lbl,.facture-date .meta-lbl{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;}
+    .facture-numero .meta-val{font-size:18px;font-weight:800;color:var(--ink);letter-spacing:1px;line-height:1;font-family:'Fraunces',serif;}
+    .facture-numero .meta-year{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:1px;margin-top:2px;}
+    .facture-date .meta-val{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:0.5px;line-height:1;font-family:'Outfit',sans-serif;margin-top:2px;}
     .status-badge{display:inline-block;padding:5px 14px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:20px;}
     .status-badge.paid{background:#d4e9d4;color:#2d6a2d;}
     .meta-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;padding:20px 24px;background:#fff;border:1px solid var(--rule);margin-bottom:30px;}
@@ -22058,7 +22066,11 @@ function _buildFactureHtml(id){
       .logo-tagline{margin-bottom:10px;font-size:9px;}
       .company-info{font-size:10px;line-height:1.45;}
       .facture-label{font-size:32px;margin-bottom:4px;}
-      .facture-numero{font-size:15px;padding:6px 14px;margin-top:10px;margin-bottom:10px;}
+      .facture-meta-pair{gap:8px;margin-top:10px;margin-bottom:10px;}
+      .facture-numero,.facture-date{padding:6px 12px;min-width:100px;}
+      .facture-numero .meta-val{font-size:15px;}
+      .facture-numero .meta-year{font-size:10px;}
+      .facture-date .meta-val{font-size:12px;}
       .meta-grid{padding:10px 14px;margin-bottom:14px;gap:12px;}
       .meta-item-label{font-size:8px;margin-bottom:3px;}
       .meta-item-value{font-size:11px;}
@@ -22121,12 +22133,15 @@ function _buildFactureHtml(id){
             ? '<img class="logo-img" src="'+soc.logo+'" alt="logo">'
             : '<div class="logo-fallback">'+escB(soc.nom||'')+'</div>')
         +'</div>'
-        // Right column — Facture title + N° (no status badge on the
-        // printed invoice — payment status belongs in the app, not on
-        // the document the client receives).
+        // Right column — Facture title + N° + Date d'émission.
+        // Date is shown alongside the N° in a paired box for symmetry and
+        // because clients legally need the issue date on every invoice.
         +'<div class="facture-title-block">'
           +'<div class="facture-label">Facture</div>'
-          +'<div class="facture-numero">N° '+numStr+'</div>'
+          +'<div class="facture-meta-pair">'
+            +'<div class="facture-numero"><span class="meta-lbl">N°</span><span class="meta-val">'+numStr.replace(/^.*-/,'')+'</span><span class="meta-year">'+(f.date?f.date.substring(0,4):new Date().getFullYear())+'</span></div>'
+            +'<div class="facture-date"><span class="meta-lbl">📅 Date</span><span class="meta-val">'+escB(f.date?fmtDate(f.date):'—')+'</span></div>'
+          +'</div>'
         +'</div>'
       +'</header>'
 

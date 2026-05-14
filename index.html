@@ -21923,8 +21923,42 @@ function _buildFactureHtml(id){
     .ornament{text-align:center;color:var(--gold);font-size:14px;letter-spacing:20px;margin:15px 0;opacity:0.4;}
     @media print{
       @page{size:A4;margin:0;}
-      body{background:white;padding:0;}
-      .facture{box-shadow:none;padding:28px 36px;}
+      html,body{background:white!important;padding:0!important;margin:0!important;height:auto;}
+      .facture{box-shadow:none;padding:18px 24px;max-width:none;width:210mm;margin:0;page-break-after:avoid;page-break-inside:avoid;break-after:avoid;break-inside:avoid;}
+      /* Tighter spacing so a normal facture (≤10 lignes) fits on 1 page */
+      .facture::before{height:4px;}
+      .header{padding-bottom:14px;margin-bottom:14px;gap:20px;}
+      .logo-img{max-height:42px;margin-bottom:6px;}
+      .logo{font-size:24px;margin-bottom:2px;}
+      .logo-tagline{margin-bottom:10px;font-size:9px;}
+      .company-info{font-size:10px;line-height:1.45;}
+      .facture-label{font-size:32px;margin-bottom:4px;}
+      .facture-numero{font-size:12px;margin-bottom:10px;}
+      .meta-grid{padding:10px 14px;margin-bottom:14px;gap:12px;}
+      .meta-item-label{font-size:8px;margin-bottom:3px;}
+      .meta-item-value{font-size:11px;}
+      .parties{gap:18px;margin-bottom:14px;}
+      .party{padding:10px 12px;}
+      .party-name{font-size:14px;margin-bottom:4px;}
+      .party-details{font-size:10px;line-height:1.45;}
+      .items{margin-bottom:14px;}
+      .items th{padding:8px 9px;font-size:9px;}
+      .items td{padding:8px 9px;font-size:11px;}
+      .totaux-wrapper{margin-bottom:14px;gap:18px;}
+      .montant-lettres{padding:10px 14px;font-size:11px;}
+      .totaux{padding:10px 14px;}
+      .total-row{font-size:11px;padding:4px 0;}
+      .total-row.grand{font-size:16px;padding-top:8px;margin-top:6px;}
+      .footer{padding-top:12px;}
+      .payment-info{gap:18px;margin-bottom:14px;}
+      .footer-block-content{font-size:10px;line-height:1.45;}
+      .signatures{margin-top:18px;}
+      .legal-mentions{margin-top:14px;padding-top:10px;font-size:8px;line-height:1.4;}
+      .ornament{margin:6px 0;}
+      /* Stop any descendant from splitting onto a 2nd page */
+      .header,.meta-grid,.parties,.party,.totaux-wrapper,.totaux,.montant-lettres,.footer,.payment-info,.signatures{
+        page-break-inside:avoid;break-inside:avoid;
+      }
     }
   `;
 

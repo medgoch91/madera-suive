@@ -21876,9 +21876,11 @@ function _buildFactureHtml(id){
     .facture{max-width:820px;margin:0 auto;background:var(--paper);padding:50px 55px;box-shadow:0 20px 60px rgba(0,0,0,0.12);position:relative;overflow:hidden;display:flex;flex-direction:column;min-height:1100px;}
     .facture::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,var(--accent) 0%,var(--gold) 50%,var(--accent) 100%);}
     .header{display:grid;grid-template-columns:1fr 1fr;gap:40px;padding-bottom:30px;border-bottom:2px solid var(--ink);margin-bottom:35px;}
+    /* Logo banner spans both header columns, centered, big enough to read. */
+    .logo-banner{grid-column:1/-1;display:flex;justify-content:center;align-items:center;margin-bottom:18px;}
     .logo-block{display:flex;flex-direction:column;}
-    .logo-img{max-height:56px;max-width:180px;object-fit:contain;display:block;margin-bottom:10px;}
-    .logo{font-family:'Fraunces',serif;font-size:32px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;margin-bottom:4px;}
+    .logo-img{max-height:130px;max-width:340px;object-fit:contain;display:block;}
+    .logo{font-family:'Fraunces',serif;font-size:42px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;margin-bottom:4px;text-align:center;}
     .logo-tagline{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:18px;}
     .company-info{font-size:11px;color:var(--muted);line-height:1.7;}
     .company-info strong{color:var(--ink);font-weight:500;}
@@ -21930,8 +21932,9 @@ function _buildFactureHtml(id){
       /* Tighter spacing so a normal facture (≤10 lignes) fits on 1 page */
       .facture::before{height:4px;}
       .header{padding-bottom:14px;margin-bottom:14px;gap:20px;}
-      .logo-img{max-height:42px;margin-bottom:6px;}
-      .logo{font-size:24px;margin-bottom:2px;}
+      .logo-banner{margin-bottom:12px;}
+      .logo-img{max-height:90px;max-width:240px;}
+      .logo{font-size:30px;margin-bottom:2px;}
       .logo-tagline{margin-bottom:10px;font-size:9px;}
       .company-info{font-size:10px;line-height:1.45;}
       .facture-label{font-size:32px;margin-bottom:4px;}
@@ -21974,8 +21977,11 @@ function _buildFactureHtml(id){
 
       // ── HEADER ──
       +'<header class="header">'
+        // Top-of-page logo banner — spans both columns, centered.
+        +(soc.logo
+          ? '<div class="logo-banner"><img class="logo-img" src="'+soc.logo+'"></div>'
+          : '<div class="logo-banner"><div class="logo">'+escB(soc.nom||'Votre Société')+'</div></div>')
         +'<div class="logo-block">'
-          +(soc.logo?'<img class="logo-img" src="'+soc.logo+'">':'<div class="logo">'+escB(soc.nom||'Votre Société')+'</div>')
           +(soc.web?'<div class="logo-tagline">'+escB(soc.web)+'</div>':'')
           +'<div class="company-info">'
             +(soc.capital?'<strong>SARL au capital de '+escB(soc.capital)+' MAD</strong><br>':'')

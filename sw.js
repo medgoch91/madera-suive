@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v157-facture-totaux-down-sig-hint';
+const CACHE = 'suivi-v158-facture-logo-centered-large';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

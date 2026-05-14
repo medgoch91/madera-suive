@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v160-facture-3col-header';
+const CACHE = 'suivi-v161-facture-no-badge-totaux-lower';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

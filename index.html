@@ -2885,8 +2885,11 @@ function printCheque(id){
   if(c.type==='espece'){
     return printEspece(id);
   }
-  // Switch the print-cheque page mode to match the selected record
+  // Switch the print-cheque page mode to match the selected record AND
+  // swap the active calibration set — otherwise chequeCfg stays pointing
+  // at the cheque defaults and the effet-only fields (échéance) disappear.
   printMode = (c.type==='effet') ? 'effet' : 'cheque';
+  try{ chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque; }catch(e){}
   // Stash the data — renderPrintCheque picks it up synchronously after innerHTML is set
   _setPendingPrintData({
     ordre:    c.fournisseur || '',
@@ -8075,7 +8078,9 @@ function printAlignmentTest(){
     ordre:    '',
     montant:  8888.88,
     date:     '2026-12-31',
-    ville:    'Agadir'
+    echeance: '2027-03-30',
+    ville:    'Agadir',
+    type:     printMode,
   });
   sendChequeToPrinter(html);
   toast('🎯 طبع اختبار المحاذاة — قارن مع الشيك الفاضي','info');
@@ -8582,14 +8587,16 @@ function buildChequePrintHTML(d){
     : '';
   // Signature intentionally NOT printed on cheque — security (a lost/scanned cheque
   // bearing a digital signature is trivially forgeable). Kept in factSociete for facture use.
-  return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title><style>
+  return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title>
+    <style>
     @page{size:176mm 80mm;margin:0;}
     @media print{
-      html,body{margin:0!important;padding:0!important;}
+      html,body{margin:0!important;padding:0!important;width:176mm!important;height:80mm!important;overflow:hidden!important;}
       body>*:not(.w){display:none!important;}
+      .w{page-break-after:avoid;page-break-inside:avoid;break-after:avoid;break-inside:avoid;}
     }
     *{box-sizing:border-box;}
-    html,body{margin:0;padding:0;background:#fff;}
+    html,body{margin:0;padding:0;background:#fff;width:176mm;height:80mm;overflow:hidden;}
     body{font-family:'Times New Roman',serif;color:#000;}
     .w{width:176mm;height:80mm;position:relative;background:#fff;overflow:hidden;}
     .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
@@ -8604,7 +8611,7 @@ function buildChequePrintHTML(d){
     <div class="f ${cl('ville')}" style="${fs('ville')}">${esc(ville.toUpperCase())}</div>
     <div class="f ${cl('date')}" style="${fs('date')}">${esc(fmtDate(date))}</div>
     ${echHTML}
-  </div><script>window.onload=function(){window.print();setTimeout(function(){window.close();},500);};<\/script></body></html>`;
+  </div></body></html>`;
 }
 
 // Send the HTML to the hidden iframe to trigger browser print
@@ -8623,8 +8630,15 @@ function sendChequeToPrinter(html){
   w.document.open();
   w.document.write(html);
   w.document.close();
-  // The HTML's inline script tag (window.onload=>window.print()+close)
-  // takes over from here.
+  // Fire the print from the parent after a short paint delay so the new
+  // window has time to lay out the cheque content. Done from the parent
+  // (rather than embedding a script tag in the generated HTML) to keep
+  // the template free of literal script-end sequences that would
+  // otherwise break the surrounding template literal in index.html.
+  setTimeout(function(){
+    try{ w.focus(); w.print(); }catch(e){ console.warn('print failed', e); }
+    setTimeout(function(){ try{ w.close(); }catch(e){} }, 600);
+  }, 250);
 }
 
 function doPrint(){

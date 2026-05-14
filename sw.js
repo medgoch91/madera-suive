@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v147-echeance-auto-default';
+const CACHE = 'suivi-v148-print-cross-platform';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

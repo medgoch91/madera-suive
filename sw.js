@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v166-facture-new-fresh-button';
+const CACHE = 'suivi-v167-facture-search-show-all'
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

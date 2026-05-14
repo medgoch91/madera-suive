@@ -20245,6 +20245,30 @@ let factNewNumOverride=null; // null = auto; integer = explicit user-chosen num 
 // _factSaveNewImpl PATCHes instead of POSTing; factClearDraft / factGoto
 // reset it back to null so the next "+ New" starts fresh.
 let factEditingId=null;
+// Reset the new-facture form to a blank slate. Drops edit mode if any,
+// clears every factNew* state var, removes the localStorage draft, then
+// re-renders the form. Used by the "✨ جديدة فارغة" button so the user
+// can switch from "viewing an existing facture" back to "creating a new
+// one" without leaving the page.
+function factNewFresh(){
+  factEditingId=null;
+  factNewLignes=[factBlankLigne(),factBlankLigne(),factBlankLigne(),factBlankLigne()];
+  factNewClient='';
+  factNewVille='';
+  factNewIce='';
+  factNewDate=new Date().toISOString().split('T')[0];
+  factNewEcheance='';
+  factNewNotes='';
+  factNewNumOverride=null;
+  try{ factNewAsDevis=false; }catch(e){}
+  try{ factMode='ht'; }catch(e){}
+  try{ factClearDraft(); }catch(e){}
+  factSubPage='new';
+  try{ if(typeof uiSaveFactSub==='function') uiSaveFactSub('new'); }catch(e){}
+  renderFactures();
+  try{ toast('✨ فاتورة جديدة فارغة','info'); }catch(e){}
+}
+
 function factOpenEdit(id){
   const f=factures.find(function(x){return x.id===id;});
   if(!f){ try{ toast('الفاتورة غير موجودة','error'); }catch(e){} return; }
@@ -20595,6 +20619,7 @@ function renderFactSideList(){
   }):sorted;
 
   var head='<div style="padding:14px 16px;border-bottom:1px solid var(--border);background:var(--bg3)">'
+    +'<button onclick="factNewFresh()" title="فاتورة جديدة فارغة" style="width:100%;padding:10px 14px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:12px;box-shadow:0 3px 10px rgba(147,51,234,0.25);transition:opacity 0.15s" onmouseover="this.style.opacity=\'0.9\'" onmouseout="this.style.opacity=\'1\'">✨ فاتورة جديدة فارغة</button>'
     +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
       +'<div style="font-size:13px;font-weight:800;color:var(--text)">📜 فواتير سابقة</div>'
       +'<div style="font-size:10px;color:var(--text3);font-weight:700">'+paid+'/'+total+' مدفوعة</div>'

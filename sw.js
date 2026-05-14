@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v162-facture-full-edit';
+const CACHE = 'suivi-v163-facture-pdf-bulk-download';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

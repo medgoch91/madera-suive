@@ -21514,41 +21514,94 @@ function factProdSearch(idx,val){
   if(!dd)return;
   if(!val||val.length<1){dd.style.display='none';return;}
   const q=val.toLowerCase();
-  // Show every match — don't hide products that are already used on another
-  // ligne (user explicitly asked: "khas itl3 kolchi"). Match by name or ref,
-  // case-insensitive substring. Limit raised so long catalogs are visible;
-  // the dropdown gets a maxHeight + scrollbar instead of dropping rows.
-  const matches=factProduits.filter(function(p){
-    return p.nom.toLowerCase().includes(q)||(p.ref||'').toLowerCase().includes(q);
-  }).slice(0,40);
-  if(!matches.length){dd.style.display='none';return;}
-  dd.innerHTML='';
-  // Make the dropdown scrollable when we have more than ~8 visible rows
-  dd.style.maxHeight='280px';
+  dd.style.maxHeight='320px';
   dd.style.overflowY='auto';
-  // Pre-compute which names are already on a ligne — used to mark them
-  // visually (subtle muted tint) without hiding them.
+  dd.innerHTML='';
+  // Already-used designations: shown visually as "✓ متخدمة" but never hidden.
   const usedDesign=new Set();
   (factNewLignes||[]).forEach(function(l){ if(l && l.designation) usedDesign.add(String(l.designation).trim().toLowerCase()); });
-  matches.forEach(function(p){
-    const isUsed = usedDesign.has(String(p.nom||'').trim().toLowerCase());
-    const div=document.createElement('div');
-    div.style.cssText='padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;display:flex;justify-content:space-between;align-items:center'
-      + (isUsed?';background:rgba(147,51,234,0.05);opacity:0.85':'');
-    div.innerHTML='<div><div style="font-weight:600">'+escB(p.nom)
-      +(isUsed?' <span style="font-size:9.5px;padding:1px 6px;border-radius:8px;background:rgba(147,51,234,0.15);color:var(--accent);font-weight:700">✓ متخدمة</span>':'')
-      +'</div>'+(p.ref?'<div style="font-size:10px;font-family:monospace;color:var(--text3)">'+escB(p.ref)+'</div>':'')
-      +'</div><div style="font-weight:700;color:var(--accent);font-size:12px">'+fmtN(p.prix)+' MAD</div>';
-    div.onmouseenter=function(){this.style.background='var(--bg3)';};
-    div.onmouseleave=function(){this.style.background=(isUsed?'rgba(147,51,234,0.05)':'');};
-    div.onmousedown=function(){
-      factNewLignes[idx]={designation:p.nom,qte:Number(factNewLignes[idx].qte||0),prix_u:p.prix,tva:p.tva||20};
-      dd.style.display='none';
-      factSaveDraft();
-      renderFactures();
-    };
-    dd.appendChild(div);
-  });
+  // Section 1: products from the facture catalog (factProduits / fact_products).
+  const prodMatches=(factProduits||[]).filter(function(p){
+    return (p.nom||'').toLowerCase().includes(q) || (p.ref||'').toLowerCase().includes(q);
+  }).slice(0,30);
+  if(prodMatches.length){
+    const hdrP=document.createElement('div');
+    hdrP.style.cssText='padding:6px 12px;font-size:10px;font-weight:700;color:var(--accent);background:rgba(147,51,234,0.06);border-bottom:1px solid var(--border);letter-spacing:0.5px;text-transform:uppercase';
+    hdrP.textContent='📦 Catalogue facture ('+prodMatches.length+')';
+    dd.appendChild(hdrP);
+    prodMatches.forEach(function(p){
+      const isUsed=usedDesign.has(String(p.nom||'').trim().toLowerCase());
+      const div=document.createElement('div');
+      div.style.cssText='padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;display:flex;justify-content:space-between;align-items:center'
+        +(isUsed?';background:rgba(147,51,234,0.05);opacity:0.85':'');
+      div.innerHTML='<div><div style="font-weight:600">'+escB(p.nom)
+        +(isUsed?' <span style="font-size:9.5px;padding:1px 6px;border-radius:8px;background:rgba(147,51,234,0.15);color:var(--accent);font-weight:700">✓ متخدمة</span>':'')
+        +'</div>'+(p.ref?'<div style="font-size:10px;font-family:monospace;color:var(--text3)">'+escB(p.ref)+'</div>':'')
+        +'</div><div style="font-weight:700;color:var(--accent);font-size:12px">'+fmtN(p.prix)+' MAD</div>';
+      div.onmouseenter=function(){this.style.background='var(--bg3)';};
+      div.onmouseleave=function(){this.style.background=(isUsed?'rgba(147,51,234,0.05)':'');};
+      div.onmousedown=function(){
+        factNewLignes[idx]={designation:p.nom,qte:Number(factNewLignes[idx].qte||0),prix_u:Number(p.prix||0),tva:Number(p.tva||20)};
+        dd.style.display='none';
+        factSaveDraft();
+        renderFactures();
+      };
+      dd.appendChild(div);
+    });
+  }
+  // Section 2: articles from the main stock catalog. Useful when the user
+  // is invoicing items they buy & resell — no need to duplicate them as
+  // fact_products. Picks the best HT price we have for the article.
+  if(typeof articles !== 'undefined' && Array.isArray(articles)){
+    const artMatches=articles.filter(function(a){
+      return (a.nom||'').toLowerCase().includes(q) || (a.ref||'').toLowerCase().includes(q);
+    }).slice(0,30);
+    if(artMatches.length){
+      const hdrA=document.createElement('div');
+      hdrA.style.cssText='padding:6px 12px;font-size:10px;font-weight:700;color:#06b6d4;background:rgba(6,182,212,0.06);border-bottom:1px solid var(--border);letter-spacing:0.5px;text-transform:uppercase';
+      hdrA.textContent='🏭 Catalogue articles ('+artMatches.length+')';
+      dd.appendChild(hdrA);
+      artMatches.forEach(function(a){
+        const isUsed=usedDesign.has(String(a.nom||'').trim().toLowerCase());
+        // Best-effort price: any prix entry > 0 for this article
+        let pickedPrice=0;
+        try{
+          if(typeof prix === 'object'){
+            for(const k in prix){
+              if(k.startsWith(a.id+'_') && Number(prix[k])>0){ pickedPrice=Number(prix[k]); break; }
+            }
+          }
+        }catch(e){}
+        const div=document.createElement('div');
+        div.style.cssText='padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;display:flex;justify-content:space-between;align-items:center'
+          +(isUsed?';background:rgba(147,51,234,0.05);opacity:0.85':'');
+        div.innerHTML='<div><div style="font-weight:600">'+escB(a.nom)
+          +(isUsed?' <span style="font-size:9.5px;padding:1px 6px;border-radius:8px;background:rgba(147,51,234,0.15);color:var(--accent);font-weight:700">✓ متخدمة</span>':'')
+          +'</div>'+(a.ref?'<div style="font-size:10px;font-family:monospace;color:var(--text3)">'+escB(a.ref)+'</div>':'')
+          +(a.unite?'<div style="font-size:10px;color:var(--text3)">'+escB(a.unite)+'</div>':'')
+          +'</div><div style="font-weight:700;color:#06b6d4;font-size:12px;white-space:nowrap">'+(pickedPrice?fmtN(pickedPrice)+' MAD':'—')+'</div>';
+        div.onmouseenter=function(){this.style.background='var(--bg3)';};
+        div.onmouseleave=function(){this.style.background=(isUsed?'rgba(147,51,234,0.05)':'');};
+        div.onmousedown=function(){
+          factNewLignes[idx]={designation:a.nom,qte:Number(factNewLignes[idx].qte||0),prix_u:pickedPrice,tva:20};
+          dd.style.display='none';
+          factSaveDraft();
+          renderFactures();
+        };
+        dd.appendChild(div);
+      });
+    }
+  }
+  // Section 3: free-text "use as is" so the user can always commit what
+  // they typed, even if it's not in either catalog. Keeps the field useful
+  // when the catalog is empty.
+  const freeRow=document.createElement('div');
+  freeRow.style.cssText='padding:10px 12px;cursor:pointer;font-size:12px;color:var(--text2);background:rgba(79,142,247,0.05);border-top:1px solid var(--border);display:flex;align-items:center;gap:8px';
+  freeRow.innerHTML='<span style="font-size:14px;color:var(--text3)">＋</span><span>استخدم <strong style="color:var(--text)">"'+escB(val)+'"</strong> كتسمية حرة</span>';
+  freeRow.onmouseenter=function(){this.style.background='rgba(79,142,247,0.12)';};
+  freeRow.onmouseleave=function(){this.style.background='rgba(79,142,247,0.05)';};
+  freeRow.onmousedown=function(e){ e.preventDefault(); factNewLignes[idx].designation=val; dd.style.display='none'; factSaveDraft(); };
+  dd.appendChild(freeRow);
   dd.style.display='block';
 }
 

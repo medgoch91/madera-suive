@@ -8616,9 +8616,10 @@ function buildChequePrintHTML(d){
        176mm × 80mm block in the top-left of whatever page is used. */
     @page{margin:0;}
     @media print{
-      html,body{margin:0!important;padding:0!important;}
+      html{height:80mm!important;max-height:80mm!important;overflow:hidden!important;}
+      body{margin:0!important;padding:0!important;height:80mm!important;max-height:80mm!important;overflow:hidden!important;page-break-after:avoid!important;break-after:avoid!important;}
       body>*:not(.w){display:none!important;}
-      .w{page-break-after:avoid;page-break-inside:avoid;break-after:avoid;break-inside:avoid;}
+      .w{page-break-after:avoid!important;page-break-inside:avoid!important;break-after:avoid!important;break-inside:avoid!important;}
     }
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}

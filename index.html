@@ -21875,18 +21875,22 @@ function _buildFactureHtml(id){
     body{font-family:'Outfit',sans-serif;background:#e8e5dd;padding:40px 20px;color:var(--ink);font-size:13px;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .facture{max-width:820px;margin:0 auto;background:var(--paper);padding:50px 55px;box-shadow:0 20px 60px rgba(0,0,0,0.12);position:relative;overflow:hidden;display:flex;flex-direction:column;min-height:1100px;}
     .facture::before{content:'';position:absolute;top:0;left:0;right:0;height:6px;background:linear-gradient(90deg,var(--accent) 0%,var(--gold) 50%,var(--accent) 100%);}
-    .header{display:grid;grid-template-columns:1fr 1fr;gap:40px;padding-bottom:30px;border-bottom:2px solid var(--ink);margin-bottom:35px;}
-    .logo-block{display:flex;flex-direction:column;}
-    /* Logo sits between the "Facture" title and the N° box in the right
-       column — flex-centred, generous size so it reads as a real logo. */
-    .logo-mid{display:flex;justify-content:center;align-items:center;margin:14px 0 16px;}
-    .logo-img{max-height:160px;max-width:380px;object-fit:contain;display:block;}
-    .logo{font-family:'Fraunces',serif;font-size:42px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;margin-bottom:4px;text-align:center;}
-    .logo-tagline{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:18px;}
+    /* 3-column header: company info (left) | logo (middle) | facture title (right).
+       Center column gets the most width so the logo can breathe; outer
+       columns stay aligned to their respective edges. All three are
+       vertically centered so a tall logo doesn't push the others off
+       balance. */
+    .header{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:30px;align-items:center;padding-bottom:30px;border-bottom:2px solid var(--ink);margin-bottom:35px;}
+    .logo-block{display:flex;flex-direction:column;text-align:left;}
+    .logo-mid{display:flex;justify-content:center;align-items:center;}
+    .logo-img{max-height:160px;max-width:320px;object-fit:contain;display:block;}
+    .logo-fallback{font-family:'Fraunces',serif;font-size:30px;font-weight:700;color:var(--accent);letter-spacing:-0.5px;text-align:center;line-height:1.15;}
+    .company-name{font-family:'Fraunces',serif;font-size:22px;font-weight:700;color:var(--ink);letter-spacing:-0.3px;line-height:1.15;margin-bottom:4px;}
+    .logo-tagline{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
     .company-info{font-size:11px;color:var(--muted);line-height:1.7;}
     .company-info strong{color:var(--ink);font-weight:500;}
     .facture-title-block{text-align:right;}
-    .facture-label{font-family:'Fraunces',serif;font-size:48px;font-weight:400;letter-spacing:-1px;line-height:1;margin-bottom:8px;}
+    .facture-label{font-family:'Fraunces',serif;font-size:42px;font-weight:400;letter-spacing:-1px;line-height:1;margin-bottom:8px;}
     .facture-numero{display:inline-block;font-size:18px;font-weight:700;color:var(--ink);letter-spacing:1.5px;margin-top:14px;margin-bottom:18px;padding:8px 18px;border:2px solid var(--ink);border-radius:6px;background:#fff;}
     .status-badge{display:inline-block;padding:5px 14px;background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;border-radius:20px;}
     .status-badge.paid{background:#d4e9d4;color:#2d6a2d;}
@@ -21933,9 +21937,9 @@ function _buildFactureHtml(id){
       /* Tighter spacing so a normal facture (≤10 lignes) fits on 1 page */
       .facture::before{height:4px;}
       .header{padding-bottom:14px;margin-bottom:14px;gap:20px;}
-      .logo-mid{margin:8px 0 10px;}
-      .logo-img{max-height:110px;max-width:280px;}
-      .logo{font-size:30px;margin-bottom:2px;}
+      .logo-img{max-height:110px;max-width:220px;}
+      .logo-fallback{font-size:22px;}
+      .company-name{font-size:16px;}
       .logo-tagline{margin-bottom:10px;font-size:9px;}
       .company-info{font-size:10px;line-height:1.45;}
       .facture-label{font-size:32px;margin-bottom:4px;}
@@ -21976,9 +21980,10 @@ function _buildFactureHtml(id){
   +'</head><body>'
     +'<div class="facture">'
 
-      // ── HEADER ──
+      // ── HEADER (3-column: company info | logo | facture title) ──
       +'<header class="header">'
         +'<div class="logo-block">'
+          +'<div class="company-name">'+escB(soc.nom||'Votre Société')+'</div>'
           +(soc.web?'<div class="logo-tagline">'+escB(soc.web)+'</div>':'')
           +'<div class="company-info">'
             +(soc.capital?'<strong>SARL au capital de '+escB(soc.capital)+' MAD</strong><br>':'')
@@ -21995,11 +22000,15 @@ function _buildFactureHtml(id){
             +(soc.cnss?'<strong>CNSS :</strong> '+escB(soc.cnss):'')
           +'</div>'
         +'</div>'
+        // Middle column — the big centered logo
+        +'<div class="logo-mid">'
+          +(soc.logo
+            ? '<img class="logo-img" src="'+soc.logo+'" alt="logo">'
+            : '<div class="logo-fallback">'+escB(soc.nom||'')+'</div>')
+        +'</div>'
+        // Right column — Facture title + N° + status badge
         +'<div class="facture-title-block">'
           +'<div class="facture-label">Facture</div>'
-          +(soc.logo
-            ? '<div class="logo-mid"><img class="logo-img" src="'+soc.logo+'"></div>'
-            : (soc.nom ? '<div class="logo-mid"><div class="logo">'+escB(soc.nom)+'</div></div>' : ''))
           +'<div class="facture-numero">N° '+numStr+'</div>'
           +(isPaid?'<span class="status-badge paid">Payée</span>':'')
         +'</div>'

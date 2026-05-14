@@ -8547,8 +8547,20 @@ function updatePrintPreview(){
   s('pf-ville',ville.toUpperCase());
   s('pf-lettres1',l1.toUpperCase());
   s('pf-lettres2',l2.toUpperCase());
-  // Effet only: also render the Date d'échéance (top-right of CDM lettre)
-  const ech = g('pc-echeance');
+  // Effet only: also render the Date d'échéance (top-right of CDM lettre).
+  // If the user hasn't filled the إستحقاق input yet, auto-default to
+  // date + 60 days (typical traite délai) so the preview shows SOMETHING
+  // at that position — the user can override by typing in the input.
+  let ech = g('pc-echeance');
+  if(printMode==='effet' && !ech && date){
+    try{
+      const _d = new Date(date+'T12:00:00Z');
+      _d.setUTCDate(_d.getUTCDate()+60);
+      ech = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+      const inp = document.getElementById('pc-echeance');
+      if(inp && !inp.value) inp.value = ech;
+    }catch(e){}
+  }
   s('pf-echeance', (printMode==='effet' && ech) ? fmtDate(ech) : '');
   const prev=document.getElementById('pc-lettres-preview');if(prev)prev.textContent=words||'—';
 }

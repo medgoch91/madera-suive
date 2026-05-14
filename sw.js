@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v146-print-no-blank-page';
+const CACHE = 'suivi-v147-echeance-auto-default';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

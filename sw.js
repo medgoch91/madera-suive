@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v155-facture-totaux-pushed-down';
+const CACHE = 'suivi-v156-facture-numero-boxed';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

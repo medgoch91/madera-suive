@@ -7920,18 +7920,27 @@ const CHEQUE_CFG_DEFAULTS = {
 // Effet shares the SAME typography scale as cheque — same sizes,
 // weights, spacing — only positions differ because the bank
 // template is laid out differently.
+// v3 defaults — recalibrated 2026-05-15 for the real 200×130mm effet paper
+// (CDM lettre de change). User confirmed actual dimensions; previous defaults
+// were measured against a 1800×818 bg image (ratio 2.2 ≠ real 1.54) and
+// landed text in wrong boxes after the wrap was widened. These positions
+// target the empty fill-in areas of the real form:
+//   • Date d'échéance: top-right box ("Date d'éché")
+//   • Montant en chiffres: right column below date d'éché ("Montant en ch")
+//   • Bénéficiaire: middle band after "à l'ordre de :"
+//   • Lieu + Date création: row "Lieu et date de création"
+//   • Montant en lettres: right column "Montant en lettres" (wraps)
 const EFFET_CFG_DEFAULTS = {
-  echeance: {top:5,  left:141, width:25,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
-  montant:  {top:13, left:138, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
-  // lettres1 wraps freely on effet — 3+ visual lines fit at width:35mm. lettres2
-  // stays unused (parked off the visible area) so it can't accidentally print
-  // duplicate text on top of the wrapped lettres1.
-  lettres1: {top:26, left:140, width:35,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
-  lettres2: {top:90, left:140, width:35,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
-  ordre:    {top:25, left:70,  width:50,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
-  ville:    {top:36, left:46,  width:22,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
-  date:     {top:36, left:69,  width:24,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
-  signature:{top:50, left:140, width:35, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
+  echeance: {top:8,   left:170, width:28,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
+  montant:  {top:30,  left:170, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
+  // lettres1 wraps in the right column — width:45mm gives ~3 lines for typical amounts
+  lettres1: {top:45,  left:150, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  // lettres2 parked off-page (effet uses single wrap) — see buildChequePrintHTML lettres2HTML guard
+  lettres2: {top:200, left:150, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ordre:    {top:40,  left:80,  width:70,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ville:    {top:58,  left:35,  width:35,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
+  date:     {top:58,  left:80,  width:35,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
+  signature:{top:90,  left:155, width:40, height:25, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
 // Which storage key to use for the active print mode.
 function _pcStorageKey(){ return printMode==='effet' ? 'effet_cfg' : 'cheque_cfg'; }
@@ -7998,6 +8007,12 @@ try{
   if(!localStorage.getItem('effet_cfg_mig_v2')){
     localStorage.removeItem('effet_cfg');
     localStorage.setItem('effet_cfg_mig_v2','1');
+  }
+  // v3 migration — recalibrated defaults for 200×130mm real paper
+  // (previous v2 defaults assumed 176×80mm bg image dimensions).
+  if(!localStorage.getItem('effet_cfg_mig_v3')){
+    localStorage.removeItem('effet_cfg');
+    localStorage.setItem('effet_cfg_mig_v3','1');
   }
 }catch(e){}
 let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);

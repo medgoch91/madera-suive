@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v179-tva-collectee-auto-from-factures';
+const CACHE = 'suivi-v180-effet-positions-recalib-200x130';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

@@ -22970,19 +22970,39 @@ async function renderTva(){
         <button class="btn" onclick="printTvaForComptable()" style="padding:10px 18px">🖨️ طبع للمحاسب</button>
       </div>
 
-      <!-- TVA Collectée -->
+      <!-- TVA Collectée — AUTO from app factures -->
       <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(6,182,212,.05));border:1px solid rgba(16,185,129,.25)">
-        <div class="card-title" style="color:#10b981;margin-bottom:14px">📤 TVA Collectée (Ventes) — يدوي</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">Total HT (DH)</div>
-            <input id="tva-ht" type="number" step="0.01" value="${caHT?caHT.toFixed(2):''}" oninput="recalcTvaCol(this.value)" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+        <div class="card-title" style="color:#10b981;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span>📤 TVA Collectée (Ventes) — تلقائي من الفواتير</span>
+          <button class="btn-ghost" onclick="resyncTvaFromFactures()" title="إعادة الجلب من الفواتير" style="font-size:11px;padding:3px 10px;color:#10b981;border:1px solid rgba(16,185,129,.4);border-radius:6px">↻ إعادة الجلب</button>
+        </div>
+        ${factsInMonth.length===0 ? '<div style="text-align:center;color:var(--text3);padding:16px;background:rgba(232,64,64,.04);border-radius:8px;border:1px dashed rgba(232,64,64,.2)">⚠️ ما كاينش فواتير ف '+_monthLabel(ym)+'</div>' :
+        `<div style="overflow-x:auto;margin-bottom:14px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>التاريخ</th><th>رقم</th><th>الزبون</th><th>HT</th><th>TVA</th><th>TTC</th></tr></thead>
+            <tbody>${factsInMonth.map(f=>{const ttc=Number(f.total)||0;const ht=ttc/1.2;const tva=ttc-ht;return `<tr>
+              <td>${fmtDate(f.date)}</td>
+              <td style="font-weight:600">${escB(f.num||'—')}</td>
+              <td>${escB(f.client||'—')}</td>
+              <td>⁦${fmtN(ht)}⁩</td>
+              <td style="color:#10b981;font-weight:700">⁦${fmtN(tva)}⁩</td>
+              <td>⁦${fmtN(ttc)}⁩</td>
+            </tr>`;}).join('')}</tbody>
+            <tfoot><tr style="border-top:2px solid var(--border);font-weight:700">
+              <td colspan="3" style="text-align:left">المجموع (${factsInMonth.length} فاتورة):</td>
+              <td>⁦${fmtN(factsTotalHT)}⁩</td>
+              <td style="color:#10b981">⁦${fmtN(factsTVA)}⁩</td>
+              <td>⁦${fmtN(factsTotalTTC)}⁩</td>
+            </tr></tfoot>
+          </table>
+        </div>`}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:end">
+          <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">Total HT (DH) — للتعديل اليدوي إن لزم</div>
+            <input id="tva-ht" type="number" step="0.01" value="${caHT.toFixed(2)}" oninput="recalcTvaCol(this.value)" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
           <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">TVA Collectée 20% (DH)</div>
-            <input id="tva-col" type="number" step="0.01" value="${tvaCol?tvaCol.toFixed(2):''}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+            <input id="tva-col" type="number" step="0.01" value="${tvaCol.toFixed(2)}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
         </div>
-        <div style="margin-top:12px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:6px;font-size:12px;color:var(--text3);line-height:1.6">
-          💡 <b>للمعلومة فقط</b> (فواتير ديال هاد الشهر فالأبليكاسيون): <b>${factsInMonth.length}</b> فاتورة، Total TTC ⁦${fmtN(factsTotalTTC)} DH⁩ = HT ⁦${fmtN(factsTotalHT)}⁩ + TVA ⁦${fmtN(factsTVA)}⁩
-          ${decl?'':' &nbsp;·&nbsp; <button class="btn-ghost" onclick="useFactsAsRef()" style="font-size:11px;padding:2px 8px">استعمل هاد القيمة</button>'}
-        </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--text3)">القيمة التلقائية من ${factsInMonth.length} فاتورة: HT <b style="color:#10b981">⁦${fmtN(factsTotalHT)}⁩</b>، TVA <b style="color:#10b981">⁦${fmtN(factsTVA)}⁩</b></div>
       </div>
 
       <!-- TVA Déductible -->
@@ -23065,13 +23085,17 @@ function recalcTvaCol(htStr){
   if(col) col.value = (ht*0.2).toFixed(2);
 }
 
-function useFactsAsRef(){
+function useFactsAsRef(){ resyncTvaFromFactures(); }
+function resyncTvaFromFactures(){
   const ym = _tvaMonth;
   const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
   const ttc = factsInMonth.reduce((s,f)=>s+(Number(f.total)||0), 0);
   const ht = ttc/1.2;
-  document.getElementById('tva-ht').value = ht.toFixed(2);
-  document.getElementById('tva-col').value = (ttc-ht).toFixed(2);
+  const htInp = document.getElementById('tva-ht');
+  const colInp = document.getElementById('tva-col');
+  if(htInp) htInp.value = ht.toFixed(2);
+  if(colInp) colInp.value = (ttc-ht).toFixed(2);
+  try{ toast('↻ تم تحديث القيم من '+factsInMonth.length+' فاتورة','info'); }catch(e){}
 }
 
 async function saveTvaDecl(){

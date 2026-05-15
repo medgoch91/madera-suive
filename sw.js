@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v170-fact-search-dropdown-fixed-pos';
+const CACHE = 'suivi-v171-cheque-page-176x80-restored';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

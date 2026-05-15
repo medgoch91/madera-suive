@@ -21517,8 +21517,28 @@ function factProdSearch(idx,val){
   if(!dd)return;
   if(!val||val.length<1){dd.style.display='none';return;}
   const q=val.toLowerCase();
-  dd.style.maxHeight='320px';
-  dd.style.overflowY='auto';
+  // Switch the dropdown to position:fixed and pin it to the actual screen
+  // coordinates of its input. Position:absolute inside a <td> was being
+  // clipped on the last visible row when the page had no scroll-room
+  // below the table; fixed always renders on top of the viewport.
+  try{
+    const inp = dd.parentNode && dd.parentNode.querySelector('input.field-inp');
+    if(inp){
+      const r = inp.getBoundingClientRect();
+      // If there isn't enough room below, drop it ABOVE the input instead.
+      const spaceBelow = window.innerHeight - r.bottom;
+      const wantH = 340;
+      const openUp = spaceBelow < 220 && r.top > 220;
+      dd.style.position='fixed';
+      dd.style.left=r.left+'px';
+      dd.style.width=r.width+'px';
+      dd.style.top = openUp ? '' : (r.bottom+4)+'px';
+      dd.style.bottom = openUp ? (window.innerHeight - r.top + 4)+'px' : '';
+      dd.style.maxHeight = (openUp ? Math.min(wantH, r.top - 20) : Math.min(wantH, spaceBelow - 20))+'px';
+      dd.style.overflowY='auto';
+      dd.style.zIndex='10000';
+    }
+  }catch(e){}
   dd.innerHTML='';
   // Already-used designations: shown visually as "✓ متخدمة" but never hidden.
   const usedDesign=new Set();

@@ -1246,6 +1246,12 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
     <button class="nav-btn" onclick="showPage('factures',this)" id="nav-factures">
       <span class="nav-icon">🧾</span> <span data-i18n="nav.factures">الفواتير</span>
     </button>
+    <button class="nav-btn" onclick="showPage('charges',this)" id="nav-charges">
+      <span class="nav-icon">📋</span> المصاريف الثابتة
+    </button>
+    <button class="nav-btn" onclick="showPage('tva',this)" id="nav-tva">
+      <span class="nav-icon">📊</span> TVA
+    </button>
 
     <!-- 'إضافة' section removed — new-bon/new-cheque/print-cheque are now tabs inside their pages -->
 
@@ -1546,6 +1552,12 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
 
     <!-- FACTURES PAGE -->
     <div class="page" id="page-factures"></div>
+
+    <!-- CHARGES FIXES PAGE -->
+    <div class="page" id="page-charges"></div>
+
+    <!-- TVA PAGE -->
+    <div class="page" id="page-tva"></div>
 
     <!-- ADMIN PAGE -->
     <div class="page" id="page-admin"></div>
@@ -3573,7 +3585,7 @@ function toggleLang(){
   try{ if(typeof toast==='function') toast('Langue : Français','info'); }catch(e){}
 }
 
-const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',sorties:'📤 بونات الخروج'};
+const pageTitles={admin:'⚙️ إدارة المستخدمين',dashboard:'الداشبورد',bons:'البونات','new-bon':'بون جديد',cheques:'التسويات',echeancier:'📅 الجدول الزمني',fournisseurs:'الفورنيسورات',articles:'السلع','new-cheque':'تسوية جديدة','print-cheque':'🖨️ طباعة الشيك','elec-dist':'⚡ électricité à distance',sorties:'📤 بونات الخروج',charges:'📋 المصاريف الثابتة',tva:'📊 إعلان TVA'};
 const pageActions={
   'new-bon':'',
   bons:`<button class="btn btn-accent" onclick="showPage('new-bon',document.querySelector('.nav-btn:nth-child(7)'))">➕ بون جديد</button>`,
@@ -3612,7 +3624,7 @@ function showPage(page,btn){
   const contentEl=document.querySelector('.content');
   if(contentEl)contentEl.scrollTop=0;
   try{window.scrollTo(0,0);}catch(e){}
-  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,caisse:renderCaisse,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist,sorties:renderSorties};
+  const renders={admin:renderAdmin,'users-activity':renderUsersActivity,dashboard:renderDashboard,bons:renderBons,cheques:renderCheques,echeancier:renderEcheancier,fournisseurs:renderFournisseurs,articles:renderArticles,salaries:renderSalaries,caisse:renderCaisse,factures:renderFactures,'new-bon':initNewBon,'new-cheque':initNewCheque,'print-cheque':renderPrintCheque,'elec-dist':renderElecDist,sorties:renderSorties,charges:renderCharges,tva:renderTva};
   if(renders[page])renders[page]();
   // Reset the new-cheque form type selector every time we enter that page
   if(page==='new-cheque'){
@@ -8198,7 +8210,12 @@ function applyChqCfgToPreview(){
   Object.keys(map).forEach(k=>{
     const el = document.getElementById(map[k]);
     if(!el) return;
-    const c = chequeCfg[k];
+    // In effet mode, fall back to EFFET_CFG_DEFAULTS if chequeCfg is missing
+    // a field — guards against a stale chequeCfg pointing at cheque defaults
+    // (race / stale cache on Windows) which would otherwise hide the
+    // échéance element entirely and the user would never see the date.
+    let c = chequeCfg[k];
+    if(!c && printMode==='effet' && typeof EFFET_CFG_DEFAULTS!=='undefined') c = EFFET_CFG_DEFAULTS[k];
     // echeance only exists in effet mode — hide its preview element otherwise.
     if(!c){ el.style.display='none'; return; }
     el.style.display = '';
@@ -8375,7 +8392,7 @@ function renderPrintCheque(){
       <div class="card" style="margin-bottom:16px">
         <div class="card-title" style="margin-bottom:14px">${isEffet?'معاينة الورقة':'معاينة الشيك'}</div>
         <div style="overflow-x:auto">
-          <div id="pc-cheque-wrap" style="width:176mm;height:80mm;position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#111">
+          <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#111">
             <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') center/cover no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
               ${!bgImg?(isEffet?'<div style="text-align:center;color:#7c3aed"><div style="font-size:36px">📜</div><div style="font-size:13px;margin-top:6px">Effet / ورقة</div><div style="font-size:11px;margin-top:4px">ارفع صورة الورقة</div></div>':'<div style="text-align:center;color:#999"><div style="font-size:36px">🏦</div><div style="font-size:13px;margin-top:6px">Crédit du Maroc</div><div style="font-size:11px;margin-top:4px">ارفع صورة الشيك</div></div>'):''}
             </div>
@@ -8388,7 +8405,15 @@ function renderPrintCheque(){
             <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — نفس المقاسات د الطباعة (176mm × 80mm)</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — ${isEffet?'الورقة 200mm × 130mm':'الشيك 176mm × 80mm'}</div>
+        <div style="font-size:12px;color:var(--accent);margin-top:6px;padding:8px 10px;background:rgba(124,58,237,.08);border-right:3px solid var(--accent);border-radius:6px;line-height:1.6">
+          🖨️ <b>طريقة الطباعة الصحيحة:</b><br>
+          1. الطابعة كتطبع على <b>A4</b> (هاكا كيخدم 100% على Windows+Mac)<br>
+          2. حط ورقة ${isEffet?'الإيفي (20×13cm)':'الشيك (17.6×8cm)'} <b>fl multi-purpose tray</b> دلا-Epson<br>
+          3. زبط ورقة الإيفي <b>m9ada m3a l-zaouia top-left</b> (lqorb dyal ras dakhel d printer)<br>
+          4. f Chrome print dialog: Paper=<b>A4</b>, Scale=<b>100%</b>, Margins=<b>None</b><br>
+          5. l-content ghadi yji exact f blasto لأن l-printer ka yrender A4 ou ghi l-blastera li ${isEffet?'l-effet':'l-cheque'} fihm i7awmou les pixels
+        </div>
       </div>
       <div class="card">
         <div class="card-title">سجل التسويات المطبوعة</div>
@@ -8600,15 +8625,26 @@ function buildChequePrintHTML(d){
   }
   if(words){ if(l2) l2 += CHEQUE_WORDS_FILLER; else l1 += CHEQUE_WORDS_FILLER; }
   const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  // For effet, fall back to EFFET_CFG_DEFAULTS if a field is missing from
+  // chequeCfg — handles the case where chequeCfg swap (cheque ↔ effet)
+  // hasn't yet propagated (race / stale cache on Windows). This keeps the
+  // date d'échéance from disappearing on print when the user is clearly
+  // in effet mode but chequeCfg still points at the cheque defaults.
+  const cfg = k => {
+    if(chequeCfg && chequeCfg[k]) return chequeCfg[k];
+    if(d.type==='effet' && typeof EFFET_CFG_DEFAULTS!=='undefined' && EFFET_CFG_DEFAULTS[k]) return EFFET_CFG_DEFAULTS[k];
+    return null;
+  };
   const fs = k => {
-    const c = chequeCfg[k];
+    const c = cfg(k); if(!c) return '';
     return `top:${c.top}mm;left:${c.left}mm;width:${c.width}mm;font-size:${c.size}pt;text-align:${c.align};font-weight:${c.weight||600};letter-spacing:${c.spacing||0}px;`;
   };
-  const cl = k => chequeCfg[k].font==='mono' ? 'mono' : 'serif';
+  const cl = k => { const c = cfg(k); return (c && c.font==='mono') ? 'mono' : 'serif'; };
   // Effet-only field: Date d'échéance. Top-right of the CDM lettre de change.
-  const isEffetPrint = (d.type==='effet') && chequeCfg.echeance;
+  // Always render in effet mode using the defaults as fallback — see cfg() above.
+  const isEffetPrint = (d.type==='effet');
   const echeance = d.echeance||'';
-  const echHTML = (isEffetPrint && echeance)
+  const echHTML = (isEffetPrint && echeance && cfg('echeance'))
     ? `<div class="f ${cl('echeance')}" style="${fs('echeance')}">${esc(fmtDate(echeance))}</div>`
     : '';
   // Signature intentionally NOT printed on cheque — security (a lost/scanned cheque
@@ -8621,16 +8657,29 @@ function buildChequePrintHTML(d){
   const lettres2HTML = (d.type === 'effet')
     ? ''
     : `<div class="f wrap ${cl('lettres2')}" style="${fs('lettres2')}">${esc(l2.toUpperCase())}</div>`;
+  // Print strategy: use A4 portrait as @page (which Chrome ALWAYS respects
+  // across printer drivers) and lay the cheque/effet content at the
+  // top-left of the page at its real physical size (cheque 176×80mm,
+  // effet 200×130mm). The user feeds their pre-printed cheque/effet paper
+  // into the printer aligned to the top-left of the A4 path — the printer
+  // renders the full A4 coordinate space, only the part covered by the
+  // actual fed paper receives ink, and content lands 1:1 in its real
+  // position.
+  //
+  // Why not @page{size:XmmYmm}? Many Windows printer drivers (incl. Epson
+  // dot-matrix used for cheques/effets in MA) don't expose arbitrary
+  // custom page sizes to Chrome, so Chrome falls back to A4 anyway —
+  // but then it ALSO scales the content to fit, shifting every position
+  // off by ~5–10%. Forcing A4 and letting paper alignment do the rest
+  // is the only deterministic path across Mac+Windows+driver combos.
+  const pW = (d.type==='effet') ? 200 : 176;
+  const pH = (d.type==='effet') ? 130 : 80;
   return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title>
     <style>
-    /* @page matches the physical cheque/effet paper (176mm × 80mm). When
-       the user feeds real cheque paper sized 176×80mm into the printer
-       and sets the matching paper size in the print dialog, the content
-       prints exactly 1:1 in the right positions. On A4 test prints the
-       Chrome preview will downscale the page to fit the A4 sheet —
-       that's a preview artifact only, the actual print on cheque paper
-       is correct. */
-    @page{size:176mm 80mm;margin:0;}
+    /* @page is A4 portrait — Chrome respects this on every driver we've
+       tested. Content is laid in the top-left at the paper's real
+       physical size; user feeds cheque/effet paper aligned to top-left. */
+    @page{size:A4 portrait;margin:0;}
     @media print{
       html,body{margin:0!important;padding:0!important;background:#fff!important;}
       .w{page-break-after:avoid!important;page-break-inside:avoid!important;}
@@ -8638,7 +8687,7 @@ function buildChequePrintHTML(d){
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}
     body{font-family:'Georgia','Times New Roman',serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;}
-    .w{width:176mm;height:80mm;position:relative;background:#fff;overflow:hidden;}
+    .w{width:${pW}mm;height:${pH}mm;position:absolute;top:0;left:0;background:#fff;overflow:visible;}
     .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
     .f.wrap{white-space:normal;overflow:visible;line-height:1.28;}
     /* Crisp mono for digits — Inconsolata/SF Mono/Consolas before fallback */
@@ -8736,6 +8785,23 @@ function doPrint(){
   const montant=parseFloat(document.getElementById('pc-montant').value)||0;
   const date=document.getElementById('pc-date').value;
   const msg=document.getElementById('pc-msg');
+  // Effet safety net: if the user is in effet mode and never typed an
+  // échéance, auto-derive one from the issue date (or today) + 60 days
+  // RIGHT NOW so the print HTML carries it through. Mirror of the
+  // updatePrintPreview fallback — necessary here because doPrint reads
+  // the input value directly and is the source of truth for the print
+  // output, regardless of whether the user triggered an oninput event.
+  if(printMode==='effet'){
+    const echInp = document.getElementById('pc-echeance');
+    if(echInp && !echInp.value){
+      const baseISO = date || new Date().toISOString().slice(0,10);
+      try{
+        const _d = new Date(baseISO+'T12:00:00Z');
+        _d.setUTCDate(_d.getUTCDate()+60);
+        echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+      }catch(e){}
+    }
+  }
   if(!montant||!date){msg.style.color='var(--red)';msg.textContent='رجاءً عبئ: المبلغ والتاريخ';return;}
   if(!ordre){ toast('⚠️ المستفيد خاوي — عبئو يدوياً على الشيك','warning'); }
   const dup = findDuplicatePrint(ordre, montant, date);
@@ -22547,6 +22613,610 @@ async function chequeShareToTelegram(id){
 
 // supplier_products cache
 let spLinks = {};
+
+// ═══════════════════════════════════════════════════════════════
+// ===== CHARGES FIXES + TVA MODULE — Supabase =====
+// ═══════════════════════════════════════════════════════════════
+// Standalone TVA declaration module. TVA collectée is MANUAL (user controls
+// values, app facture data shown only as hint). TVA déductible is AUTO from
+// bons whose linked cheque was cashed (cheque.paid_at) in the target month —
+// matches the user's actual workflow: déduction counts when l-relevé bancaire
+// confirms the cash left the account, not when the bon was issued.
+let recurringCharges = [];     // template entries (salaire/loyer)
+let chargesOverrides = [];     // per-month overrides (montant / skip)
+let tvaDecls = [];             // saved monthly declarations
+let _chargesLoaded = false;
+let _tvaLoaded = false;
+let _chargesTab = 'templates'; // 'templates' | 'month'
+let _chargesMonth = (function(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); })();
+let _tvaMonth = _chargesMonth;
+
+function _monthLabel(ym){
+  // '2026-05' → 'ماي 2026' (FR-style month names common in MA business)
+  if(!ym) return '';
+  const [y,m] = ym.split('-');
+  const names = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  return (names[parseInt(m,10)-1]||m)+' '+y;
+}
+function _monthOpts(selected){
+  // 36 months: 24 past + current + 11 future
+  const now=new Date();
+  const opts=[];
+  for(let i=-24;i<=11;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
+    const ym=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+    opts.push('<option value="'+ym+'"'+(ym===selected?' selected':'')+'>'+_monthLabel(ym)+'</option>');
+  }
+  return opts.join('');
+}
+
+async function _loadCharges(){
+  if(_chargesLoaded) return;
+  try{
+    const [tpl, ovr] = await Promise.all([
+      sbFetch('recurring_charges','GET',null,'select=*&order=category,nom'),
+      sbFetch('monthly_charges_overrides','GET',null,'select=*'),
+    ]);
+    recurringCharges = Array.isArray(tpl)?tpl:[];
+    chargesOverrides = Array.isArray(ovr)?ovr:[];
+    _chargesLoaded = true;
+  }catch(e){
+    console.warn('loadCharges failed', e);
+    try{ toast('❌ '+(e.message||e),'error'); }catch(_){}
+  }
+}
+async function _loadTva(){
+  if(_tvaLoaded) return;
+  try{
+    const r = await sbFetch('tva_monthly_declarations','GET',null,'select=*&order=month.desc');
+    tvaDecls = Array.isArray(r)?r:[];
+    _tvaLoaded = true;
+  }catch(e){
+    console.warn('loadTva failed', e);
+  }
+}
+
+// Effective monthly amount for a charge in a given month, considering active dates + overrides.
+// Returns null if the charge isn't applicable that month (not yet active / archived / skipped).
+function _chargeMonthly(charge, ym){
+  const monthStart = ym+'-01';
+  if(charge.active_from && charge.active_from > monthStart+'-31') return null; // before active
+  if(charge.active_to && charge.active_to < monthStart) return null;            // after archived
+  const ov = chargesOverrides.find(o => o.charge_id === charge.id && o.month === ym);
+  if(ov){
+    if(ov.skip) return null;
+    if(ov.montant!=null && ov.montant!=='') return Number(ov.montant);
+  }
+  return Number(charge.montant)||0;
+}
+
+// ═══════════════ CHARGES FIXES PAGE ═══════════════
+async function renderCharges(){
+  await _loadCharges();
+  const page = document.getElementById('page-charges');
+  if(!page) return;
+  const tabBtn = (key,label,icon) => `<button class="btn ${_chargesTab===key?'btn-accent':''}" onclick="setChargesTab('${key}')" style="padding:9px 16px;font-size:13px">${icon} ${label}</button>`;
+  let body;
+  if(_chargesTab==='templates'){
+    body = _renderChargesTemplates();
+  } else {
+    body = _renderChargesMonth();
+  }
+  page.innerHTML = `
+    <div style="padding:18px 22px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        ${tabBtn('templates','القوالب','📝')}
+        ${tabBtn('month','معاينة الشهر','📅')}
+        <div style="flex:1"></div>
+        <button class="btn btn-accent" onclick="openChargeModal()" style="padding:10px 16px">➕ مصروف جديد</button>
+      </div>
+      ${body}
+    </div>`;
+}
+
+function setChargesTab(t){ _chargesTab = t; renderCharges(); }
+function setChargesMonth(m){ _chargesMonth = m; renderCharges(); }
+
+function _renderChargesTemplates(){
+  if(!recurringCharges.length){
+    return '<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-title">لا توجد مصاريف ثابتة بعد</div><div class="empty-sub">زيد الصلاير ولاكرا ولا أي مصروف كيتكرر كل شهر</div></div>';
+  }
+  const catLbl = c => ({salaire:'💼 أجرة',loyer:'🏠 كراء'})[c] || '🧾 آخر';
+  return `<div class="card">
+    <table class="data-table">
+      <thead><tr><th>الاسم</th><th>الفئة</th><th>المبلغ الشهري</th><th>نشط من</th><th>نشط حتى</th><th>إجراءات</th></tr></thead>
+      <tbody>${recurringCharges.map(c=>`<tr>
+        <td style="font-weight:600">${escB(c.nom||'')}</td>
+        <td>${catLbl(c.category)}</td>
+        <td style="color:var(--accent);font-weight:700">⁦${fmtN(c.montant)} DH⁩</td>
+        <td style="color:var(--text2)">${fmtDate(c.active_from)}</td>
+        <td style="color:var(--text2)">${c.active_to?fmtDate(c.active_to):'—'}</td>
+        <td style="display:flex;gap:6px">
+          <button class="btn-ghost" onclick="openChargeModal(${c.id})" title="تعديل">✏️</button>
+          <button class="btn-ghost" onclick="deleteCharge(${c.id})" title="حذف" style="color:var(--red)">🗑️</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+function _renderChargesMonth(){
+  const ym = _chargesMonth;
+  const rows = recurringCharges.map(c => {
+    const amount = _chargeMonthly(c, ym);
+    const ov = chargesOverrides.find(o => o.charge_id===c.id && o.month===ym);
+    return {c, amount, ov};
+  });
+  const active = rows.filter(r => r.amount!=null);
+  const total = active.reduce((s,r)=>s+r.amount, 0);
+  const catLbl = c => ({salaire:'💼',loyer:'🏠'})[c] || '🧾';
+  return `<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+      <label style="font-size:13px;color:var(--text2)">الشهر:</label>
+      <select onchange="setChargesMonth(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 12px;font-family:'Cairo',sans-serif">${_monthOpts(ym)}</select>
+    </div>
+    ${active.length===0 ? '<div style="text-align:center;color:var(--text3);padding:20px">لا مصاريف نشطة في '+_monthLabel(ym)+'</div>' :
+    `<table class="data-table">
+      <thead><tr><th>المصروف</th><th>المبلغ القالب</th><th>المبلغ الفعلي</th><th>الحالة</th><th>إجراءات</th></tr></thead>
+      <tbody>${rows.map(r => {
+        const isSkip = r.ov && r.ov.skip;
+        const isOverride = r.ov && !r.ov.skip && r.ov.montant!=null && r.ov.montant!=='';
+        const statusBadge = isSkip ? '<span style="background:rgba(232,64,64,.15);color:#e84040;padding:3px 8px;border-radius:6px;font-size:11px">مُلغى</span>'
+                          : isOverride ? '<span style="background:rgba(245,158,11,.15);color:#f59e0b;padding:3px 8px;border-radius:6px;font-size:11px">تعديل</span>'
+                          : '<span style="color:var(--text3);font-size:11px">—</span>';
+        return `<tr style="${r.amount==null?'opacity:.45':''}">
+          <td>${catLbl(r.c.category)} ${escB(r.c.nom||'')}</td>
+          <td style="color:var(--text2)">⁦${fmtN(r.c.montant)} DH⁩</td>
+          <td style="font-weight:700;color:${r.amount==null?'var(--text3)':'var(--accent)'}">⁦${r.amount==null?'—':fmtN(r.amount)+' DH'}⁩</td>
+          <td>${statusBadge}</td>
+          <td><button class="btn-ghost" onclick="openOverrideModal(${r.c.id},'${ym}')" title="تعديل/تخطي">⚙️</button></td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--border);font-weight:700">
+        <td colspan="2" style="text-align:left;padding-top:10px">المجموع:</td>
+        <td colspan="3" style="color:var(--accent);padding-top:10px">⁦${fmtN(total)} DH⁩</td>
+      </tr></tfoot>
+    </table>`}
+  </div>`;
+}
+
+function openChargeModal(id){
+  const c = id ? recurringCharges.find(x=>x.id===id) : null;
+  const today = new Date().toISOString().slice(0,10);
+  const html = `<div style="padding:20px;max-width:480px">
+    <div class="card-title" style="margin-bottom:16px">${c?'✏️ تعديل مصروف':'➕ مصروف ثابت جديد'}</div>
+    <div style="display:grid;gap:12px">
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الاسم</div>
+        <input id="ch-nom" value="${c?escB(c.nom||''):''}" placeholder="مثلا: أجرة محمد، كراء الورشة" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الفئة</div>
+        <select id="ch-cat" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+          <option value="salaire" ${c&&c.category==='salaire'?'selected':''}>💼 أجرة (Salaire)</option>
+          <option value="loyer" ${c&&c.category==='loyer'?'selected':''}>🏠 كراء (Loyer)</option>
+        </select></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">المبلغ الشهري (DH)</div>
+        <input id="ch-montant" type="number" step="0.01" value="${c?c.montant:''}" placeholder="4500.00" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">نشط من</div>
+        <input id="ch-from" type="date" value="${c?c.active_from:today}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">نشط حتى (اختياري — اتركو فارغ ايلا مزال شغال)</div>
+        <input id="ch-to" type="date" value="${c&&c.active_to?c.active_to:''}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-accent" style="flex:1" onclick="saveCharge(${c?c.id:'null'})">💾 حفظ</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+async function saveCharge(id){
+  const nom = document.getElementById('ch-nom').value.trim();
+  const category = document.getElementById('ch-cat').value;
+  const montant = parseFloat(document.getElementById('ch-montant').value)||0;
+  const active_from = document.getElementById('ch-from').value || new Date().toISOString().slice(0,10);
+  const active_to = document.getElementById('ch-to').value || null;
+  if(!nom){ toast('⚠️ كتب الاسم','warning'); return; }
+  if(montant<=0){ toast('⚠️ المبلغ غير صحيح','warning'); return; }
+  const payload = {nom, category, montant, active_from, active_to};
+  try{
+    if(id){
+      const r = await sbFetch('recurring_charges','PATCH',payload,'id=eq.'+id);
+      if(r && r.__sbError) throw new Error(r.msg);
+      Object.assign(recurringCharges.find(c=>c.id===id), payload);
+    } else {
+      const r = await sbFetch('recurring_charges','POST',payload);
+      if(r && r.__sbError) throw new Error(r.msg);
+      const row = Array.isArray(r)?r[0]:r;
+      if(row) recurringCharges.push(row);
+    }
+    document.getElementById('modal-main').classList.remove('open');
+    renderCharges();
+    toast('✅ تم الحفظ','success');
+  }catch(e){
+    toast('❌ '+(e.message||e),'error');
+  }
+}
+
+async function deleteCharge(id){
+  if(!confirm('حذف هاد المصروف نهائيا؟')) return;
+  try{
+    const r = await sbFetch('recurring_charges','DELETE',null,'id=eq.'+id);
+    if(r && r.__sbError) throw new Error(r.msg);
+    recurringCharges = recurringCharges.filter(c=>c.id!==id);
+    chargesOverrides = chargesOverrides.filter(o=>o.charge_id!==id);
+    renderCharges();
+    toast('🗑️ تم الحذف','success');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+function openOverrideModal(chargeId, month){
+  const c = recurringCharges.find(x=>x.id===chargeId);
+  if(!c) return;
+  const ov = chargesOverrides.find(o=>o.charge_id===chargeId && o.month===month);
+  const html = `<div style="padding:20px;max-width:480px">
+    <div class="card-title" style="margin-bottom:6px">⚙️ تعديل ${escB(c.nom||'')}</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">شهر ${_monthLabel(month)} فقط — المُغير في الصورة الأصلية ما يتبدلش</div>
+    <div style="display:grid;gap:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input id="ov-skip" type="checkbox" ${ov&&ov.skip?'checked':''} onchange="document.getElementById('ov-montant').disabled=this.checked">
+        <span>تخطي هاد الشهر (ما يتحسبش)</span>
+      </label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">مبلغ مختلف لهاد الشهر (DH) — اتركو فارغ لاستعمال القالب (${fmtN(c.montant)})</div>
+        <input id="ov-montant" type="number" step="0.01" value="${ov&&ov.montant!=null?ov.montant:''}" placeholder="${fmtN(c.montant)}" ${ov&&ov.skip?'disabled':''} style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">ملاحظة (اختياري)</div>
+        <textarea id="ov-notes" rows="2" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">${ov&&ov.notes?escB(ov.notes):''}</textarea></label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-accent" style="flex:1" onclick="saveOverride(${chargeId},'${month}')">💾 حفظ</button>
+      ${ov?'<button class="btn" style="flex:1;color:var(--red);border-color:var(--red)" onclick="clearOverride('+chargeId+',\''+month+'\')">🗑️ مسح التعديل</button>':''}
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+async function saveOverride(chargeId, month){
+  const skip = document.getElementById('ov-skip').checked;
+  const montantStr = document.getElementById('ov-montant').value.trim();
+  const montant = montantStr ? parseFloat(montantStr) : null;
+  const notes = document.getElementById('ov-notes').value.trim() || null;
+  const payload = {charge_id:chargeId, month, skip, montant, notes};
+  try{
+    // Try insert; on conflict (existing row) → update
+    const existing = chargesOverrides.find(o=>o.charge_id===chargeId && o.month===month);
+    let r;
+    if(existing){
+      r = await sbFetch('monthly_charges_overrides','PATCH',{skip, montant, notes},'charge_id=eq.'+chargeId+'&month=eq.'+month);
+    } else {
+      r = await sbFetch('monthly_charges_overrides','POST',payload);
+    }
+    if(r && r.__sbError) throw new Error(r.msg);
+    if(existing){
+      Object.assign(existing, {skip, montant, notes});
+    } else {
+      const row = Array.isArray(r)?r[0]:r;
+      if(row) chargesOverrides.push(row);
+      else chargesOverrides.push(payload);
+    }
+    document.getElementById('modal-main').classList.remove('open');
+    renderCharges();
+    toast('✅ تم الحفظ','success');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+async function clearOverride(chargeId, month){
+  if(!confirm('مسح التعديل دهاد الشهر؟')) return;
+  try{
+    const r = await sbFetch('monthly_charges_overrides','DELETE',null,'charge_id=eq.'+chargeId+'&month=eq.'+month);
+    if(r && r.__sbError) throw new Error(r.msg);
+    chargesOverrides = chargesOverrides.filter(o => !(o.charge_id===chargeId && o.month===month));
+    document.getElementById('modal-main').classList.remove('open');
+    renderCharges();
+    toast('🗑️ تم المسح','success');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+// ═══════════════ TVA PAGE ═══════════════
+async function renderTva(){
+  await Promise.all([_loadTva(), _loadCharges()]);
+  const page = document.getElementById('page-tva');
+  if(!page) return;
+  const ym = _tvaMonth;
+  // ── Reference: app factures in this month (for hint only)
+  const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
+  const factsTotalTTC = factsInMonth.reduce((s,f)=>s+(Number(f.total)||0), 0);
+  const factsTotalHT = factsTotalTTC/1.2;
+  const factsTVA = factsTotalTTC - factsTotalHT;
+  // ── Auto TVA déductible: bons whose cheque is مدفوع AND paid_at in this month
+  const deductibleRows = (bons||[]).filter(b => {
+    if(!b.chequeId) return false;
+    const ch = (cheques||[]).find(c=>c.id===b.chequeId);
+    if(!ch) return false;
+    if(ch.status !== 'مدفوع') return false;
+    const paidAt = ch.paid_at || ch.paidAt;
+    if(!paidAt) return false;
+    return String(paidAt).startsWith(ym+'-');
+  }).map(b => {
+    const ch = (cheques||[]).find(c=>c.id===b.chequeId);
+    const total = Number(b.total)||0;
+    const ht = total/1.2;
+    const tva = total - ht;
+    return {bon:b, cheque:ch, ttc:total, ht, tva};
+  });
+  const dedTotalHT = deductibleRows.reduce((s,r)=>s+r.ht, 0);
+  const dedTotalTVA = deductibleRows.reduce((s,r)=>s+r.tva, 0);
+
+  // ── Existing declaration if saved
+  const decl = tvaDecls.find(d => d.month === ym);
+  const caHT = decl ? Number(decl.ca_ht)||0 : factsTotalHT;
+  const tvaCol = decl ? Number(decl.tva_collectee)||0 : factsTVA;
+  const tvaDed = decl && decl.tva_deductible_override!=null ? Number(decl.tva_deductible_override) : dedTotalTVA;
+  const tvaPay = tvaCol - tvaDed;
+
+  // ── Charges fixes total
+  const chargesTotal = recurringCharges.reduce((s,c)=>{
+    const a = _chargeMonthly(c, ym);
+    return s + (a||0);
+  }, 0);
+
+  page.innerHTML = `
+    <div style="padding:18px 22px;max-width:1200px;margin:0 auto">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+        <label style="font-size:14px;color:var(--text2);font-weight:600">الشهر:</label>
+        <select onchange="setTvaMonth(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-family:'Cairo',sans-serif;font-size:14px">${_monthOpts(ym)}</select>
+        <div style="flex:1"></div>
+        <button class="btn btn-accent" onclick="saveTvaDecl()" style="padding:10px 18px">💾 حفظ التصريح</button>
+        <button class="btn" onclick="printTvaForComptable()" style="padding:10px 18px">🖨️ طبع للمحاسب</button>
+      </div>
+
+      <!-- TVA Collectée -->
+      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(16,185,129,.08),rgba(6,182,212,.05));border:1px solid rgba(16,185,129,.25)">
+        <div class="card-title" style="color:#10b981;margin-bottom:14px">📤 TVA Collectée (Ventes) — يدوي</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">Total HT (DH)</div>
+            <input id="tva-ht" type="number" step="0.01" value="${caHT?caHT.toFixed(2):''}" oninput="recalcTvaCol(this.value)" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+          <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">TVA Collectée 20% (DH)</div>
+            <input id="tva-col" type="number" step="0.01" value="${tvaCol?tvaCol.toFixed(2):''}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+        </div>
+        <div style="margin-top:12px;padding:10px 12px;background:rgba(255,255,255,.04);border-radius:6px;font-size:12px;color:var(--text3);line-height:1.6">
+          💡 <b>للمعلومة فقط</b> (فواتير ديال هاد الشهر فالأبليكاسيون): <b>${factsInMonth.length}</b> فاتورة، Total TTC ⁦${fmtN(factsTotalTTC)} DH⁩ = HT ⁦${fmtN(factsTotalHT)}⁩ + TVA ⁦${fmtN(factsTVA)}⁩
+          ${decl?'':' &nbsp;·&nbsp; <button class="btn-ghost" onclick="useFactsAsRef()" style="font-size:11px;padding:2px 8px">استعمل هاد القيمة</button>'}
+        </div>
+      </div>
+
+      <!-- TVA Déductible -->
+      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(124,92,252,.08),rgba(79,142,247,.05));border:1px solid rgba(124,92,252,.25)">
+        <div class="card-title" style="color:var(--accent);margin-bottom:14px">📥 TVA Déductible (Achats) — تلقائي من البونات المخلصة</div>
+        ${deductibleRows.length===0 ? '<div style="text-align:center;color:var(--text3);padding:18px">لا توجد بونات مخلصة بشيك/إيفي ف '+_monthLabel(ym)+'<br><span style="font-size:11px">(الشيك خاصو يكون status=مدفوع و paid_at ف هاد الشهر)</span></div>' :
+        `<div style="overflow-x:auto;margin-bottom:12px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>التاريخ خلاص</th><th>البون</th><th>الفورنيسور</th><th>TTC</th><th>HT</th><th>TVA</th><th>الشيك</th></tr></thead>
+            <tbody>${deductibleRows.map(r=>`<tr>
+              <td>${fmtDate(r.cheque.paid_at||r.cheque.paidAt)}</td>
+              <td style="font-weight:600">${escB(r.bon.num||'—')}</td>
+              <td>${escB(r.bon.fournisseur||'—')}</td>
+              <td>⁦${fmtN(r.ttc)}⁩</td>
+              <td>⁦${fmtN(r.ht)}⁩</td>
+              <td style="color:var(--accent);font-weight:700">⁦${fmtN(r.tva)}⁩</td>
+              <td style="color:var(--text3)">${escB(r.cheque.num||'—')}</td>
+            </tr>`).join('')}</tbody>
+            <tfoot><tr style="border-top:2px solid var(--border);font-weight:700">
+              <td colspan="3" style="text-align:left">المجموع (${deductibleRows.length} بون):</td>
+              <td>⁦${fmtN(deductibleRows.reduce((s,r)=>s+r.ttc,0))}⁩</td>
+              <td>⁦${fmtN(dedTotalHT)}⁩</td>
+              <td style="color:var(--accent)">⁦${fmtN(dedTotalTVA)}⁩</td>
+              <td></td>
+            </tr></tfoot>
+          </table>
+        </div>`}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:end">
+          <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">TVA Déductible (DH) — تعديل يدوي اختياري</div>
+            <input id="tva-ded" type="number" step="0.01" value="${tvaDed.toFixed(2)}" placeholder="${dedTotalTVA.toFixed(2)}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+          <div style="font-size:11px;color:var(--text3);padding-bottom:10px">القيمة التلقائية: <b style="color:var(--accent)">⁦${fmtN(dedTotalTVA)} DH⁩</b></div>
+        </div>
+      </div>
+
+      <!-- Résumé TVA -->
+      <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(245,158,11,.10),rgba(232,64,64,.06));border:1px solid rgba(245,158,11,.30)">
+        <div class="card-title" style="color:#f59e0b;margin-bottom:14px">💰 الخلاصة</div>
+        <table style="width:100%;font-size:14px">
+          <tr><td style="padding:6px 0">TVA Collectée:</td><td style="text-align:left;font-weight:700;color:#10b981">+⁦${fmtN(tvaCol)} DH⁩</td></tr>
+          <tr><td style="padding:6px 0">TVA Déductible:</td><td style="text-align:left;font-weight:700;color:var(--accent)">−⁦${fmtN(tvaDed)} DH⁩</td></tr>
+          <tr style="border-top:2px solid var(--border)"><td style="padding:12px 0;font-weight:700;font-size:16px">TVA à payer:</td><td style="text-align:left;font-weight:800;font-size:18px;color:${tvaPay>=0?'#f59e0b':'#10b981'}">⁦${fmtN(tvaPay)} DH⁩</td></tr>
+        </table>
+      </div>
+
+      <!-- Charges fixes summary -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:10px">📋 المصاريف الثابتة دهاد الشهر</div>
+        ${recurringCharges.length===0?'<div style="color:var(--text3);font-size:12px">لا توجد مصاريف ثابتة. <button class="btn-ghost" onclick="showPage(\'charges\',document.getElementById(\'nav-charges\'))">إضافة من هنا</button></div>':
+        `<table class="data-table" style="font-size:13px">
+          <tbody>${recurringCharges.map(c=>{const a=_chargeMonthly(c,ym);return `<tr style="${a==null?'opacity:.4':''}">
+            <td>${({salaire:'💼',loyer:'🏠'})[c.category]||'🧾'} ${escB(c.nom||'')}</td>
+            <td style="text-align:left;font-weight:600">⁦${a==null?'مُلغى':fmtN(a)+' DH'}⁩</td>
+          </tr>`;}).join('')}</tbody>
+          <tfoot><tr style="border-top:2px solid var(--border);font-weight:700">
+            <td style="padding-top:8px">المجموع:</td>
+            <td style="text-align:left;color:var(--accent);padding-top:8px">⁦${fmtN(chargesTotal)} DH⁩</td>
+          </tr></tfoot>
+        </table>`}
+      </div>
+
+      <!-- Total dépenses -->
+      <div class="card" style="background:rgba(232,64,64,.04);border:1px solid rgba(232,64,64,.2)">
+        <div class="card-title" style="color:#e84040;margin-bottom:10px">📉 إجمالي المصاريف لهاد الشهر</div>
+        <div style="font-size:13px;color:var(--text2);line-height:1.8">
+          • TVA à payer: ⁦${fmtN(Math.max(0,tvaPay))}⁩ DH<br>
+          • مشتريات (HT): ⁦${fmtN(dedTotalHT)}⁩ DH<br>
+          • مصاريف ثابتة: ⁦${fmtN(chargesTotal)}⁩ DH<br>
+          <hr style="margin:8px 0;border:0;border-top:1px dashed var(--border)">
+          <b style="color:#e84040;font-size:15px">المجموع التقديري: ⁦${fmtN(Math.max(0,tvaPay)+dedTotalHT+chargesTotal)}⁩ DH</b>
+        </div>
+      </div>
+    </div>`;
+}
+
+function setTvaMonth(m){ _tvaMonth = m; renderTva(); }
+
+function recalcTvaCol(htStr){
+  const ht = parseFloat(htStr)||0;
+  const col = document.getElementById('tva-col');
+  if(col) col.value = (ht*0.2).toFixed(2);
+}
+
+function useFactsAsRef(){
+  const ym = _tvaMonth;
+  const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
+  const ttc = factsInMonth.reduce((s,f)=>s+(Number(f.total)||0), 0);
+  const ht = ttc/1.2;
+  document.getElementById('tva-ht').value = ht.toFixed(2);
+  document.getElementById('tva-col').value = (ttc-ht).toFixed(2);
+}
+
+async function saveTvaDecl(){
+  const ym = _tvaMonth;
+  const ca_ht = parseFloat(document.getElementById('tva-ht').value)||0;
+  const tva_collectee = parseFloat(document.getElementById('tva-col').value)||0;
+  const dedStr = document.getElementById('tva-ded').value;
+  // Auto-calculated value is the default — only store override if user typed something different
+  const dedRows = (bons||[]).filter(b => {
+    if(!b.chequeId) return false;
+    const ch = (cheques||[]).find(c=>c.id===b.chequeId);
+    if(!ch || ch.status!=='مدفوع') return false;
+    const paidAt = ch.paid_at || ch.paidAt;
+    return paidAt && String(paidAt).startsWith(ym+'-');
+  });
+  const autoTvaDed = dedRows.reduce((s,b)=>{const t=Number(b.total)||0;return s+(t-t/1.2);}, 0);
+  const tva_deductible_override = (dedStr && Math.abs(parseFloat(dedStr) - autoTvaDed) > 0.01) ? parseFloat(dedStr) : null;
+  const payload = {month:ym, ca_ht, tva_collectee, tva_deductible_override};
+  try{
+    const existing = tvaDecls.find(d=>d.month===ym);
+    let r;
+    if(existing){
+      r = await sbFetch('tva_monthly_declarations','PATCH',{ca_ht, tva_collectee, tva_deductible_override},'month=eq.'+ym);
+    } else {
+      r = await sbFetch('tva_monthly_declarations','POST',payload);
+    }
+    if(r && r.__sbError) throw new Error(r.msg);
+    if(existing){
+      Object.assign(existing, payload);
+    } else {
+      const row = Array.isArray(r)?r[0]:r;
+      tvaDecls.unshift(row||payload);
+    }
+    toast('✅ تم حفظ التصريح ل '+_monthLabel(ym),'success');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+function printTvaForComptable(){
+  const ym = _tvaMonth;
+  const ca_ht = parseFloat((document.getElementById('tva-ht')||{}).value)||0;
+  const tva_col = parseFloat((document.getElementById('tva-col')||{}).value)||0;
+  const tva_ded = parseFloat((document.getElementById('tva-ded')||{}).value)||0;
+  const tva_pay = tva_col - tva_ded;
+  const dedRows = (bons||[]).filter(b => {
+    if(!b.chequeId) return false;
+    const ch = (cheques||[]).find(c=>c.id===b.chequeId);
+    if(!ch || ch.status!=='مدفوع') return false;
+    const paidAt = ch.paid_at || ch.paidAt;
+    return paidAt && String(paidAt).startsWith(ym+'-');
+  }).map(b => {
+    const ch = (cheques||[]).find(c=>c.id===b.chequeId);
+    const ttc = Number(b.total)||0;
+    return {bon:b, cheque:ch, ttc, ht:ttc/1.2, tva:ttc-ttc/1.2};
+  });
+  const soc = (typeof factSociete!=='undefined' && factSociete) ? factSociete : {nom:'MADERA DECO'};
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>إعلان TVA — ${_monthLabel(ym)}</title>
+<style>
+@page{size:A4 portrait;margin:14mm}
+*{box-sizing:border-box;font-family:'Cairo',Arial,sans-serif}
+body{margin:0;color:#0f172a;font-size:11pt;line-height:1.5}
+h1{font-size:20pt;margin:0 0 4px;color:#0f172a}
+h2{font-size:13pt;margin:18px 0 8px;padding-bottom:4px;border-bottom:2px solid #0f172a}
+.header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #0f172a;padding-bottom:12px;margin-bottom:14px}
+.h-info{font-size:10pt;color:#475569}
+.period{background:#fef3c7;border-right:4px solid #f59e0b;padding:10px 14px;margin:12px 0;font-weight:700;font-size:13pt}
+table{width:100%;border-collapse:collapse;font-size:10pt;margin-bottom:10px}
+th{background:#f1f5f9;text-align:right;padding:8px 10px;border:1px solid #cbd5e1;font-weight:700}
+td{padding:7px 10px;border:1px solid #e2e8f0}
+.tot{background:#0f172a;color:#fff;font-weight:700}
+.tot td{border-color:#0f172a}
+.box{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+.kv{padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}
+.kv-lbl{font-size:10pt;color:#64748b;margin-bottom:4px}
+.kv-val{font-size:15pt;font-weight:700;color:#0f172a}
+.resume{background:#fff7ed;border:2px solid #f59e0b;padding:16px;margin:14px 0;border-radius:8px}
+.resume-row{display:flex;justify-content:space-between;padding:6px 0;font-size:12pt}
+.resume-final{border-top:2px solid #f59e0b;margin-top:8px;padding-top:10px;font-size:14pt;font-weight:700}
+.sig{margin-top:30px;display:flex;justify-content:space-between}
+.sig-box{width:200px;border-top:1px solid #0f172a;padding-top:6px;text-align:center;font-size:10pt;color:#475569}
+.note{font-size:9pt;color:#64748b;margin-top:6px}
+@media print{.no-print{display:none}body{font-size:10pt}}
+</style></head><body>
+<div class="header">
+  <div><h1>${escB(soc.nom||'MADERA DECO')}</h1>
+    <div class="h-info">${soc.ice?'ICE: '+escB(soc.ice)+' &nbsp;·&nbsp; ':''}${soc.if?'IF: '+escB(soc.if)+' &nbsp;·&nbsp; ':''}${soc.rc?'RC: '+escB(soc.rc):''}</div>
+    <div class="h-info">${soc.adresse?escB(soc.adresse):''}</div>
+  </div>
+  <div style="text-align:left">
+    <h2 style="border:0;padding:0;margin:0">📊 إعلان TVA</h2>
+    <div class="h-info">تاريخ الإصدار: ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+  </div>
+</div>
+
+<div class="period">الفترة: ${_monthLabel(ym)}</div>
+
+<h2>📤 TVA Collectée (المبيعات)</h2>
+<div class="box">
+  <div class="kv"><div class="kv-lbl">Chiffre d'Affaires HT</div><div class="kv-val">${fmtN(ca_ht)} DH</div></div>
+  <div class="kv"><div class="kv-lbl">TVA Collectée (20%)</div><div class="kv-val" style="color:#10b981">${fmtN(tva_col)} DH</div></div>
+</div>
+<div class="note">القيم متدخلة يدويا من طرف المسير على أساس الفواتير المرسلة خارج النظام.</div>
+
+<h2>📥 TVA Déductible (المشتريات — مخلصة بالبنك)</h2>
+${dedRows.length===0 ? '<div class="note">لا توجد مشتريات مخلصة عبر الشيكات/الإيفيات في هاد الشهر.</div>' :
+`<table>
+  <thead><tr><th>التاريخ خلاص</th><th>البون</th><th>الفورنيسور</th><th>المرجع شيك</th><th>HT (DH)</th><th>TVA (DH)</th><th>TTC (DH)</th></tr></thead>
+  <tbody>${dedRows.map(r=>`<tr>
+    <td>${fmtDate(r.cheque.paid_at||r.cheque.paidAt)}</td>
+    <td>${escB(r.bon.num||'—')}</td>
+    <td>${escB(r.bon.fournisseur||'—')}</td>
+    <td>${escB(r.cheque.num||'—')}</td>
+    <td style="text-align:left">${fmtN(r.ht)}</td>
+    <td style="text-align:left">${fmtN(r.tva)}</td>
+    <td style="text-align:left">${fmtN(r.ttc)}</td>
+  </tr>`).join('')}</tbody>
+  <tfoot><tr class="tot">
+    <td colspan="4" style="text-align:right">المجموع (${dedRows.length} بون):</td>
+    <td style="text-align:left">${fmtN(dedRows.reduce((s,r)=>s+r.ht,0))}</td>
+    <td style="text-align:left">${fmtN(dedRows.reduce((s,r)=>s+r.tva,0))}</td>
+    <td style="text-align:left">${fmtN(dedRows.reduce((s,r)=>s+r.ttc,0))}</td>
+  </tr></tfoot>
+</table>`}
+<div class="kv" style="margin-top:8px"><div class="kv-lbl">TVA Déductible للتصريح</div><div class="kv-val" style="color:#7c5cfc">${fmtN(tva_ded)} DH</div></div>
+
+<h2>💰 الخلاصة</h2>
+<div class="resume">
+  <div class="resume-row"><span>TVA Collectée:</span><span style="color:#10b981;font-weight:700">+${fmtN(tva_col)} DH</span></div>
+  <div class="resume-row"><span>TVA Déductible:</span><span style="color:#7c5cfc;font-weight:700">−${fmtN(tva_ded)} DH</span></div>
+  <div class="resume-final"><div style="display:flex;justify-content:space-between"><span>TVA à payer:</span><span style="color:${tva_pay>=0?'#f59e0b':'#10b981'}">${fmtN(tva_pay)} DH</span></div></div>
+</div>
+
+<div class="sig">
+  <div class="sig-box">المسير</div>
+  <div class="sig-box">المحاسب</div>
+</div>
+
+<div class="no-print" style="text-align:center;margin-top:30px">
+  <button onclick="window.print()" style="padding:10px 24px;background:#0f172a;color:#fff;border:0;border-radius:6px;cursor:pointer;font-family:Cairo,sans-serif;font-size:13px;font-weight:700">🖨️ طبع</button>
+</div>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=900,height=1100');
+  if(!w){ toast('⚠️ نافذة الطباعة محظورة','warning'); return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{w.focus();}catch(e){} }, 200);
+}
 
 // INIT
 document.getElementById('c-date').valueAsDate=new Date();

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v174-cheque-effet-unified-typography';
+const CACHE = 'suivi-v178-tva-charges-fixes-module';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

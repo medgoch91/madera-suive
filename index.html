@@ -7878,14 +7878,18 @@ function setPrintMode(m){
 }
 function pcBgSrc(){ return printMode==='effet' ? effetImg : chequeImg; }
 
-// ── Per-field cheque-print config (positions in mm, font size in pt, spacing in px) ──
+// ── Per-field cheque/effet print config — UNIFIED typography ──
+// Same scale, weight, and rhythm across both modes so the printed
+// document reads as a single coherent piece (user asked: "chkal d
+// ktba ou sieze … kamlo ikono nafs ou ktba tkon proo ou m9adaaa").
+// Sizes are in pt, positions in mm, spacing in px (letter-spacing).
 const CHEQUE_CFG_DEFAULTS = {
-  montant:  {top:5,  left:109, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
-  lettres1: {top:20, left:32,  width:78,  size:11, spacing:0,   align:'left',   font:'serif', weight:600},
-  lettres2: {top:28, left:8,   width:160, size:11, spacing:0,   align:'left',   font:'serif', weight:600},
-  ordre:    {top:34, left:18,  width:100, size:12, spacing:0,   align:'left',   font:'serif', weight:600},
-  ville:    {top:44, left:95,  width:18,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  date:     {top:44, left:115, width:22,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
+  montant:  {top:5,  left:109, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
+  lettres1: {top:20, left:32,  width:78,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  lettres2: {top:28, left:8,   width:160, size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ordre:    {top:34, left:18,  width:100, size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ville:    {top:44, left:95,  width:18,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
+  date:     {top:44, left:115, width:22,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
   // Image-only field — only top/left/width/height honored (size/align/font ignored)
   signature:{top:52, left:133, width:38, height:20, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
@@ -7901,17 +7905,20 @@ const CHEQUE_CFG_DEFAULTS = {
 //   - Signature/cachet: bottom-right
 // Storage is `effet_cfg` (separate from `cheque_cfg`) so calibrating effet
 // doesn't clobber the cheque calibration and vice versa.
+// Effet shares the SAME typography scale as cheque — same sizes,
+// weights, spacing — only positions differ because the bank
+// template is laid out differently.
 const EFFET_CFG_DEFAULTS = {
-  echeance: {top:5,  left:141, width:25,  size:11, spacing:0,   align:'left',   font:'mono',  weight:700},
-  montant:  {top:13, left:138, width:28,  size:13, spacing:0,   align:'right',  font:'mono',  weight:700},
+  echeance: {top:5,  left:141, width:25,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
+  montant:  {top:13, left:138, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
   // lettres1 wraps freely on effet — 3+ visual lines fit at width:35mm. lettres2
   // stays unused (parked off the visible area) so it can't accidentally print
   // duplicate text on top of the wrapped lettres1.
-  lettres1: {top:26, left:140, width:35,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  lettres2: {top:90, left:140, width:35,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  ordre:    {top:25, left:70,  width:50,  size:12, spacing:0,   align:'left',   font:'serif', weight:600},
-  ville:    {top:36, left:46,  width:22,  size:10, spacing:0,   align:'left',   font:'serif', weight:600},
-  date:     {top:36, left:69,  width:24,  size:10, spacing:0,   align:'left',   font:'mono',  weight:600},
+  lettres1: {top:26, left:140, width:35,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  lettres2: {top:90, left:140, width:35,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ordre:    {top:25, left:70,  width:50,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ville:    {top:36, left:46,  width:22,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
+  date:     {top:36, left:69,  width:24,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
   signature:{top:50, left:140, width:35, height:18, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
 // Which storage key to use for the active print mode.
@@ -8202,7 +8209,13 @@ function applyChqCfgToPreview(){
     el.style.textAlign = c.align;
     el.style.fontWeight = c.weight||600;
     el.style.letterSpacing = (c.spacing||0)+'px';
-    el.style.fontFamily = c.font==='mono' ? "'Courier New',monospace" : "'Times New Roman',serif";
+    el.style.fontFamily = c.font==='mono'
+      ? "'SF Mono','JetBrains Mono','Consolas','Courier New',monospace"
+      : "'Georgia','Times New Roman',serif";
+    if(c.font==='mono'){
+      el.style.fontFeatureSettings = '"tnum" 1';
+      el.style.letterSpacing = ((c.spacing||0)+0.4)+'px';
+    }
   });
   // Signature intentionally NOT rendered on cheque preview (matches print output).
 }
@@ -8624,12 +8637,16 @@ function buildChequePrintHTML(d){
     }
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}
-    body{font-family:'Times New Roman',serif;color:#000;}
+    body{font-family:'Georgia','Times New Roman',serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;}
     .w{width:176mm;height:80mm;position:relative;background:#fff;overflow:hidden;}
     .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
-    .f.wrap{white-space:normal;overflow:visible;line-height:1.25;}
-    .mono{font-family:'Courier New',monospace;}
-    .serif{font-family:'Times New Roman',serif;}
+    .f.wrap{white-space:normal;overflow:visible;line-height:1.28;}
+    /* Crisp mono for digits — Inconsolata/SF Mono/Consolas before fallback */
+    .mono{font-family:'SF Mono','JetBrains Mono','Consolas','Courier New',monospace;font-feature-settings:"tnum" 1;letter-spacing:0.02em;}
+    /* Georgia for text — taller x-height than Times so it scans clean at
+       small sizes, matching what real bank fields look like when filled
+       by typewriter-style printers. */
+    .serif{font-family:'Georgia','Times New Roman',serif;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
     <div class="f wrap ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>

@@ -20933,7 +20933,7 @@ function buildFactTable(rows){
   // Bulk select bar
   let h='<div id="fact-bulk-bar" style="display:none;align-items:center;gap:10px;background:rgba(147,51,234,0.08);border:1px solid rgba(147,51,234,0.3);border-radius:10px;padding:10px 14px;margin-bottom:10px;flex-wrap:wrap">'
     +'<span style="font-size:13px;font-weight:700;color:var(--accent)">📋 محدد: <span id="fact-bulk-count">0</span></span>'
-    +'<button onclick="factListBulkPDF()" style="margin-right:auto;padding:7px 14px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">📥 تحميل PDF (المحدد)</button>'
+    +'<button onclick="factListBulkPDF()" style="margin-right:auto;padding:7px 14px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">🖨️📥 طباعة / PDF (المحدد)</button>'
     +'<button onclick="factListBulkDelete()" style="padding:7px 14px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer">🗑️ حذف المحدد</button>'
     +'<button onclick="factListToggleAll(false)" style="padding:7px 12px;background:transparent;color:var(--text2);border:1px solid var(--border);border-radius:8px;font-family:Cairo,sans-serif;font-size:12px;cursor:pointer">إلغاء</button>'
   +'</div>';
@@ -21365,7 +21365,10 @@ async function _factSaveNewImpl(){
         total_ht:Math.round(ht*100)/100,
         total_tva:Math.round(tva*100)/100,
         total_ttc:Math.round(ttc*100)/100,
-        statut:(factNewAsDevis?'ديفي':'معلقة'),
+        // Workflow: we only issue factures after the client has paid (user
+        // explicitly said "ma kankhdmou facture ta nkoni tkhlsna fiha").
+        // So a fresh facture lands directly as مدفوعة. Devis stays as ديفي.
+        statut:(factNewAsDevis?'ديفي':'مدفوعة'),
         serie:_factSerie,
         notes:factNewNotes,
       };

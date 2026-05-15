@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v168-facture-search-articles-free-text';
+const CACHE = 'suivi-v169-facture-default-paid-bulk-print';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

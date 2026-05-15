@@ -8343,6 +8343,7 @@ function renderPrintCheque(){
           <div style="font-size:12px;font-weight:600;color:var(--accent);direction:ltr;font-family:'Times New Roman',serif" id="pc-lettres-preview">—</div>
         </div>
         <button class="btn btn-accent" style="width:100%;padding:13px;font-size:15px;margin-bottom:8px" onclick="doPrint()">${printBtnLbl}</button>
+        <button class="btn" style="width:100%;padding:11px;font-size:13px;margin-bottom:8px;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:none;font-weight:700" onclick="downloadChequePNG()" title="حمل الشيك/الورقة كصورة PNG وطبعها بحاسة Preview/Photos — استقرار مضمون عبر Mac+Windows">📸 تحميل صورة PNG (مضبوطة)</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
           <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="printAlignmentTest()" title="طبع تجريبي على ورقة فاضية لمعايرة المحاذاة">🎯 طبع tjarib</button>
           <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="exportChequePDF()" title="فتح في نافذة جديدة للحفظ PDF">📄 PDF</button>
@@ -8642,6 +8643,52 @@ function buildChequePrintHTML(d){
 }
 
 // Send the HTML to the hidden iframe to trigger browser print
+// Render the current cheque/effet preview as a PNG at print-resolution
+// (176×80mm @ 300dpi → 2079×945 px) and download it. The PNG is the
+// most reliable way to print on real cheque paper across Mac & Windows:
+// the user opens it in Aperçu / Photos / any image viewer (whose print
+// engines respect "Actual size" without CSS @page games) and prints.
+async function downloadChequePNG(){
+  try{
+    const wrap = document.getElementById('pc-cheque-wrap');
+    if(!wrap){ try{ toast('⚠️ المعاينة غير متوفرة','warning'); }catch(e){} return; }
+    if(typeof html2canvas === 'undefined'){ try{ toast('⚠️ html2canvas غير محمل','error'); }catch(e){} return; }
+    try{ if(typeof showLoader==='function') showLoader('📸 جاري التصوير...'); }catch(e){}
+    // 176mm × 80mm at 300dpi (1mm ≈ 11.811 px). Scale factor =
+    // 11.811 × (CSS-px per mm) ≈ 11.811 / (96/25.4) = 3.125 → use 4 for
+    // a sharp margin on retina + modern printers (~ 8.3 MP).
+    const canvas = await html2canvas(wrap, {
+      backgroundColor: '#ffffff',
+      scale: 4,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+      width: wrap.offsetWidth,
+      height: wrap.offsetHeight,
+    });
+    try{ hideLoader(); }catch(e){}
+    canvas.toBlob(function(blob){
+      if(!blob){ try{ toast('❌ فشل التحويل','error'); }catch(e){} return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const isEff = printMode==='effet';
+      const num = (document.getElementById('pc-num')||{value:''}).value || (document.getElementById('c-num')||{value:''}).value || '';
+      const ordre = (document.getElementById('pc-ordre')||{value:''}).value.trim() || 'cheque';
+      const safeOrdre = ordre.replace(/[^A-Za-z0-9 _-]/g,'').slice(0,30).trim().replace(/\s+/g,'-') || (isEff?'effet':'cheque');
+      a.href = url;
+      a.download = (isEff?'EFFET':'CHEQUE')+'-'+safeOrdre+(num?'-'+num:'')+'.png';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ try{ a.remove(); URL.revokeObjectURL(url); }catch(e){} }, 1500);
+      try{ toast('✅ تم تنزيل الصورة — افتحها وطبع بمقياس 100%','success'); }catch(e){}
+    }, 'image/png');
+  }catch(e){
+    try{ hideLoader(); }catch(_){}
+    console.error('downloadChequePNG', e);
+    try{ toast('❌ '+(e&&e.message||'فشل'),'error'); }catch(_){}
+  }
+}
+
 function sendChequeToPrinter(html){
   // Open a dedicated print window. iframe-based printing has a long history
   // of confusing the browser into printing the PARENT document (the whole

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v171-cheque-page-176x80-restored';
+const CACHE = 'suivi-v172-cheque-png-export';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

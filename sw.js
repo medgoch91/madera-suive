@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v172-cheque-png-export';
+const CACHE = 'suivi-v173-cheque-print-simplified';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

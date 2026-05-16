@@ -24579,6 +24579,32 @@ function _dateRangeStr(b){ return b.startDate===b.endDate ? fmtDate(b.startDate)
 // Create an unmatched bank transaction as a fully-formed cheque/effet record
 // in the cheques table. Status=مدفوع, paid_at=transaction date. Fournisseur
 // defaults to "غير محدد" — user edits it later from the cheques list.
+// Re-match the stashed bank transactions against the (now-updated) cheques
+// table — used after createUnmatchedAsCheque / createAllUnmatched so the
+// newly-saved records appear in the "will_update" or "already_paid" bucket
+// instead of staying in "unmatched".
+function _rematchBankReview(){
+  if(!window._lastBankAllTxs) return;
+  const txs = window._lastBankAllTxs;
+  const matches = txs.map(tx => {
+    const candidate = (cheques||[]).find(c => {
+      if(!c.num) return false;
+      const cleanNum = String(c.num).replace(/\D/g,'');
+      const txNum = String(tx.num).replace(/\D/g,'');
+      return cleanNum === txNum || cleanNum.endsWith(txNum) || txNum.endsWith(cleanNum);
+    });
+    return {
+      tx,
+      cheque: candidate || null,
+      status: !candidate ? 'unmatched'
+            : (candidate.status === 'مدفوع' && candidate.paid_at) ? 'already_paid'
+            : 'will_update',
+    };
+  });
+  window._lastBankMatches = matches;
+  _showBankReconcileReview(matches, txs);
+}
+
 async function createUnmatchedAsCheque(tx){
   if(!tx || !tx.num) return;
   // cheques schema: num, fournisseur, montant, date, echeance, status,
@@ -24599,12 +24625,11 @@ async function createUnmatchedAsCheque(tx){
     if(r && r.__sbError) throw new Error(r.msg);
     const row = Array.isArray(r)?r[0]:r;
     if(row && typeof cheques !== 'undefined') cheques.unshift(row);
-    try{ toast(`✅ تم تسجيل ${tx.type==='effet'?'الإيفي':'الشيك'} ${tx.num}`,'success'); }catch(e){}
-    // Update the visual row to reflect new state
-    document.querySelectorAll(`button[onclick*='${tx.num}'][onclick*='createUnmatchedAsCheque']`).forEach(b=>{
-      const tr = b.closest('tr');
-      if(tr){ tr.style.opacity = '.5'; b.textContent = '✓ مسجل'; b.disabled = true; }
-    });
+    try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+    try{ toast(`✅ ${tx.type==='effet'?'الإيفي':'الشيك'} ${tx.num} — مسجل ف التطبيق`,'success'); }catch(e){}
+    // Re-render the review screen so the row moves from "unmatched" to
+    // "already paid" — confirms to the user that the record was created.
+    _rematchBankReview();
   }catch(e){
     try{ toast('❌ '+(e.message||e),'error'); }catch(_){}
   }
@@ -24615,9 +24640,23 @@ async function createAllUnmatched(txList){
   if(!confirm(`سيتم تسجيل ${txList.length} عملية كـ "مدفوع" بفورنيسور افتراضي. تأكد؟`)) return;
   let ok=0, fail=0;
   for(const tx of txList){
-    try{ await createUnmatchedAsCheque(tx); ok++; }catch(e){ fail++; }
+    if(!tx || !tx.num){ fail++; continue; }
+    const payload = {
+      num: tx.num, type: tx.type, fournisseur: 'غير محدد',
+      montant: tx.montant, date: tx.date, echeance: tx.date,
+      status: 'مدفوع', paid_at: tx.date, bon_ids: [],
+    };
+    try{
+      const r = await sbFetch('cheques','POST', payload);
+      if(r && r.__sbError) throw new Error(r.msg);
+      const row = Array.isArray(r)?r[0]:r;
+      if(row && typeof cheques!=='undefined') cheques.unshift(row);
+      ok++;
+    }catch(e){ fail++; console.warn('createAllUnmatched failed', tx.num, e); }
   }
-  if(typeof renderTva==='function') renderTva();
+  try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+  try{ toast(`✅ ${ok} مسجل${fail?` · ${fail} فشل`:''}`, fail?'warning':'success'); }catch(e){}
+  _rematchBankReview();
 }
 
 async function applyBankReconcile(updates){

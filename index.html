@@ -24362,7 +24362,7 @@ async function _recOutFournisseur(v){
     const payload = {
       num, type:'virement', fournisseur:fournNom.trim()||v.counterparty,
       montant:v.montant, date:v.date, echeance:v.date,
-      status:'مدفوع', paid_at:v.date, ville:'Agadir',
+      status:'مدفوع', paid_at:v.date, bon_ids:[],
     };
     const r = await sbFetch('cheques','POST',payload);
     if(r && r.__sbError) throw new Error(r.msg);
@@ -24528,18 +24528,18 @@ function _dateRangeStr(b){ return b.startDate===b.endDate ? fmtDate(b.startDate)
 // defaults to "غير محدد" — user edits it later from the cheques list.
 async function createUnmatchedAsCheque(tx){
   if(!tx || !tx.num) return;
+  // cheques schema: num, fournisseur, montant, date, echeance, status,
+  // type, paid_at, bon_ids, chantier_id (no ville, no notes).
   const payload = {
     num: tx.num,
-    type: tx.type,                    // 'cheque' or 'effet'
+    type: tx.type,
     fournisseur: 'غير محدد',
     montant: tx.montant,
-    date: tx.date,                     // issue date approximated to payment date
+    date: tx.date,
     echeance: tx.date,
     status: 'مدفوع',
     paid_at: tx.date,
-    ville: 'Agadir',
-    // cheques table doesn't have a notes column — origin is implicit from
-    // fournisseur='غير محدد' + status=مدفوع + paid_at on the bank statement date.
+    bon_ids: [],
   };
   try{
     const r = await sbFetch('cheques','POST',payload);

@@ -24316,15 +24316,24 @@ function openOutVirementRecorder(virJson){
 
 async function _recOutSalaire(v){
   const sals = (typeof salariesData!=='undefined' && salariesData) ? salariesData : [];
-  if(!sals.length){ try{ toast('⚠️ ما عندكش أجراء مسجلين','warning'); }catch(e){} return; }
   const cpUpper = (v.counterparty||'').toUpperCase();
   const suggested = sals.find(s => cpUpper.includes((s.nom||'').toUpperCase()) || (s.nom||'').toUpperCase().includes(cpUpper.split(' ')[0]||''));
   const opts = sals.map(s => `<option value="${s.id}"${suggested && s.id===suggested.id?' selected':''}>${escB(s.nom||'—')}</option>`).join('');
+  // "+ Add new worker" option pre-fills with counterparty name. Useful for
+  // office workers not yet tracked in the salaries module (user has these
+  // working at the office vs depot — they're paid but not pointed).
   const html = `<div style="padding:22px;max-width:480px">
     <div class="card-title" style="margin-bottom:6px">💼 تسجيل أجرة</div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${fmtDate(v.date)} · ${fmtN(v.montant)} DH · ${escB(v.counterparty)}</div>
     <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الأجير</div>
-      <select id="rec-worker" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">${opts}</select>
+      <select id="rec-worker" onchange="document.getElementById('rec-worker-new').style.display=this.value==='__new__'?'block':'none'" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+        ${opts}
+        <option value="__new__"${sals.length===0?' selected':''}>➕ أجير جديد (مكاتش مسجل قبل)</option>
+      </select>
+    </label>
+    <label id="rec-worker-new" style="display:${sals.length===0?'block':'none'};margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">اسم الأجير الجديد</div>
+      <input id="rec-worker-newname" value="${escB(v.counterparty||'')}" placeholder="مثلا: Hassan Tazi" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">سيتم إضافتو ل قائمة الأجراء (بدون تتبع pointage)</div>
     </label>
     <label style="display:block;margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">النوع</div>
       <select id="rec-worker-type" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
@@ -24334,34 +24343,54 @@ async function _recOutSalaire(v){
     </label>
     <div style="display:flex;gap:8px;margin-top:18px">
       <button class="btn btn-accent" style="flex:1" onclick="_recOutSalaireSave(${v.montant},'${v.date}','${escB(v.counterparty)}')">💾 حفظ</button>
-      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+      <button class="btn" style="flex:1" onclick="_returnToBankReview()">إلغاء</button>
     </div>
   </div>`;
   document.getElementById('modal-main-c').innerHTML = html;
 }
 async function _recOutSalaireSave(montant, date, counterparty){
-  const id = parseInt((document.getElementById('rec-worker')||{}).value)||0;
+  const sel = (document.getElementById('rec-worker')||{}).value || '';
   const type = (document.getElementById('rec-worker-type')||{}).value || 'avance';
-  if(!id){ toast('⚠️ اختر الأجير','warning'); return; }
-  const sal = (salariesData||[]).find(s => s.id===id);
-  const nomSal = sal ? sal.nom : counterparty;
+  let id = 0;
+  let nomSal = '';
   try{
+    if(sel === '__new__'){
+      const newName = ((document.getElementById('rec-worker-newname')||{}).value||'').trim();
+      if(!newName){ toast('⚠️ كتب اسم الأجير الجديد','warning'); return; }
+      // Create the salarie row first. Schema (from sbFetch elsewhere):
+      // nom, type (e.g., 'salaire' default), salaire_journalier, actif.
+      const newSal = {nom: newName, type:'salaire', salaire_journalier:0, actif:true};
+      const sres = await sbFetch('salaries','POST', newSal);
+      if(sres && sres.__sbError) throw new Error(sres.msg);
+      const srow = Array.isArray(sres)?sres[0]:sres;
+      if(!srow || !srow.id) throw new Error('فشل خلق الأجير');
+      id = srow.id;
+      nomSal = srow.nom || newName;
+      if(typeof salariesData!=='undefined') salariesData.push(srow);
+    } else {
+      id = parseInt(sel)||0;
+      if(!id){ toast('⚠️ اختر الأجير','warning'); return; }
+      const sal = (salariesData||[]).find(s => s.id===id);
+      nomSal = sal ? sal.nom : counterparty;
+    }
     if(type==='avance'){
-      // salarie_avances schema: salarie_id, montant, date, rembourse (no notes)
       const r = await sbFetch('salarie_avances','POST',{salarie_id:id, montant, date, rembourse:false});
       if(r && r.__sbError) throw new Error(r.msg);
+      const row = Array.isArray(r)?r[0]:r;
+      if(row && typeof salarieAvances!=='undefined') salarieAvances.unshift(row);
       toast('✅ سلفة '+nomSal+' · '+fmtN(montant)+' DH','success');
     } else {
-      // salarie_taswiyas schema: salarie_id, montant, date_from, date_to,
-      // date_paiement, nom_salarie (no notes column)
       const r = await sbFetch('salarie_taswiyas','POST',{
         salarie_id:id, montant,
         date_from:date, date_to:date, date_paiement:date,
         nom_salarie:nomSal
       });
       if(r && r.__sbError) throw new Error(r.msg);
+      const row = Array.isArray(r)?r[0]:r;
+      if(row && typeof salTaswiyas!=='undefined') salTaswiyas.unshift(row);
       toast('✅ تسوية '+nomSal+' · '+fmtN(montant)+' DH','success');
     }
+    try{ saveCacheLS&&saveCacheLS(); }catch(e){}
     _returnToBankReview();
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v209-taswiya-schema-fix-plus-stay-in-review';
+const CACHE = 'suivi-v210-salaire-add-new-worker-from-bank-flow';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

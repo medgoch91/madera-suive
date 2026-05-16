@@ -7920,27 +7920,26 @@ const CHEQUE_CFG_DEFAULTS = {
 // Effet shares the SAME typography scale as cheque — same sizes,
 // weights, spacing — only positions differ because the bank
 // template is laid out differently.
-// v3 defaults — recalibrated 2026-05-15 for the real 200×130mm effet paper
-// (CDM lettre de change). User confirmed actual dimensions; previous defaults
-// were measured against a 1800×818 bg image (ratio 2.2 ≠ real 1.54) and
-// landed text in wrong boxes after the wrap was widened. These positions
-// target the empty fill-in areas of the real form:
-//   • Date d'échéance: top-right box ("Date d'éché")
-//   • Montant en chiffres: right column below date d'éché ("Montant en ch")
+// v4 defaults — recalibrated 2026-05-16 against the user's real CDM lettre
+// de change scan (img20260513_14375736.pdf → effet-bg.jpg 2252×1176).
+// The scan covers the form area (top 105mm of a 200×130mm paper). Bottom
+// 25mm is signature/cachet area outside the pre-printed form. Positions
+// target the empty fill-in boxes visible in the form:
+//   • Date d'échéance: top-right box below "Date d'échéance" label
+//   • Montant en chiffres: right column box below "Montant en chiffres"
 //   • Bénéficiaire: middle band after "à l'ordre de :"
-//   • Lieu + Date création: row "Lieu et date de création"
+//   • Lieu + Date création: row labeled "Lieu et date de création"
 //   • Montant en lettres: right column "Montant en lettres" (wraps)
 const EFFET_CFG_DEFAULTS = {
-  echeance: {top:8,   left:170, width:28,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
-  montant:  {top:30,  left:170, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
-  // lettres1 wraps in the right column — width:45mm gives ~3 lines for typical amounts
-  lettres1: {top:45,  left:150, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  echeance: {top:10,  left:170, width:28,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
+  montant:  {top:18,  left:170, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
+  lettres1: {top:28,  left:155, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
   // lettres2 parked off-page (effet uses single wrap) — see buildChequePrintHTML lettres2HTML guard
-  lettres2: {top:200, left:150, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
-  ordre:    {top:40,  left:80,  width:70,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
-  ville:    {top:58,  left:35,  width:35,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
-  date:     {top:58,  left:80,  width:35,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
-  signature:{top:90,  left:155, width:40, height:25, size:0, spacing:0, align:'center', font:'serif', weight:0}
+  lettres2: {top:200, left:155, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ordre:    {top:26,  left:80,  width:55,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
+  ville:    {top:38,  left:60,  width:25,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
+  date:     {top:38,  left:85,  width:25,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
+  signature:{top:85,  left:155, width:40, height:25, size:0, spacing:0, align:'center', font:'serif', weight:0}
 };
 // Which storage key to use for the active print mode.
 function _pcStorageKey(){ return printMode==='effet' ? 'effet_cfg' : 'cheque_cfg'; }
@@ -8013,6 +8012,12 @@ try{
   if(!localStorage.getItem('effet_cfg_mig_v3')){
     localStorage.removeItem('effet_cfg');
     localStorage.setItem('effet_cfg_mig_v3','1');
+  }
+  // v4 migration — recalibrated defaults against the real CDM scan
+  // (effet-bg.jpg 2252×1176, form occupies top 105mm of 200×130mm paper).
+  if(!localStorage.getItem('effet_cfg_mig_v4')){
+    localStorage.removeItem('effet_cfg');
+    localStorage.setItem('effet_cfg_mig_v4','1');
   }
 }catch(e){}
 let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);
@@ -8468,7 +8473,7 @@ function renderPrintCheque(){
         <div id="pc-preview-outer" style="overflow:hidden;width:100%">
           <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
             <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:hidden;color:#111">
-              <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
+              <div id="pc-bg" style="position:absolute;top:0;left:0;right:0;height:${isEffet?'105mm':'100%'};background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
                 ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#999'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.5)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / ورقة':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
               </div>
               <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>

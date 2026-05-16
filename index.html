@@ -23846,10 +23846,64 @@ function _showBankReconcileReview(matches, allTxs){
           <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>الإتجاه</th><th>المبلغ</th><th>الطرف</th></tr></thead><tbody>${personal.map(v=>`<tr><td>${fmtDate(v.date)}</td><td>${v.type==='out'?'⬅️ خرج':'➡️ دخل'}</td><td>⁦${fmtN(v.montant)}⁩</td><td style="color:var(--text3)">${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
           <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 هاد تحويلات بيناتك وبين حسابك الشخصي — مكاتدخلش ف TVA ولا ف الأرباح</div>
         </details>`:''}
-        ${inExt.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:#10b981;font-size:12px">⬇️ تحويلات داخلة (${inExt.length}) — مداخيل من الزبناء</summary>
-          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المرسل</th></tr></thead><tbody>${inExt.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#10b981;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
-          <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 المجموع: <b style="color:#10b981">⁦${fmtN(inExt.reduce((s,v)=>s+v.montant,0))} DH⁩</b> — هاديك خاص تكون مطابقة م3 الفواتير المدفوعة</div>
-        </details>`:''}
+        ${inExt.length?(()=>{
+          // Subset-sum match: each facture's total_ttc = sum of one or more transfers
+          const ym = _tvaMonth || (new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0'));
+          const result = _matchFacturesToVirements(inExt, ym);
+          const totalIn = inExt.reduce((s,v)=>s+v.montant,0);
+          const matchedIn = result.matches.reduce((s,m)=>s+m.transfers.reduce((ss,t)=>ss+t.montant,0),0);
+          const unmatchedIn = result.unmatchedTransfers.reduce((s,v)=>s+v.montant,0);
+          return `<details open style="margin-bottom:10px;padding:10px 14px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.25);border-radius:8px">
+            <summary style="cursor:pointer;font-weight:700;color:#10b981;font-size:13px;list-style:none">⬇️ تحويلات داخلة (${inExt.length}) — مطابقة مع الفواتير</summary>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0">
+              <div style="background:rgba(16,185,129,.08);padding:8px;border-radius:6px;text-align:center">
+                <div style="font-size:10px;color:var(--text3)">المجموع الداخل</div>
+                <div style="font-size:14px;font-weight:800;color:#10b981">⁦${fmtN(totalIn)}⁩</div>
+              </div>
+              <div style="background:rgba(16,185,129,.04);padding:8px;border-radius:6px;text-align:center">
+                <div style="font-size:10px;color:var(--text3)">مطابق مع فواتير</div>
+                <div style="font-size:14px;font-weight:800;color:#10b981">⁦${fmtN(matchedIn)}⁩</div>
+              </div>
+              <div style="background:rgba(245,158,11,.08);padding:8px;border-radius:6px;text-align:center">
+                <div style="font-size:10px;color:var(--text3)">بلا مطابقة</div>
+                <div style="font-size:14px;font-weight:800;color:#f59e0b">⁦${fmtN(unmatchedIn)}⁩</div>
+              </div>
+            </div>
+
+            ${result.matches.length?`
+              <div style="font-size:12px;font-weight:700;color:#10b981;margin:14px 0 6px">✅ فواتير مطابقة (${result.matches.length})</div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                ${result.matches.map(m => {
+                  const tTotal = m.transfers.reduce((s,t)=>s+t.montant,0);
+                  return `<div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:6px;padding:8px 10px;font-size:11px">
+                    <div style="display:flex;justify-content:space-between;font-weight:700">
+                      <span>🧾 فاتورة ${escB(m.facture.num||'—')} · ${escB(m.facture.client_nom||'')}</span>
+                      <span style="color:#10b981">⁦${fmtN(m.facture.total_ttc)} DH⁩</span>
+                    </div>
+                    <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
+                      ${m.transfers.map(t=>`<span style="background:rgba(16,185,129,.12);padding:3px 7px;border-radius:4px;font-size:10px">${fmtDate(t.date)}: ⁦${fmtN(t.montant)}⁩</span>`).join('')}
+                      <span style="background:rgba(255,255,255,.04);padding:3px 7px;border-radius:4px;font-size:10px;color:var(--text3)">= ⁦${fmtN(tTotal)}⁩</span>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>
+            `:''}
+
+            ${result.unmatchedFacts.length?`
+              <div style="font-size:12px;font-weight:700;color:#f59e0b;margin:14px 0 6px">⚠️ فواتير بلا تحويلات مطابقة (${result.unmatchedFacts.length})</div>
+              <table class="data-table" style="font-size:11px"><thead><tr><th>التاريخ</th><th>رقم</th><th>الزبون</th><th>المبلغ</th></tr></thead>
+              <tbody>${result.unmatchedFacts.map(f=>`<tr><td>${fmtDate(f.date)}</td><td>${escB(f.num||'—')}</td><td>${escB(f.client_nom||'')}</td><td style="color:#f59e0b;font-weight:700">⁦${fmtN(f.total_ttc)}⁩</td></tr>`).join('')}</tbody></table>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px">💡 ممكن خلصو ب طريقة أخرى (cash, شيك) — ولا مزال غادي يخلصو</div>
+            `:''}
+
+            ${result.unmatchedTransfers.length?`
+              <div style="font-size:12px;font-weight:700;color:#ef4444;margin:14px 0 6px">⚠️ تحويلات داخلة بلا فاتورة (${result.unmatchedTransfers.length})</div>
+              <table class="data-table" style="font-size:11px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المرسل</th></tr></thead>
+              <tbody>${result.unmatchedTransfers.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#ef4444;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
+              <div style="font-size:10px;color:var(--text3);margin-top:4px">💡 هاد التحويلات بانت ف البنك لكن ما لقيت فيهم فاتورة. لازم تخلق فاتورة جديدة فيهم.</div>
+            `:''}
+          </details>`;
+        })():''}
         ${outExt.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:#ef4444;font-size:12px">⬆️ تحويلات خارجة (${outExt.length}) — خلاصات</summary>
           <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المستفيد</th></tr></thead><tbody>${outExt.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#ef4444;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
           <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 المجموع: <b style="color:#ef4444">⁦${fmtN(outExt.reduce((s,v)=>s+v.montant,0))} DH⁩</b></div>
@@ -23863,6 +23917,79 @@ function _showBankReconcileReview(matches, allTxs){
     </div>
   </div>`;
   document.getElementById('modal-main-c').innerHTML = html;
+}
+
+// ── Facture ↔ incoming-virement matching (subset-sum) ──
+// User's workflow: invoices at end of month, customer pays in multiple
+// installments throughout the month. Bank statement shows each transfer
+// separately. To verify "all factures are accounted for", we need to find
+// COMBINATIONS of transfers that sum to a facture's total_ttc.
+//
+// Algorithm: for each facture (largest first to avoid greedy mismatches),
+// search for a subset of currently-unmatched transfers that sums to its
+// total. Allow ±1 DH tolerance for virement fees / centimes rounding.
+// Subset size capped at 6 (real-world: most factures paid in 1-3 installments).
+function _findSubsetSum(transfers, target, tolerance, maxSize){
+  tolerance = tolerance || 1;
+  maxSize = maxSize || 6;
+  const n = transfers.length;
+  if(!n) return null;
+  // Try single-element matches first (most common)
+  for(let i=0; i<n; i++){
+    if(Math.abs(transfers[i].montant - target) <= tolerance) return [i];
+  }
+  // Two-element
+  for(let i=0; i<n; i++) for(let j=i+1; j<n; j++){
+    if(Math.abs(transfers[i].montant + transfers[j].montant - target) <= tolerance) return [i,j];
+  }
+  // 3+ element via DFS (capped)
+  function dfs(start, used, remaining){
+    if(Math.abs(remaining) <= tolerance && used.length>=3) return used.slice();
+    if(used.length >= maxSize) return null;
+    if(remaining < -tolerance) return null;
+    for(let i=start; i<n; i++){
+      used.push(i);
+      const r = dfs(i+1, used, remaining - transfers[i].montant);
+      if(r) return r;
+      used.pop();
+    }
+    return null;
+  }
+  return dfs(0, [], target);
+}
+
+function _matchFacturesToVirements(virsIn, ym){
+  // Pool: ALL incoming non-personal virements (already filtered upstream).
+  // Factures: all in a 3-month window around the relevé month (covers
+  // late-paid invoices). Order largest amount first → matches subsets
+  // that would otherwise greedy-collapse into smaller factures.
+  const pool = virsIn.map((v,idx) => ({...v, _origIdx: idx}));
+  const [y,mo] = ym.split('-').map(Number);
+  const winStart = new Date(y, mo-3, 1).toISOString().slice(0,10);
+  const winEnd   = new Date(y, mo+1, 0).toISOString().slice(0,10);
+  const factsInWin = (factures||[]).filter(f => !f.deleted_at && f.date >= winStart && f.date <= winEnd);
+  // Sort largest first
+  factsInWin.sort((a,b)=>(Number(b.total_ttc)||0)-(Number(a.total_ttc)||0));
+  const used = new Set();
+  const matches = [];
+  const unmatchedFacts = [];
+  for(const f of factsInWin){
+    const target = Number(f.total_ttc)||0;
+    if(target<=0){ unmatchedFacts.push(f); continue; }
+    const available = pool.filter((_,i) => !used.has(i));
+    const availableIdx = pool.map((_,i)=>i).filter(i=>!used.has(i));
+    const localPool = availableIdx.map(i => pool[i]);
+    const sub = _findSubsetSum(localPool, target);
+    if(sub){
+      const trxs = sub.map(localIdx => pool[availableIdx[localIdx]]);
+      sub.forEach(localIdx => used.add(availableIdx[localIdx]));
+      matches.push({facture: f, transfers: trxs});
+    } else {
+      unmatchedFacts.push(f);
+    }
+  }
+  const unmatchedTransfers = pool.filter((_,i)=>!used.has(i));
+  return {matches, unmatchedFacts, unmatchedTransfers};
 }
 
 // Create an unmatched bank transaction as a fully-formed cheque/effet record

@@ -23270,14 +23270,35 @@ function _tvaRateBreakdown(ym){
     }
   });
   // Déductible — from bons whose cheque is paid in ym (régime encaissements)
+  const linkedChequeIds = new Set();
   (bons||[]).forEach(b => {
     if(!b.chequeId) return;
     const ch = (cheques||[]).find(c => c.id===b.chequeId);
     if(!ch || ch.status !== 'مدفوع') return;
     const paidAt = ch.paid_at || ch.paidAt;
     if(!paidAt || !String(paidAt).startsWith(ym+'-')) return;
-    // Bons assume 20% standard rate (no per-line TVA tracking on bons)
+    linkedChequeIds.add(ch.id);
     const ttc = Number(b.total)||0;
+    const ht  = ttc/1.2;
+    const tva = ttc - ht;
+    const slot = ensure(deducted, 20);
+    slot.ht  += ht;
+    slot.tva += tva;
+    slot.count++;
+  });
+  // ALSO count orphan paid cheques (cheques created from bank reconcile
+  // with no bon attached — typically pre-app purchases registered via the
+  // bank statement). Use cheque.montant as TTC, assume 20% TVA, skip
+  // type='espece' since cash purchases rarely come with VAT-deductible
+  // invoices.
+  (cheques||[]).forEach(c => {
+    if(!c || c.status !== 'مدفوع') return;
+    if(linkedChequeIds.has(c.id)) return;  // already counted via bon
+    if(c.type === 'espece') return;
+    const paidAt = c.paid_at || c.paidAt;
+    if(!paidAt || !String(paidAt).startsWith(ym+'-')) return;
+    const ttc = Number(c.montant)||0;
+    if(ttc <= 0) return;
     const ht  = ttc/1.2;
     const tva = ttc - ht;
     const slot = ensure(deducted, 20);
@@ -23567,14 +23588,17 @@ async function renderTva(){
   const factsTotalHT  = collectedRates.reduce((s,r)=>s+breakdown.collected[r].ht, 0);
   const factsTVA      = collectedRates.reduce((s,r)=>s+breakdown.collected[r].tva, 0);
   // ── Auto TVA déductible: bons whose cheque is مدفوع AND paid_at in this month
-  const deductibleRows = (bons||[]).filter(b => {
+  const linkedIds = new Set();
+  const bonRows = (bons||[]).filter(b => {
     if(!b.chequeId) return false;
     const ch = (cheques||[]).find(c=>c.id===b.chequeId);
     if(!ch) return false;
     if(ch.status !== 'مدفوع') return false;
     const paidAt = ch.paid_at || ch.paidAt;
     if(!paidAt) return false;
-    return String(paidAt).startsWith(ym+'-');
+    if(!String(paidAt).startsWith(ym+'-')) return false;
+    linkedIds.add(ch.id);
+    return true;
   }).map(b => {
     const ch = (cheques||[]).find(c=>c.id===b.chequeId);
     const total = Number(b.total)||0;
@@ -23582,6 +23606,22 @@ async function renderTva(){
     const tva = total - ht;
     return {bon:b, cheque:ch, ttc:total, ht, tva};
   });
+  // Orphan paid cheques (no bon attached — typically registered via the
+  // bank-reconcile flow). Include them in déductible at 20% default.
+  const orphanRows = (cheques||[]).filter(c => {
+    if(!c || c.status !== 'مدفوع') return false;
+    if(linkedIds.has(c.id)) return false;
+    if(c.type === 'espece') return false;
+    const paidAt = c.paid_at || c.paidAt;
+    if(!paidAt) return false;
+    return String(paidAt).startsWith(ym+'-');
+  }).map(c => {
+    const ttc = Number(c.montant)||0;
+    const ht = ttc/1.2;
+    const tva = ttc - ht;
+    return {bon:null, cheque:c, ttc, ht, tva, orphan:true};
+  });
+  const deductibleRows = [...bonRows, ...orphanRows];
   const dedTotalHT = deductibleRows.reduce((s,r)=>s+r.ht, 0);
   const dedTotalTVA = deductibleRows.reduce((s,r)=>s+r.tva, 0);
 
@@ -23704,10 +23744,10 @@ async function renderTva(){
         `<div style="overflow-x:auto;margin-bottom:12px">
           <table class="data-table" style="font-size:12px">
             <thead><tr><th>التاريخ خلاص</th><th>البون</th><th>الفورنيسور</th><th>TTC</th><th>HT</th><th>TVA</th><th>الشيك</th></tr></thead>
-            <tbody>${deductibleRows.map(r=>`<tr>
+            <tbody>${deductibleRows.map(r=>`<tr${r.orphan?' style="background:rgba(245,158,11,.04)"':''}>
               <td>${fmtDate(r.cheque.paid_at||r.cheque.paidAt)}</td>
-              <td style="font-weight:600">${escB(r.bon.num||'—')}</td>
-              <td>${escB(r.bon.fournisseur||'—')}</td>
+              <td style="font-weight:600">${r.bon?escB(r.bon.num||'—'):'<span style="color:#f59e0b">— (بلا بون)</span>'}</td>
+              <td>${escB(r.bon?(r.bon.fournisseur||'—'):(r.cheque.fournisseur||'—'))}</td>
               <td>⁦${fmtN(r.ttc)}⁩</td>
               <td>⁦${fmtN(r.ht)}⁩</td>
               <td style="color:var(--accent);font-weight:700">⁦${fmtN(r.tva)}⁩</td>

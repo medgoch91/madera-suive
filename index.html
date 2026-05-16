@@ -8213,46 +8213,68 @@ function printAlignmentGrid(){
   }).join('');
   const ox = getPrintOffsetX();
   const oy = getPrintOffsetY();
-  const html = `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title>Grid Calibration</title>
+  // Layout strategy: grid at TOP-LEFT of A4 at its exact mm size so user
+  // can feed the printed sheet into the printer aligned the same way as
+  // the real cheque/effet. Instructions go BELOW the grid in a separate
+  // text block — never overlap the grid itself.
+  const instructionsTop = pH + 16;  // 16mm gap below grid
+  const html = `<!DOCTYPE html><html dir="ltr" lang="en"><head><meta charset="UTF-8"><title>Calibration Grid</title>
 <style>
   @page{size:A4 portrait;margin:0;}
-  @media print{html,body{margin:0!important;padding:0!important;background:#fff!important;}}
+  @media print{html,body{margin:0!important;padding:0!important;background:#fff!important;}.actions{display:none!important;}}
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;}
-  .head{position:absolute;top:8mm;left:10mm;font-size:9pt;color:#0f172a;line-height:1.5;}
-  .head b{color:#7c5cfc;}
-  .grid-wrap{position:absolute;top:30mm;left:0;transform:translate(${ox}mm, ${oy}mm);}
+  html,body{margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;color:#0f172a;}
+  .grid-wrap{position:absolute;top:0;left:0;transform:translate(${ox}mm, ${oy}mm);}
   svg{display:block;}
-  .legend{position:absolute;bottom:10mm;left:10mm;right:10mm;font-size:8pt;color:#475569;line-height:1.5;border-top:1px solid #cbd5e1;padding-top:6mm;}
-  .legend b{color:#0f172a;}
+  .info{position:absolute;top:${instructionsTop}mm;left:10mm;right:10mm;font-size:10pt;line-height:1.7;direction:rtl;text-align:right;}
+  .info h1{margin:0 0 8mm;font-size:13pt;color:#7c5cfc;}
+  .info .step{margin-bottom:4mm;display:flex;gap:4mm;align-items:flex-start;}
+  .info .step-num{flex-shrink:0;width:6mm;height:6mm;background:#7c5cfc;color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9pt;}
+  .info b{color:#0f172a;}
+  .info .hi{background:#fef3c7;padding:1mm 2mm;border-radius:2mm;color:#92400e;font-weight:700;}
+  .legend{margin-top:8mm;padding:5mm 6mm;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:3mm;font-size:9pt;line-height:1.7;}
   .actions{position:fixed;top:5mm;right:5mm;display:flex;gap:6px;z-index:999;}
   .actions button{padding:6px 14px;font:700 11px Arial;border:0;border-radius:5px;cursor:pointer;}
-  @media print{.actions{display:none}}
 </style></head><body>
 <div class="actions">
-  <button onclick="window.print()" style="background:#f59e0b;color:#fff">🖨️ طبع</button>
-  <button onclick="window.close()" style="background:#475569;color:#fff">✖</button>
+  <button onclick="window.print()" style="background:#f59e0b;color:#fff">🖨️ Imprimer</button>
+  <button onclick="window.close()" style="background:#475569;color:#fff">✖ Fermer</button>
 </div>
-<div class="head">
-  <b>🎯 ورقة معايرة الطابعة — ${printMode==='effet'?'إيفي 200×130mm':'شيك 176×80mm'}</b><br>
-  <b>تعليمات:</b><br>
-  1. اطبع هاد الورقة على A4 عادي · Scale = <b>100%</b> · Margins = <b>None</b> · Background = <b>ON</b><br>
-  2. حطها فوق ${printMode==='effet'?'ورقة الإيفي الحقيقية':'الشيك الحقيقي'} و عاينها فالضو<br>
-  3. شوف بشحال شفلتات النقطة الحمرة (الزاوية) و الـ ❌ بالبنفسج (مواضع الحقول) بالنسبة للحقول الحقيقية فالشيك<br>
-  4. اقرأ الإزاحة بالـ مم (موجب = يمين / تحت ، سالب = شمال / فوق) و ادخلها فالأبليكاسيون: <b>إزاحة X و إزاحة Y</b><br>
-  <b style="color:#f59e0b">الإزاحة الحالية: X = ${ox}mm · Y = ${oy}mm</b>
-</div>
+
 <div class="grid-wrap">
   <svg width="${pW}mm" height="${pH}mm" viewBox="0 0 ${pW} ${pH}" xmlns="http://www.w3.org/2000/svg" style="border:0.5mm solid #0f172a">
     ${lines}
     ${fieldMarkers}
   </svg>
 </div>
-<div class="legend">
-  <b>قراءة الورقة:</b> الخطوط الكبيرة كل <b>10mm</b> (مرقمة) · الخطوط المتوسطة كل <b>5mm</b> · الخطوط الصغيرة كل <b>1mm</b><br>
-  <b>الزوايا الأربع</b> (❌ بالأحمر) خاصها تلامس زوايا ${printMode==='effet'?'الإيفي':'الشيك'} الحقيقي · <b>النقط البنفسجية</b> هي مواضع الحقول حسب التصميم<br>
-  <b>مثال:</b> إذا الزاوية الحمرة شفلتات <b>5mm يمين و 3mm تحت</b> بالنسبة لزاوية الشيك الحقيقي → ادخل <b>X = −5</b> و <b>Y = −3</b> فالأبليكاسيون لتعويض الإزاحة.
+
+<div class="info">
+  <h1>🎯 ورقة معايرة الطابعة — ${printMode==='effet'?'إيفي 200×130 mm':'شيك 176×80 mm'}</h1>
+
+  <div class="step"><div class="step-num">1</div><div>اطبع هاد الورقة على <b>A4 عادي</b> · Scale = <b>100%</b> · Margins = <b>None</b> · Background graphics = <b>ON</b></div></div>
+
+  <div class="step"><div class="step-num">2</div><div>حطها <b>فوق ${printMode==='effet'?'ورقة الإيفي':'الشيك'} الفاضي</b> وعاينها فالضو (لمبة من ورا)</div></div>
+
+  <div class="step"><div class="step-num">3</div><div>شوف بشحال <b>شفلتات الزاوية الحمرة</b> (في الزوايا الأربع) بالنسبة لزوايا ${printMode==='effet'?'الإيفي':'الشيك'} الحقيقي</div></div>
+
+  <div class="step"><div class="step-num">4</div><div>اقرأ القياس بالـ <b>مم</b> ودخل القيمتين فالأبليكاسيون:<br>
+    <span class="hi">إزاحة X</span> (موجب = يمين، سالب = شمال) &nbsp; <span class="hi">إزاحة Y</span> (موجب = تحت، سالب = فوق)
+  </div></div>
+
+  <div class="legend">
+    <b>📐 قراءة الشبكة:</b><br>
+    • الخطوط الكبيرة (مرقمة) كل <b>10 mm</b><br>
+    • الخطوط المتوسطة كل <b>5 mm</b><br>
+    • الخطوط الصغيرة كل <b>1 mm</b><br>
+    • <span style="color:#e84040">❌ بالأحمر</span>: الزوايا الأربع — خاصها تطابق زوايا ${printMode==='effet'?'الإيفي':'الشيك'}<br>
+    • <span style="color:#7c5cfc">● بالبنفسج</span>: مواضع الحقول الحالية (الإسم، التاريخ، إلخ)<br>
+    <br>
+    <b>📝 مثال:</b> إذا الزاوية الحمرة الفوق-اليسار شفلتات <b>5 mm</b> للشمال و <b>3 mm</b> للفوق بالنسبة لزاوية ${printMode==='effet'?'الإيفي':'الشيك'} الحقيقي ← دخل <b>X = +5</b> و <b>Y = +3</b> فالأبليكاسيون.<br>
+    <br>
+    <b style="color:#f59e0b">الإزاحة الحالية: X = ${ox} mm &nbsp;·&nbsp; Y = ${oy} mm</b>
+  </div>
 </div>
+
 </body></html>`;
   const w = window.open('', '_blank', 'width=900,height=1100');
   if(!w){ try{ toast('⚠️ النوافذ المنبثقة محظورة','warning'); }catch(e){} return; }

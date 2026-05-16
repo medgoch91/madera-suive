@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v185-printer-offset-calibration-grid';
+const CACHE = 'suivi-v186-calibration-grid-clean-layout';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

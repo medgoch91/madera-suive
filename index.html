@@ -7881,6 +7881,45 @@ let chequeImg = localStorage.getItem('cheque_bg_img')||'chqq-bg.jpg';
 let effetImg  = localStorage.getItem('effet_bg_img')||'effet-bg.jpg';
 let printMode = 'cheque'; // 'cheque' | 'effet'
 let printHistory = (function(){ try{ return JSON.parse(localStorage.getItem('print_history')||'[]'); }catch(e){ return []; } })();
+
+// ─── Per-printer offset (industry-standard pattern from Sage/QuickBooks) ───
+// The visual template (field positions on the form) is one thing; how a
+// particular printer driver ADDS margin / shifts content is a different
+// thing that should be calibrated ONCE per device and stored separately.
+// User prints a grid on A4, overlays against a real cheque under light,
+// reads "off by X mm right, Y mm down" and types it in. Every subsequent
+// print is shifted by that offset — no need to re-drag every field.
+//
+// Stored per-mode (cheque has different driver-feed than effet on Epson
+// dot-matrix where one might use tray vs manual feed) under
+// `print_offset_cheque_x`, `print_offset_cheque_y`, `print_offset_effet_x`,
+// `print_offset_effet_y` (all mm, may be negative).
+function _printOffsetKey(axis){ return 'print_offset_'+printMode+'_'+axis; }
+function getPrintOffsetX(){ return parseFloat(localStorage.getItem(_printOffsetKey('x')))||0; }
+function getPrintOffsetY(){ return parseFloat(localStorage.getItem(_printOffsetKey('y')))||0; }
+function setPrintOffset(axis, val){
+  const v = parseFloat(val);
+  if(isNaN(v)){ localStorage.removeItem(_printOffsetKey(axis)); }
+  else { localStorage.setItem(_printOffsetKey(axis), String(v)); }
+  // Re-apply offset to live preview
+  applyPrintOffsetToPreview();
+}
+function applyPrintOffsetToPreview(){
+  const wrap = document.getElementById('pc-cheque-wrap');
+  if(!wrap) return;
+  // Apply offset via inner translation — keep wrap dimensions intact so
+  // drag math + autoScale stay correct. Translate the .f overlays (not bg)
+  // so the user can SEE how the offset shifts content relative to the form.
+  const ox = getPrintOffsetX();
+  const oy = getPrintOffsetY();
+  wrap.querySelectorAll('.f, [id^="pf-"]').forEach(el => {
+    if(el.id==='pc-bg') return;
+    el.style.setProperty('--off-x', ox+'mm');
+    el.style.setProperty('--off-y', oy+'mm');
+    // Use CSS transform so it stacks cleanly with any existing transforms.
+    el.style.transform = `translate(${ox}mm, ${oy}mm)`;
+  });
+}
 function setPrintMode(m){
   printMode = (m==='effet')?'effet':'cheque';
   // Swap to the right calibration set so D-pad / preview reflect this mode's
@@ -8113,8 +8152,9 @@ function deleteChequeTemplate(){
 
 // ═══ Test alignement — print placeholder labels at configured positions ═══
 function printAlignmentTest(){
+  // Sample cheque/effet with placeholder values — useful AFTER calibration to verify positions.
   const html = buildChequePrintHTML({
-    ordre:    '',
+    ordre:    'TEST CALIBRATION',
     montant:  8888.88,
     date:     '2026-12-31',
     echeance: '2027-03-30',
@@ -8123,6 +8163,101 @@ function printAlignmentTest(){
   });
   sendChequeToPrinter(html);
   toast('🎯 طبع اختبار المحاذاة — قارن مع الشيك الفاضي','info');
+}
+
+// ═══ Calibration grid — print A4 with mm grid so user can measure printer offset ═══
+// Industry-standard pattern (Sage / Sage 50 / QuickBooks): the user prints
+// this on a blank A4, holds it against a real cheque/effet under a lamp,
+// counts how many mm each field is offset, types those numbers into the
+// printer offset inputs. Calibrate ONCE per printer.
+function printAlignmentGrid(){
+  const pW = printMode==='effet' ? 200 : 176;
+  const pH = printMode==='effet' ? 130 : 80;
+  // Build SVG grid: major lines every 10mm (numbered), minor every 1mm
+  let lines = '';
+  for(let x=0; x<=pW; x++){
+    const isMajor = x%10===0;
+    const isMid = x%5===0;
+    const stroke = isMajor ? '#0f172a' : (isMid ? '#94a3b8' : '#cbd5e1');
+    const sw = isMajor ? 0.25 : (isMid ? 0.15 : 0.08);
+    lines += `<line x1="${x}" y1="0" x2="${x}" y2="${pH}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    if(isMajor && x>0 && x<pW) lines += `<text x="${x}" y="3.5" font-size="2.2" fill="#0f172a" text-anchor="middle" font-family="Arial">${x}</text>`;
+  }
+  for(let y=0; y<=pH; y++){
+    const isMajor = y%10===0;
+    const isMid = y%5===0;
+    const stroke = isMajor ? '#0f172a' : (isMid ? '#94a3b8' : '#cbd5e1');
+    const sw = isMajor ? 0.25 : (isMid ? 0.15 : 0.08);
+    lines += `<line x1="0" y1="${y}" x2="${pW}" y2="${y}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    if(isMajor && y>0 && y<pH) lines += `<text x="3.5" y="${y+0.8}" font-size="2.2" fill="#0f172a" text-anchor="middle" font-family="Arial">${y}</text>`;
+  }
+  // Cross-hairs at the 4 corners and at field positions (so user sees where text WILL land)
+  const corners = [[0,0],[pW,0],[0,pH],[pW,pH]];
+  corners.forEach(([cx,cy])=>{
+    lines += `<circle cx="${cx}" cy="${cy}" r="2" fill="none" stroke="#e84040" stroke-width="0.4"/>`;
+    lines += `<line x1="${cx-3}" y1="${cy}" x2="${cx+3}" y2="${cy}" stroke="#e84040" stroke-width="0.3"/>`;
+    lines += `<line x1="${cx}" y1="${cy-3}" x2="${cx}" y2="${cy+3}" stroke="#e84040" stroke-width="0.3"/>`;
+  });
+  // Field markers from current chequeCfg — small + with field name
+  const fieldMarkers = Object.keys(chequeCfg||{}).map(k=>{
+    const c = chequeCfg[k];
+    if(!c || c.top==null || c.left==null) return '';
+    const lbl = (CHEQUE_FIELD_LABELS&&CHEQUE_FIELD_LABELS[k]) || k;
+    return `
+      <g>
+        <line x1="${c.left-2}" y1="${c.top}" x2="${c.left+2}" y2="${c.top}" stroke="#7c5cfc" stroke-width="0.4"/>
+        <line x1="${c.left}" y1="${c.top-2}" x2="${c.left}" y2="${c.top+2}" stroke="#7c5cfc" stroke-width="0.4"/>
+        <circle cx="${c.left}" cy="${c.top}" r="0.8" fill="#7c5cfc"/>
+        <text x="${c.left+1.5}" y="${c.top+1}" font-size="2" fill="#7c5cfc" font-family="Arial">${lbl.replace(/[^\w\sا-ي]/g,'')}</text>
+      </g>`;
+  }).join('');
+  const ox = getPrintOffsetX();
+  const oy = getPrintOffsetY();
+  const html = `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title>Grid Calibration</title>
+<style>
+  @page{size:A4 portrait;margin:0;}
+  @media print{html,body{margin:0!important;padding:0!important;background:#fff!important;}}
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#fff;font-family:Arial,sans-serif;}
+  .head{position:absolute;top:8mm;left:10mm;font-size:9pt;color:#0f172a;line-height:1.5;}
+  .head b{color:#7c5cfc;}
+  .grid-wrap{position:absolute;top:30mm;left:0;transform:translate(${ox}mm, ${oy}mm);}
+  svg{display:block;}
+  .legend{position:absolute;bottom:10mm;left:10mm;right:10mm;font-size:8pt;color:#475569;line-height:1.5;border-top:1px solid #cbd5e1;padding-top:6mm;}
+  .legend b{color:#0f172a;}
+  .actions{position:fixed;top:5mm;right:5mm;display:flex;gap:6px;z-index:999;}
+  .actions button{padding:6px 14px;font:700 11px Arial;border:0;border-radius:5px;cursor:pointer;}
+  @media print{.actions{display:none}}
+</style></head><body>
+<div class="actions">
+  <button onclick="window.print()" style="background:#f59e0b;color:#fff">🖨️ طبع</button>
+  <button onclick="window.close()" style="background:#475569;color:#fff">✖</button>
+</div>
+<div class="head">
+  <b>🎯 ورقة معايرة الطابعة — ${printMode==='effet'?'إيفي 200×130mm':'شيك 176×80mm'}</b><br>
+  <b>تعليمات:</b><br>
+  1. اطبع هاد الورقة على A4 عادي · Scale = <b>100%</b> · Margins = <b>None</b> · Background = <b>ON</b><br>
+  2. حطها فوق ${printMode==='effet'?'ورقة الإيفي الحقيقية':'الشيك الحقيقي'} و عاينها فالضو<br>
+  3. شوف بشحال شفلتات النقطة الحمرة (الزاوية) و الـ ❌ بالبنفسج (مواضع الحقول) بالنسبة للحقول الحقيقية فالشيك<br>
+  4. اقرأ الإزاحة بالـ مم (موجب = يمين / تحت ، سالب = شمال / فوق) و ادخلها فالأبليكاسيون: <b>إزاحة X و إزاحة Y</b><br>
+  <b style="color:#f59e0b">الإزاحة الحالية: X = ${ox}mm · Y = ${oy}mm</b>
+</div>
+<div class="grid-wrap">
+  <svg width="${pW}mm" height="${pH}mm" viewBox="0 0 ${pW} ${pH}" xmlns="http://www.w3.org/2000/svg" style="border:0.5mm solid #0f172a">
+    ${lines}
+    ${fieldMarkers}
+  </svg>
+</div>
+<div class="legend">
+  <b>قراءة الورقة:</b> الخطوط الكبيرة كل <b>10mm</b> (مرقمة) · الخطوط المتوسطة كل <b>5mm</b> · الخطوط الصغيرة كل <b>1mm</b><br>
+  <b>الزوايا الأربع</b> (❌ بالأحمر) خاصها تلامس زوايا ${printMode==='effet'?'الإيفي':'الشيك'} الحقيقي · <b>النقط البنفسجية</b> هي مواضع الحقول حسب التصميم<br>
+  <b>مثال:</b> إذا الزاوية الحمرة شفلتات <b>5mm يمين و 3mm تحت</b> بالنسبة لزاوية الشيك الحقيقي → ادخل <b>X = −5</b> و <b>Y = −3</b> فالأبليكاسيون لتعويض الإزاحة.
+</div>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=900,height=1100');
+  if(!w){ try{ toast('⚠️ النوافذ المنبثقة محظورة','warning'); }catch(e){} return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{w.focus();}catch(e){} }, 200);
 }
 
 // ═══ Export PDF — open in new window without auto-print (user uses "Save as PDF") ═══
@@ -8536,6 +8671,26 @@ function renderPrintCheque(){
           <button onclick="resetChqCfg()" title="استرجاع الافتراضي" class="btn-ghost" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2)">↺ افتراضي</button>
         </div>
       </div>
+
+      <!-- Printer offset (one-time calibration per printer) — industry pattern -->
+      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(232,64,64,.04));border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:14px;margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="font-size:13px;font-weight:700;color:#f59e0b">🎯 معايرة الطابعة (مرة واحدة)</div>
+          <button onclick="printAlignmentGrid()" title="طبع شبكة على A4 ل المعايرة" class="btn" style="background:#f59e0b;color:#fff;border:0;padding:6px 12px;font-size:11px;font-weight:700;border-radius:6px">🖨️ طبع شبكة اختبار</button>
+        </div>
+        <div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px">
+          1. اطبع شبكة الاختبار على A4 عادي · 2. حطها فوق ${isEffet?'ورقة الإيفي':'الشيك'} الحقيقية و عاينها فالضو · 3. اقرأ بكم ملم اشتفلت اليمين/الشمال و فوق/تحت · 4. زبط الأرقام تحت
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">↔️ إزاحة X (مم) — موجب = يمين</div>
+            <input id="po-x" type="number" step="0.5" value="${getPrintOffsetX()}" onchange="setPrintOffset('x',this.value)" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif"></label>
+          <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">↕️ إزاحة Y (مم) — موجب = تحت</div>
+            <input id="po-y" type="number" step="0.5" value="${getPrintOffsetY()}" onchange="setPrintOffset('y',this.value)" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif"></label>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">💡 هاد القيم خاصة بهاد الطابعة فقط — مكاتأثرش على تصميم الحقول</div>
+      </div>
+
+      <div style="font-size:12px;color:var(--text3);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">📐 <b>تصميم الحقول</b> (اسحب الحقول فالمعاينة، أو زبط بالنوادي تحت — مرة واحدة لكل بنك)</div>
       <div id="pc-cfg-panel-mount">${renderChqCfgPanel()}</div>
     </div>
   </div>
@@ -8554,6 +8709,7 @@ function renderPrintCheque(){
   if(bgImg){const bg=document.getElementById('pc-bg');if(bg){bg.style.background=`url('${bgImg}') 0 0/100% 100% no-repeat`;bg.innerHTML='';}}
   renderPrintHistory();
   applyChqCfgToPreview();
+  applyPrintOffsetToPreview();
   // Auto-scale the preview wrap so the full 200×130 (or 176×80) is visible
   // inside whatever width the right column has. The wrap stays at exactly
   // 200mm/176mm internally — only the visual presentation is scaled, so the
@@ -8809,6 +8965,14 @@ function buildChequePrintHTML(d){
   // is the only deterministic path across Mac+Windows+driver combos.
   const pW = (d.type==='effet') ? 200 : 176;
   const pH = (d.type==='effet') ? 130 : 80;
+  // Per-printer offset, applied to every field at print time. Industry pattern:
+  // template positions design ONCE per bank, then this offset corrects whatever
+  // shift the specific printer driver introduces.
+  const _savedMode = printMode;
+  if(d.type==='effet' || d.type==='cheque') printMode = d.type;
+  const ox = getPrintOffsetX();
+  const oy = getPrintOffsetY();
+  printMode = _savedMode;
   return `<!DOCTYPE html><html dir="ltr" lang="fr"><head><meta charset="UTF-8"><title> </title>
     <style>
     /* @page is A4 portrait — Chrome respects this on every driver we've
@@ -8822,7 +8986,7 @@ function buildChequePrintHTML(d){
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}
     body{font-family:'Georgia','Times New Roman',serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;}
-    .w{width:${pW}mm;height:${pH}mm;position:absolute;top:0;left:0;background:#fff;overflow:visible;}
+    .w{width:${pW}mm;height:${pH}mm;position:absolute;top:${oy}mm;left:${ox}mm;background:#fff;overflow:visible;}
     .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
     .f.wrap{white-space:normal;overflow:visible;line-height:1.28;}
     /* Crisp mono for digits — Inconsolata/SF Mono/Consolas before fallback */

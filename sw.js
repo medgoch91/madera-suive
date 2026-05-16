@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v184-real-effet-bg-scan-recalibrated';
+const CACHE = 'suivi-v185-printer-offset-calibration-grid';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

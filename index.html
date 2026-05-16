@@ -8401,17 +8401,14 @@ function renderChqCfgPanel(){
       <button onclick="deleteChequeTemplate()" title="حذف template المختار" style="background:transparent;border:1px solid var(--border);color:var(--red);padding:4px 6px;font-size:11px;border-radius:5px;cursor:pointer;font-family:inherit">🗑️</button>
     </div>`;
 
+  // Calibration panel — now embedded inside a parent card (pc-card) in the new
+  // hero layout, so we drop the outer .card wrapper and sticky positioning
+  // (would conflict with the parent card's padding). Just emit the contents.
   return `
-    <div class="card" style="position:sticky;top:16px;padding:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <div class="card-title" style="margin:0;font-size:13px">⚙️ تحكم الكتابة</div>
-        <button onclick="resetChqCfg()" title="استرجاع الافتراضي" style="background:transparent;border:1px solid var(--border);color:var(--text3);padding:3px 7px;font-size:10px;border-radius:5px;cursor:pointer;font-family:inherit">↺</button>
-      </div>
-      ${tplBar}
-      ${stepBar}
-      <div style="display:grid;gap:8px;margin-top:10px;max-height:70vh;overflow-y:auto;padding-right:2px">
-        ${fields.map(card).join('')}
-      </div>
+    ${tplBar}
+    ${stepBar}
+    <div style="display:grid;gap:8px;margin-top:10px;max-height:60vh;overflow-y:auto;padding-right:2px">
+      ${fields.map(card).join('')}
     </div>`;
 }
 
@@ -8421,95 +8418,130 @@ function renderPrintCheque(){
   const modeTitle = isEffet ? '📜 معلومات الورقة' : '💳 معلومات الشيك';
   const uploadHint = isEffet ? 'ارفع صورة الورقة' : 'ارفع صورة الشيك';
   const printBtnLbl = isEffet ? '🖨️ طباعة الورقة' : '🖨️ طباعة الشيك';
+  // ───── Redesigned print page — hero preview + side-by-side params + calibration ─────
+  // User feedback 2026-05-16: previous 340|290|preview 3-col layout squeezed the
+  // preview into ~600px; user couldn't see the whole effet form. New layout:
+  //   1. Mode toggle + primary actions in a top bar
+  //   2. HERO preview at the top, full width, auto-scaled to fit
+  //   3. Two cards side-by-side below: form inputs (left) + calibration panel (right)
+  //   4. History card at the bottom
+  // This way the preview is the focal point ("kheb wraq fo99") and params come
+  // logically beside ("3ad ijiw parametre jenb").
   document.getElementById('page-print-cheque').innerHTML=
   _renderChequesTabsHTML('print-cheque')
-  +`<div class="filter-pills" style="gap:8px;margin-bottom:14px">
-    <button type="button" class="pill ${!isEffet?'active':''}" onclick="setPrintMode('cheque')">💳 شيك</button>
-    <button type="button" class="pill ${isEffet?'active':''}" onclick="setPrintMode('effet')">📜 ورقة</button>
-  </div>
-  ${isEffet && !effetImg ? `
-    <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.3);border-radius:var(--radius-sm);padding:14px 18px;margin-bottom:14px;color:#a78bfa">
-      <div style="font-weight:700;margin-bottom:4px">📜 قالب الورقة — قيد الإعداد</div>
-      <div style="font-size:12px;color:var(--text2);line-height:1.6">التصميم النهائي د الورقة غادي يتزاد ملي تيسيفت التصميم. دابا تقدر ترفع صورة د الورقة ديالك مؤقتاً، و المقاسات نفسها د الشيك. كل الحقول (مستفيد، مبلغ، تاريخ...) خداماين عادي.</div>
-    </div>` : ''}
-  <div style="display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start">
-    <div>
-      <div class="card">
-        <div class="card-title" style="margin-bottom:16px">${modeTitle}</div>
-        <div id="pc-upload-zone" onclick="document.getElementById('pc-img-input').click()" style="border:2px dashed var(--border);border-radius:var(--radius-sm);padding:14px;text-align:center;cursor:pointer;margin-bottom:16px;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">
-          <input type="file" id="pc-img-input" accept="image/*" style="display:none" onchange="loadChequeImg(this)">
-          <div style="font-size:24px;margin-bottom:4px" id="pc-upload-icon">${bgImg?'✅':'🖼️'}</div>
-          <div style="font-size:12px;color:var(--text2)" id="pc-upload-txt">${bgImg?'صورة محملة — انقر لتغيير':uploadHint}</div>
+  +`<style>
+    .pc-hero{background:linear-gradient(135deg,rgba(124,92,252,.04),rgba(79,142,247,.03));border:1px solid var(--border);border-radius:var(--radius-md);padding:24px 20px;margin-bottom:18px}
+    .pc-hero-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:18px}
+    .pc-hero-mode{display:flex;gap:6px;background:var(--bg2);padding:5px;border-radius:10px;border:1px solid var(--border)}
+    .pc-hero-mode button{background:transparent;border:0;color:var(--text2);padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;border-radius:7px;transition:all .15s}
+    .pc-hero-mode button.active{background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(124,92,252,.4)}
+    .pc-hero-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .pc-hero-actions .btn{padding:9px 16px;font-size:13px;font-weight:700}
+    .pc-prev-stage{display:flex;justify-content:center;background:radial-gradient(ellipse at center,rgba(255,255,255,.03),transparent 70%);padding:18px 8px;border-radius:10px}
+    .pc-prev-frame{background:#fff;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05);overflow:hidden}
+    .pc-hint{margin-top:14px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22);border-radius:8px;font-size:12px;color:#f59e0b;line-height:1.6;display:flex;align-items:center;gap:8px}
+    .pc-hint b{color:#f59e0b}
+    .pc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:18px}
+    @media (max-width:920px){.pc-grid{grid-template-columns:1fr}}
+    .pc-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-md);padding:18px}
+    .pc-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+    .pc-card-title{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
+    .pc-print-howto{font-size:12px;color:var(--text2);background:rgba(79,142,247,.05);border:1px solid rgba(79,142,247,.18);border-radius:8px;padding:12px 14px;line-height:1.7;margin-top:14px}
+    .pc-print-howto b{color:#4f8ef7}
+  </style>
+  <div class="pc-hero">
+    <div class="pc-hero-head">
+      <div class="pc-hero-mode">
+        <button class="${!isEffet?'active':''}" onclick="setPrintMode('cheque')">💳 شيك</button>
+        <button class="${isEffet?'active':''}" onclick="setPrintMode('effet')">📜 ورقة</button>
+      </div>
+      <div class="pc-hero-actions">
+        <button class="btn btn-accent" onclick="doPrint()">${printBtnLbl}</button>
+        <button class="btn" style="background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:0" onclick="downloadChequePNG()" title="تنزيل كصورة PNG لطباعة مستقرة عبر Mac+Windows">📸 PNG</button>
+        <button class="btn btn-outline" onclick="printAlignmentTest()" title="ورقة معايرة">🎯 جرب</button>
+        <button class="btn btn-outline" onclick="shareChequeToTelegram()" title="Telegram">📤</button>
+        <button class="btn btn-outline" onclick="resetPrintForm()" title="تفريغ">↺</button>
+      </div>
+    </div>
+    <div class="pc-prev-stage">
+      <div class="pc-prev-frame" id="pc-preview-frame">
+        <div id="pc-preview-outer" style="overflow:hidden;width:100%">
+          <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
+            <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:hidden;color:#111">
+              <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
+                ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#999'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.5)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / ورقة':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
+              </div>
+              <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
+              <div id="pf-lettres1" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
+              <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
+              <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
+              <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
+              <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
+              <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
+            </div>
+          </div>
         </div>
-        <div class="form-grid" style="gap:12px;grid-template-columns:1fr">
-          <div>
-            <label class="field-lbl">المستفيد *</label>
-            <div class="ac-wrap"><input class="field-inp" id="pc-ordre" placeholder="اسم الفورنيسور" oninput="updatePrintPreview();acInput('pc-ordre','ac-pc')" onblur="setTimeout(()=>acHide('ac-pc'),150)">
-            <div class="ac-list" id="ac-pc" style="display:none"></div></div>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-            <div><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()"></div>
-            <div><label class="field-lbl">المدينة</label><input class="field-inp" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div>
-          </div>
+      </div>
+    </div>
+    <div class="pc-hint">💡 <b>اسحب أي حقل بالماوس</b> لتحريكو فالمكان المناسب — كيتخزن أوتوماتيكي · معاينة 1:1 (${isEffet?'200×130mm':'176×80mm'})</div>
+  </div>
+
+  <div class="pc-grid">
+    <!-- LEFT: Données -->
+    <div class="pc-card">
+      <div class="pc-card-head">
+        <div class="pc-card-title">📝 ${modeTitle}</div>
+        <button onclick="document.getElementById('pc-img-input').click()" class="btn-ghost" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2)" title="رفع/تغيير صورة الخلفية">🖼️ ${bgImg?'تغيير':'رفع'} الخلفية</button>
+        <input type="file" id="pc-img-input" accept="image/*" style="display:none" onchange="loadChequeImg(this)">
+      </div>
+      <div style="display:grid;gap:12px">
+        <div>
+          <label class="field-lbl">المستفيد *</label>
+          <div class="ac-wrap"><input class="field-inp" id="pc-ordre" placeholder="اسم الفورنيسور" oninput="updatePrintPreview();acInput('pc-ordre','ac-pc')" onblur="setTimeout(()=>acHide('ac-pc'),150)">
+          <div class="ac-list" id="ac-pc" style="display:none"></div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()"></div>
+          <div><label class="field-lbl">المدينة</label><input class="field-inp" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
           <div><label class="field-lbl">تاريخ الشيك *</label><input class="field-inp" id="pc-date" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
           <div><label class="field-lbl">الاستحقاق</label><input class="field-inp" id="pc-echeance" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
         </div>
-        <div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:var(--radius-sm);padding:10px;margin:12px 0;text-align:center">
-          <div style="font-size:10px;color:var(--text2);margin-bottom:3px">Montant en toutes lettres</div>
+        <div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text2);margin-bottom:3px;font-weight:600;letter-spacing:0.5px">MONTANT EN TOUTES LETTRES</div>
           <div style="font-size:12px;font-weight:600;color:var(--accent);direction:ltr;font-family:'Times New Roman',serif" id="pc-lettres-preview">—</div>
         </div>
-        <button class="btn btn-accent" style="width:100%;padding:13px;font-size:15px;margin-bottom:8px" onclick="doPrint()">${printBtnLbl}</button>
-        <button class="btn" style="width:100%;padding:11px;font-size:13px;margin-bottom:8px;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:none;font-weight:700" onclick="downloadChequePNG()" title="حمل الشيك/الورقة كصورة PNG وطبعها بحاسة Preview/Photos — استقرار مضمون عبر Mac+Windows">📸 تحميل صورة PNG (مضبوطة)</button>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
-          <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="printAlignmentTest()" title="طبع تجريبي على ورقة فاضية لمعايرة المحاذاة">🎯 طبع tjarib</button>
-          <button class="btn btn-outline" style="padding:9px;font-size:12px" onclick="exportChequePDF()" title="فتح في نافذة جديدة للحفظ PDF">📄 PDF</button>
-        </div>
-        <button class="btn btn-outline" style="width:100%;padding:9px;font-size:12px;margin-bottom:8px;background:rgba(6,182,212,0.08);border-color:rgba(6,182,212,0.35);color:#06b6d4" onclick="shareChequeToTelegram()" title="تصدير صورة الشيك وإرسالها عبر Telegram">📤 أرسل عبر Telegram</button>
-        <button class="btn btn-outline" style="width:100%;padding:9px" onclick="resetPrintForm()">↺ تفريغ</button>
-        <div id="pc-msg" style="text-align:center;font-size:12px;margin-top:8px;min-height:16px"></div>
-        <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:11px;color:var(--amber)">
-          ⚠️ المرة الأولى: اطبع على ورقة عادية وقارنها بالشيك الحقيقي قبل الطباعة الفعلية.
-        </div>
+        <div id="pc-msg" style="text-align:center;font-size:12px;min-height:16px;font-weight:600"></div>
+      </div>
+      <div class="pc-print-howto">
+        🖨️ <b>طريقة الطباعة الصحيحة:</b><br>
+        1. Paper=<b>A4</b>, Scale=<b>100%</b>, Margins=<b>None</b><br>
+        2. حط ورقة ${isEffet?'الإيفي (20×13cm)':'الشيك (17.6×8cm)'} fl multi-purpose tray<br>
+        3. زبط <b>m9ada m3a l-zaouia top-left</b> (lqorb dyal ras dakhel d printer)<br>
+        4. l-printer ka yrender A4 ou ghi l-blast li fihm les pixels يتطبع
       </div>
     </div>
-    <div style="display:flex;gap:14px;align-items:flex-start;min-width:0">
-      <div style="width:290px;flex-shrink:0">${renderChqCfgPanel()}</div>
-      <div style="flex:1;min-width:0">
-      <div class="card" style="margin-bottom:16px">
-        <div class="card-title" style="margin-bottom:14px">${isEffet?'معاينة الورقة':'معاينة الشيك'}</div>
-        <div id="pc-preview-outer" style="overflow:hidden;width:100%">
-        <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
-          <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#111">
-            <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
-              ${!bgImg?(isEffet?'<div style="text-align:center;color:#7c3aed"><div style="font-size:36px">📜</div><div style="font-size:13px;margin-top:6px">Effet / ورقة</div><div style="font-size:11px;margin-top:4px">ارفع صورة الورقة</div></div>':'<div style="text-align:center;color:#999"><div style="font-size:36px">🏦</div><div style="font-size:13px;margin-top:6px">Crédit du Maroc</div><div style="font-size:11px;margin-top:4px">ارفع صورة الشيك</div></div>'):''}
-            </div>
-            <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
-            <div id="pf-lettres1" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
-            <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
-            <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
-            <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
-            <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
-            <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
-          </div>
-        </div>
-        </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — ${isEffet?'الورقة 200mm × 130mm':'الشيك 176mm × 80mm'} · 💡 <b>اسحب أي حقل</b> بالماوس لتحريكو فالمكان المناسب — كيتخزن أوتوماتيكي</div>
-        <div style="font-size:12px;color:var(--accent);margin-top:6px;padding:8px 10px;background:rgba(124,58,237,.08);border-right:3px solid var(--accent);border-radius:6px;line-height:1.6">
-          🖨️ <b>طريقة الطباعة الصحيحة:</b><br>
-          1. الطابعة كتطبع على <b>A4</b> (هاكا كيخدم 100% على Windows+Mac)<br>
-          2. حط ورقة ${isEffet?'الإيفي (20×13cm)':'الشيك (17.6×8cm)'} <b>fl multi-purpose tray</b> دلا-Epson<br>
-          3. زبط ورقة الإيفي <b>m9ada m3a l-zaouia top-left</b> (lqorb dyal ras dakhel d printer)<br>
-          4. f Chrome print dialog: Paper=<b>A4</b>, Scale=<b>100%</b>, Margins=<b>None</b><br>
-          5. l-content ghadi yji exact f blasto لأن l-printer ka yrender A4 ou ghi l-blastera li ${isEffet?'l-effet':'l-cheque'} fihm i7awmou les pixels
+
+    <!-- RIGHT: Calibration -->
+    <div class="pc-card">
+      <div class="pc-card-head">
+        <div class="pc-card-title">⚙️ معايرة المواضع</div>
+        <div style="display:flex;gap:6px">
+          <button onclick="resetChqCfg()" title="استرجاع الافتراضي" class="btn-ghost" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2)">↺ افتراضي</button>
         </div>
       </div>
-      <div class="card">
-        <div class="card-title">سجل التسويات المطبوعة</div>
-        <div id="pc-history-wrap"></div>
-      </div>
-      </div>
+      <div id="pc-cfg-panel-mount">${renderChqCfgPanel()}</div>
     </div>
   </div>
+
+  <div class="pc-card">
+    <div class="pc-card-head">
+      <div class="pc-card-title">📋 سجل التسويات المطبوعة</div>
+    </div>
+    <div id="pc-history-wrap"></div>
+  </div>
+
   <iframe id="pc-print-frame" style="display:none"></iframe>
   `;
   const dateEl=document.getElementById('pc-date');

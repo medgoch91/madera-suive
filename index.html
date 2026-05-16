@@ -23970,15 +23970,21 @@ function _findSubsetSum(transfers, target, tolerance, maxSize){
 }
 
 function _matchFacturesToVirements(virsIn, ym){
-  // User's actual workflow (clarified 2026-05-16):
-  //   • Customer (ONE TEAM EXPRESS etc.) pays via several instant transfers.
-  //   • Sometimes one fires before midnight, the rest just after → spread
-  //     across 2 calendar dates but it's ONE payment session.
-  //   • User's rule: "consecutive days, same sender" = same facture.
+  // User's actual workflow (refined 2026-05-16):
+  //   • ONE TEAM EXPRESS = a single customer that fires multiple instant
+  //     transfers per payment session, often split across midnight. Those
+  //     should bundle as one facture.
+  //   • Other incoming transfers are different sources (typically the
+  //     user depositing his OWN cash sales into the bank). Each of THOSE
+  //     deposits is ITS OWN facture — never bundle them.
   //
-  // Algorithm: walk sorted virements; chain transfers into a bundle while
-  // (same normalized counterparty) AND (date <= prev_date + 1 day). Break
-  // chain on either condition.
+  // Detect "ONE TEAM" by counterparty matching against a known-aggregator
+  // list. Easy to extend if more aggregator names appear over time.
+  const KNOWN_BUNDLERS = ['ONETEAM', 'ONETEAMEXPRESS'];
+  const isBundler = name => {
+    const norm = (name||'').toUpperCase().replace(/[^A-Z]/g,'');
+    return KNOWN_BUNDLERS.some(k => norm.includes(k));
+  };
   const sorted = [...virsIn].sort((a,b)=> a.date.localeCompare(b.date));
   const normSender = s => (s||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,14);
   const daysBetween = (d1, d2) => Math.round((new Date(d2)-new Date(d1))/(1000*60*60*24));
@@ -23986,12 +23992,17 @@ function _matchFacturesToVirements(virsIn, ym){
   for(const v of sorted){
     const last = bundles[bundles.length-1];
     const lastTx = last && last.transfers[last.transfers.length-1];
-    if(lastTx && normSender(lastTx.counterparty)===normSender(v.counterparty) && daysBetween(lastTx.date, v.date) <= 1){
+    // Only chain when BOTH transfers are from a known multi-transfer customer
+    // (ONE TEAM and family) AND same sender AND within 1 day of each other.
+    // Everything else (cash-deposit virements from various names) = solo bundle.
+    if(lastTx && isBundler(v.counterparty) && isBundler(lastTx.counterparty)
+       && normSender(lastTx.counterparty)===normSender(v.counterparty)
+       && daysBetween(lastTx.date, v.date) <= 1){
       last.transfers.push(v);
       last.total += v.montant;
       last.endDate = v.date;
     } else {
-      bundles.push({startDate: v.date, endDate: v.date, counterparty: v.counterparty, transfers: [v], total: v.montant});
+      bundles.push({startDate: v.date, endDate: v.date, counterparty: v.counterparty, transfers: [v], total: v.montant, isBundler: isBundler(v.counterparty)});
     }
   }
 

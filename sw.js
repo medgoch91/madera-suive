@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v192-bank-reconcile-client-side-free';
+const CACHE = 'suivi-v193-bank-create-unmatched-plus-virements';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

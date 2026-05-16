@@ -23698,12 +23698,12 @@ async function parseAndMatchBankStatement(file){
       fullText += '\n';
     }
     setStatus('🔍 جاري البحث عن العمليات...', '#3b82f6');
-    // Regex: capture date-op + (CHEQUE|EFFET) + num + montant
-    // CDM rows look like:  "10 04 26 10 04 26 PAIEMENT CHEQUE 2616665 59 127,50"
-    const re = /(\d{2})\s+(\d{2})\s+(\d{2})\s+\d{2}\s+\d{2}\s+\d{2}\s+PAIEMENT\s+(CHEQUE|EFFET)\s+(\d+)\s+([\d\s]+[,\.]\d{2})/gi;
+    // Regex 1: PAIEMENT CHEQUE/EFFET
+    // CDM rows: "10 04 26 10 04 26 PAIEMENT CHEQUE 2616665 59 127,50"
+    const reCheq = /(\d{2})\s+(\d{2})\s+(\d{2})\s+\d{2}\s+\d{2}\s+\d{2}\s+PAIEMENT\s+(CHEQUE|EFFET)\s+(\d+)\s+([\d\s]+[,\.]\d{2})/gi;
     const txs = [];
     let mm;
-    while((mm = re.exec(fullText)) !== null){
+    while((mm = reCheq.exec(fullText)) !== null){
       const [_, dd, mo, yy, type, num, montantStr] = mm;
       const year = 2000 + parseInt(yy,10);
       const date = year+'-'+mo+'-'+dd;
@@ -23712,6 +23712,36 @@ async function parseAndMatchBankStatement(file){
         txs.push({date, type: type.toLowerCase()==='effet'?'effet':'cheque', num: num.trim(), montant});
       }
     }
+    // Regex 2: VIREMENT / VIRINST (transfers — outgoing or incoming)
+    // CDM rows: "07 04 26 08 04 26 VIREMENT SIMPLE EMIS 500,00" then next row: "BARAKAT MOHAMED"
+    // or:        "01 04 26 02 04 26 VIR INS RECU 16 465,00" then "ONE TEAM EXPRESS"
+    // Pull the operation row + capture the next non-empty line as the libellé (counterparty).
+    const lines = fullText.split('\n');
+    const virs = [];
+    const reVir = /^(\d{2})\s+(\d{2})\s+(\d{2})\s+\d{2}\s+\d{2}\s+\d{2}\s+(VIREMENT\s+(?:SIMPLE\s+EMIS|RECU)|VIRINST\s+PAR\s+EMIS|VIR\s+INS\s+RECU)\s+([\d\s]+[,\.]\d{2})\s*$/i;
+    for(let i=0; i<lines.length; i++){
+      const m = lines[i].match(reVir);
+      if(!m) continue;
+      const [_, dd, mo, yy, kind, montantStr] = m;
+      const year = 2000 + parseInt(yy,10);
+      const date = year+'-'+mo+'-'+dd;
+      const montant = parseFloat(montantStr.replace(/\s/g,'').replace(',','.')) || 0;
+      const isOut = /EMIS/i.test(kind);
+      // Next non-empty line = counterparty (sender or recipient)
+      let counterparty = '';
+      for(let j=i+1; j<Math.min(i+4, lines.length); j++){
+        const l = lines[j].trim();
+        if(!l) continue;
+        if(/^\d{2}\s+\d{2}\s+\d{2}/.test(l)) break;  // next transaction row
+        if(/^(VIREMENT|VIRINST|VIR\s+INS|PAIEMENT|RETRAIT|PRELEVEMENT|FRAIS|AGIOS|TEG|FONCTIONNEMENT|CARTES|CHEQUES|EFFETS|SOLDE|FEUILLET|PACKAGES|BANQUE)/i.test(l)) break;
+        counterparty = l;
+        break;
+      }
+      // Detect internal transfer (user's personal account — Mohamed Barakat)
+      const isPersonal = /BARAKAT\s+MOHAMED|MOHAMED\s+BARAKAT/i.test(counterparty);
+      virs.push({date, type: isOut?'out':'in', kind: /VIRINST|VIR\s+INS/i.test(kind)?'instant':'simple', montant, counterparty, isPersonal});
+    }
+    window._lastBankVirs = virs;  // surface for review screen
     if(!txs.length){
       setStatus('⚠️ ما لقيت حتى عملية د PAIEMENT CHEQUE/EFFET فهاد الكشف', '#f59e0b');
       return;
@@ -23785,18 +23815,47 @@ function _showBankReconcileReview(matches, allTxs){
     </div>` : ''}
 
     ${unmatched.length ? `<div style="margin-bottom:18px">
-      <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:8px">⚠️ غير موجودة فالأبليكاسيون (${unmatched.length})</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">هاد العمليات بانت ف الكشف لكن ما لقيت ليها شيك/إيفي ف التطبيق. يمكن نسيتي تسجلها من قبل.</div>
+      <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
+        <span>⚠️ غير موجودة فالأبليكاسيون (${unmatched.length})</span>
+        <button class="btn-ghost" onclick='createAllUnmatched(${JSON.stringify(unmatched.map(m=>m.tx))})' style="font-size:11px;padding:5px 12px;background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.4);border-radius:6px;font-weight:700">➕ سجّل الكل ك مدفوع</button>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">هاد العمليات بانت ف الكشف لكن ما لقيت ليها شيك/إيفي ف التطبيق (مدفوعات قديمة قبل ما بديتي تستعمل الأبليكاسيون). تقدر تسجلهم ك "مدفوع" باش يدخلو ف الحسابات.</div>
       <table class="data-table" style="font-size:12px">
-        <thead><tr><th>التاريخ</th><th>النوع</th><th>الرقم</th><th>المبلغ</th></tr></thead>
-        <tbody>${unmatched.map(m => `<tr>
+        <thead><tr><th>التاريخ</th><th>النوع</th><th>الرقم</th><th>المبلغ</th><th>إجراء</th></tr></thead>
+        <tbody>${unmatched.map((m,i) => `<tr>
           <td>${fmtDate(m.tx.date)}</td>
           <td>${m.tx.type==='effet'?'📜 إيفي':'💳 شيك'}</td>
           <td style="font-weight:700">${escB(m.tx.num)}</td>
           <td>⁦${fmtN(m.tx.montant)}⁩</td>
+          <td><button class="btn-ghost" onclick='createUnmatchedAsCheque(${JSON.stringify(m.tx)})' style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:5px">➕ سجّل</button></td>
         </tr>`).join('')}</tbody>
       </table>
     </div>` : ''}
+
+    ${(()=>{
+      const virs = window._lastBankVirs || [];
+      if(!virs.length) return '';
+      const personal = virs.filter(v => v.isPersonal);
+      const external = virs.filter(v => !v.isPersonal);
+      const outExt = external.filter(v => v.type==='out');
+      const inExt = external.filter(v => v.type==='in');
+      return `<div style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:700;color:#3b82f6;margin-bottom:8px">🔁 تحويلات بنكية (${virs.length})</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px">العمليات د VIREMENT/VIRINST اللي بانت ف الكشف</div>
+        ${personal.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(124,92,252,.05);border:1px solid rgba(124,92,252,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:var(--accent);font-size:12px">🔄 تحويلات داخلية mع الحساب الشخصي (${personal.length})</summary>
+          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>الإتجاه</th><th>المبلغ</th><th>الطرف</th></tr></thead><tbody>${personal.map(v=>`<tr><td>${fmtDate(v.date)}</td><td>${v.type==='out'?'⬅️ خرج':'➡️ دخل'}</td><td>⁦${fmtN(v.montant)}⁩</td><td style="color:var(--text3)">${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 هاد تحويلات بيناتك وبين حسابك الشخصي — مكاتدخلش ف TVA ولا ف الأرباح</div>
+        </details>`:''}
+        ${inExt.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:#10b981;font-size:12px">⬇️ تحويلات داخلة (${inExt.length}) — مداخيل من الزبناء</summary>
+          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المرسل</th></tr></thead><tbody>${inExt.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#10b981;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 المجموع: <b style="color:#10b981">⁦${fmtN(inExt.reduce((s,v)=>s+v.montant,0))} DH⁩</b> — هاديك خاص تكون مطابقة م3 الفواتير المدفوعة</div>
+        </details>`:''}
+        ${outExt.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:#ef4444;font-size:12px">⬆️ تحويلات خارجة (${outExt.length}) — خلاصات</summary>
+          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المستفيد</th></tr></thead><tbody>${outExt.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#ef4444;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
+          <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 المجموع: <b style="color:#ef4444">⁦${fmtN(outExt.reduce((s,v)=>s+v.montant,0))} DH⁩</b></div>
+        </details>`:''}
+      </div>`;
+    })()}
 
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)">
       <button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
@@ -23804,6 +23863,49 @@ function _showBankReconcileReview(matches, allTxs){
     </div>
   </div>`;
   document.getElementById('modal-main-c').innerHTML = html;
+}
+
+// Create an unmatched bank transaction as a fully-formed cheque/effet record
+// in the cheques table. Status=مدفوع, paid_at=transaction date. Fournisseur
+// defaults to "غير محدد" — user edits it later from the cheques list.
+async function createUnmatchedAsCheque(tx){
+  if(!tx || !tx.num) return;
+  const payload = {
+    num: tx.num,
+    type: tx.type,                    // 'cheque' or 'effet'
+    fournisseur: 'غير محدد',
+    montant: tx.montant,
+    date: tx.date,                     // issue date approximated to payment date
+    echeance: tx.date,
+    status: 'مدفوع',
+    paid_at: tx.date,
+    ville: 'Agadir',
+    notes: 'تم تسجيلو من مطابقة الكشف البنكي',
+  };
+  try{
+    const r = await sbFetch('cheques','POST',payload);
+    if(r && r.__sbError) throw new Error(r.msg);
+    const row = Array.isArray(r)?r[0]:r;
+    if(row && typeof cheques !== 'undefined') cheques.unshift(row);
+    try{ toast(`✅ تم تسجيل ${tx.type==='effet'?'الإيفي':'الشيك'} ${tx.num}`,'success'); }catch(e){}
+    // Update the visual row to reflect new state
+    document.querySelectorAll(`button[onclick*='${tx.num}'][onclick*='createUnmatchedAsCheque']`).forEach(b=>{
+      const tr = b.closest('tr');
+      if(tr){ tr.style.opacity = '.5'; b.textContent = '✓ مسجل'; b.disabled = true; }
+    });
+  }catch(e){
+    try{ toast('❌ '+(e.message||e),'error'); }catch(_){}
+  }
+}
+
+async function createAllUnmatched(txList){
+  if(!Array.isArray(txList) || !txList.length) return;
+  if(!confirm(`سيتم تسجيل ${txList.length} عملية كـ "مدفوع" بفورنيسور افتراضي. تأكد؟`)) return;
+  let ok=0, fail=0;
+  for(const tx of txList){
+    try{ await createUnmatchedAsCheque(tx); ok++; }catch(e){ fail++; }
+  }
+  if(typeof renderTva==='function') renderTva();
 }
 
 async function applyBankReconcile(updates){

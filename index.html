@@ -23914,14 +23914,15 @@ function _showBankReconcileReview(matches, allTxs){
 
             ${result.unmatchedBundles.length?`
               <div style="font-size:12px;font-weight:700;color:#ef4444;margin:14px 0 6px">⚠️ Bundles بلا فاتورة (${result.unmatchedBundles.length})</div>
-              <div style="font-size:10px;color:var(--text3);margin-bottom:6px">💡 خاص تخلق فاتورة جديدة لكل bundle — المبلغ هو مجموع التحويلات</div>
+              <div style="font-size:10px;color:var(--text3);margin-bottom:6px">💡 إنشاء الفاتورة كيعطي تاريخ <b>فاتر الشهر</b> (آخر يوم من الشهر دالكشف) — التحويلات كاتجي ف الشهر، الفاتورة بفآتر الشهر.</div>
               <div style="display:flex;flex-direction:column;gap:6px">
                 ${result.unmatchedBundles.map(b => `<div style="background:rgba(239,68,68,.04);border:1px solid rgba(239,68,68,.2);border-radius:6px;padding:8px 10px;font-size:11px">
-                  <div style="display:flex;justify-content:space-between;font-weight:700">
-                    <span>📅 ${dateRange(b)} · ${escB(b.counterparty)} · ${b.transfers.length} تحويل</span>
-                    <span style="color:#ef4444">⁦${fmtN(b.total)} DH⁩</span>
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+                    <span style="font-weight:700;flex:1">📅 ${dateRange(b)} · ${escB(b.counterparty)} · ${b.transfers.length} تحويل</span>
+                    <span style="color:#ef4444;font-weight:700">⁦${fmtN(b.total)} DH⁩</span>
+                    <button data-bundle-key="${b.startDate}_${b.total}" onclick='createFactureFromBundle(${JSON.stringify(b).replace(/'/g,"&#39;")})' style="background:rgba(16,185,129,.15);color:#10b981;border:1px solid rgba(16,185,129,.4);padding:5px 12px;border-radius:5px;cursor:pointer;font-family:'Cairo',sans-serif;font-size:11px;font-weight:700;white-space:nowrap">📝 إنشاء فاتورة</button>
                   </div>
-                  <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">
+                  <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px">
                     ${b.transfers.map(t=>`<span style="background:rgba(239,68,68,.08);padding:2px 6px;border-radius:3px;font-size:10px">${fmtDate(t.date)} · ⁦${fmtN(t.montant)}⁩</span>`).join('')}
                   </div>
                 </div>`).join('')}
@@ -24048,6 +24049,82 @@ function _matchFacturesToVirements(virsIn, ym){
   const unmatchedFacts = factsInWin.filter(f => !usedFactIds.has(f.id));
   return {matches, unmatchedBundles, unmatchedFacts};
 }
+
+// Create a facture from an unmatched virement bundle. Date = end of the
+// relevé month (user's workflow: invoices issued at month-end, transfers
+// trickle in throughout the month). Client = bundle counterparty (user
+// can rename after). Total = bundle.total. Single ligne at 20% TVA.
+async function createFactureFromBundle(bundleJson){
+  const b = (typeof bundleJson === 'string') ? JSON.parse(bundleJson) : bundleJson;
+  if(!b || !b.total) return;
+  // End-of-month from the active TVA month (or fallback: bundle's end date month)
+  const ym = _tvaMonth || (b.endDate||'').slice(0,7) || (new Date().toISOString().slice(0,7));
+  const [y,mo] = ym.split('-').map(Number);
+  const eom = new Date(y, mo, 0);  // 0th day of next month = last day of this month
+  const dateISO = eom.getFullYear()+'-'+String(eom.getMonth()+1).padStart(2,'0')+'-'+String(eom.getDate()).padStart(2,'0');
+  // Quick prompt for client name (pre-fill with counterparty)
+  const defaultClient = (b.counterparty||'').replace(/\s+/g,' ').trim() || 'زبون';
+  const clientNom = prompt('اسم الزبون لهاد الفاتورة:', defaultClient);
+  if(clientNom === null) return;  // cancelled
+  const clientFinal = (clientNom||'').trim() || defaultClient;
+  try{
+    // Compute next available facture num for the year
+    const year = eom.getFullYear();
+    const _factSerie = 'fact';
+    let nextNum = 1;
+    const srv = await sbFetch('factures','GET',null,'select=num&serie=eq.'+_factSerie+'&date=gte.'+year+'-01-01&date=lte.'+year+'-12-31&order=num.desc&limit=1');
+    const srvMax = (Array.isArray(srv) && srv[0] && Number(srv[0].num))||0;
+    const locMax = (factures||[]).filter(f => {
+      if(!f.date || !String(f.date).startsWith(String(year))) return false;
+      const s = f.serie || (f.statut==='ديفي'?'devis':'fact');
+      return s === _factSerie;
+    }).reduce((mx,f)=> Math.max(mx, Number(f.num)||0), 0);
+    nextNum = Math.max(srvMax, locMax) + 1;
+    // Build facture
+    const ttc = Number(b.total)||0;
+    const ht  = Math.round(ttc/1.2 * 100)/100;
+    const tva = Math.round((ttc - ht) * 100)/100;
+    const ligne = {designation: 'مبيعات شهر '+_monthLabel(ym), qte:1, prix_u: ht, tva:20};
+    const payload = {
+      num: nextNum,
+      client_id: null,
+      client_nom: clientFinal,
+      client_ville: 'Agadir',
+      client_ice: null,
+      date: dateISO,
+      echeance: dateISO,
+      lang: 'fr',
+      mode: 'ht',
+      lignes: [ligne],
+      total_ht: ht,
+      total_tva: tva,
+      total_ttc: ttc,
+      statut: 'مدفوعة',
+      serie: _factSerie,
+      notes: 'تم إنشاؤها من مطابقة الكشف البنكي — تحويلات '+_dateRangeStr(b),
+    };
+    const res = await sbFetch('factures','POST', payload);
+    if(res && res.__sbError) throw new Error(res.msg);
+    const saved = Array.isArray(res)?res[0]:res;
+    if(saved){
+      (factures = factures || []).unshift(saved);
+      try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+      try{ toast(`✅ فاتورة F-${nextNum} (${fmtN(ttc)} DH) — ${clientFinal}`,'success'); }catch(e){}
+    }
+    // Mark the bundle row as resolved without re-rendering whole modal
+    document.querySelectorAll(`button[data-bundle-key='${b.startDate}_${b.total}']`).forEach(btn => {
+      const card = btn.closest('div[style*="rgba(239,68,68"]');
+      if(card){ card.style.opacity='.5'; card.style.borderColor='rgba(16,185,129,.4)'; }
+      btn.textContent = '✓ فاتورة F-'+nextNum;
+      btn.disabled = true;
+      btn.style.background = 'rgba(16,185,129,.15)';
+      btn.style.color = '#10b981';
+    });
+  }catch(e){
+    try{ toast('❌ '+(e.message||e),'error'); }catch(_){}
+  }
+}
+function _dateRangeStr(b){ return b.startDate===b.endDate ? fmtDate(b.startDate) : (fmtDate(b.startDate)+'→'+fmtDate(b.endDate)); }
 
 // Create an unmatched bank transaction as a fully-formed cheque/effet record
 // in the cheques table. Status=مدفوع, paid_at=transaction date. Fournisseur

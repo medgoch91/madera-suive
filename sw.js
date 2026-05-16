@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v201-fact-list-date-filters-print';
+const CACHE = 'suivi-v202-one-team-is-transporter-default-client-divers';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

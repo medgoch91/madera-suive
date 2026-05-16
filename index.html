@@ -24235,8 +24235,14 @@ async function createFactureFromBundle(bundleJson){
   const [y,mo] = ym.split('-').map(Number);
   const eom = new Date(y, mo, 0);  // 0th day of next month = last day of this month
   const dateISO = eom.getFullYear()+'-'+String(eom.getMonth()+1).padStart(2,'0')+'-'+String(eom.getDate()).padStart(2,'0');
-  // Quick prompt for client name (pre-fill with counterparty)
-  const defaultClient = (b.counterparty||'').replace(/\s+/g,' ').trim() || 'زبون';
+  // Quick prompt for client name. ONE TEAM EXPRESS is a transport/payment
+  // aggregator, NOT the actual client — when transfers come from them the
+  // real client is unknown (cash sale collected on delivery). Default to
+  // "CLIENT DIVERS" in that case. For other counterparties (rare cash
+  // deposits), pre-fill with the counterparty name.
+  const norm = (b.counterparty||'').toUpperCase().replace(/[^A-Z]/g,'');
+  const isAggregator = /ONETEAM/.test(norm);
+  const defaultClient = isAggregator ? 'CLIENT DIVERS' : ((b.counterparty||'').replace(/\s+/g,' ').trim() || 'CLIENT DIVERS');
   const clientNom = prompt('اسم الزبون لهاد الفاتورة:', defaultClient);
   if(clientNom === null) return;  // cancelled
   const clientFinal = (clientNom||'').trim() || defaultClient;

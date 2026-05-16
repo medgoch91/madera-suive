@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v206-out-virement-taswiya-default-plus-freq';
+const CACHE = 'suivi-v207-cheque-payload-no-notes-column';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

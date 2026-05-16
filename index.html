@@ -24363,7 +24363,6 @@ async function _recOutFournisseur(v){
       num, type:'virement', fournisseur:fournNom.trim()||v.counterparty,
       montant:v.montant, date:v.date, echeance:v.date,
       status:'مدفوع', paid_at:v.date, ville:'Agadir',
-      notes:'تم تسجيلو من مطابقة الكشف البنكي (تحويل خارج)',
     };
     const r = await sbFetch('cheques','POST',payload);
     if(r && r.__sbError) throw new Error(r.msg);
@@ -24539,7 +24538,8 @@ async function createUnmatchedAsCheque(tx){
     status: 'مدفوع',
     paid_at: tx.date,
     ville: 'Agadir',
-    notes: 'تم تسجيلو من مطابقة الكشف البنكي',
+    // cheques table doesn't have a notes column — origin is implicit from
+    // fournisseur='غير محدد' + status=مدفوع + paid_at on the bank statement date.
   };
   try{
     const r = await sbFetch('cheques','POST',payload);

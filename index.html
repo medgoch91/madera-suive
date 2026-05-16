@@ -24324,8 +24324,8 @@ async function _recOutSalaire(v){
     </label>
     <label style="display:block;margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">النوع</div>
       <select id="rec-worker-type" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+        <option value="taswiya" selected>✅ تسوية (Salaire mensuel كامل)</option>
         <option value="avance">💵 سلفة (Avance)</option>
-        <option value="taswiya">✅ تسوية (Salaire mensuel)</option>
       </select>
     </label>
     <div style="display:flex;gap:8px;margin-top:18px">
@@ -24374,24 +24374,70 @@ async function _recOutFournisseur(v){
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }
 
-async function _recOutCharge(v){
-  const nom = prompt('اسم المصروف (مثلا: المحاسب):', v.counterparty||'');
-  if(nom===null) return;
-  const cat = prompt('الفئة (loyer / autre):', 'autre');
-  if(cat===null) return;
+function _recOutCharge(v){
+  // Modal: name + category + frequency (monthly / quarterly / yearly / one-time).
+  // For quarterly: store actual amount but divide-by-3 for monthly slot.
+  // Note in DB notes records the actual cadence + actual amount.
+  const html = `<div style="padding:22px;max-width:520px">
+    <div class="card-title" style="margin-bottom:6px">📋 تسجيل مصروف</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${fmtDate(v.date)} · ${fmtN(v.montant)} DH · ${escB(v.counterparty)}</div>
+    <div style="display:grid;gap:10px">
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الاسم</div>
+        <input id="rec-ch-nom" value="${escB(v.counterparty||'')}" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الفئة</div>
+        <select id="rec-ch-cat" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+          <option value="autre" selected>🧾 آخر (Comptable, Internet, etc.)</option>
+          <option value="loyer">🏠 كراء (Loyer)</option>
+          <option value="salaire">💼 أجرة (Salaire)</option>
+        </select></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">دورية الدفع</div>
+        <select id="rec-ch-freq" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+          <option value="monthly">📅 شهرياً</option>
+          <option value="quarterly" selected>📆 كل 3 شهور (Trimestriel)</option>
+          <option value="yearly">🗓️ سنوياً</option>
+          <option value="once">⚡ مرة واحدة فقط</option>
+        </select></label>
+      <div style="font-size:11px;color:var(--text3);padding:8px 10px;background:rgba(245,158,11,.05);border:1px solid rgba(245,158,11,.2);border-radius:6px">
+        💡 إيلا كاتدفع <b>${fmtN(v.montant)}</b> كل 3 شهور، النظام كيقسم على 3 ويحسبو شهرياً <b>${fmtN(v.montant/3)}</b> ف الإحصائيات.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-accent" style="flex:1" onclick="_recOutChargeSave(${v.montant},'${v.date}','${escB(v.counterparty)}')">💾 حفظ</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+}
+async function _recOutChargeSave(actualAmount, date, counterparty){
+  const nom = (document.getElementById('rec-ch-nom')||{}).value || counterparty;
+  const cat = (document.getElementById('rec-ch-cat')||{}).value || 'autre';
+  const freq = (document.getElementById('rec-ch-freq')||{}).value || 'monthly';
+  // Convert paid amount into a monthly-equivalent slot
+  let monthlyEq = actualAmount;
+  let freqLabel = '';
+  if(freq==='quarterly'){ monthlyEq = actualAmount/3; freqLabel = '(كل 3 شهور)'; }
+  else if(freq==='yearly'){ monthlyEq = actualAmount/12; freqLabel = '(سنوي)'; }
+  else if(freq==='once'){ monthlyEq = actualAmount; freqLabel = '(مرة واحدة)'; }
+  const notes = `تم تسجيلو من الكشف البنكي · ${fmtDate(date)} · ${counterparty} · المبلغ الفعلي ${fmtN(actualAmount)} ${freqLabel}`;
+  // For once: limit active_to to same month so it doesn't recur
+  let active_to = null;
+  if(freq==='once'){
+    const d = new Date(date);
+    active_to = new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10);
+  }
   try{
     const r = await sbFetch('recurring_charges','POST',{
-      nom: nom.trim()||v.counterparty,
-      category: (cat==='loyer'?'loyer':(cat==='salaire'?'salaire':'autre')),
-      montant: v.montant,
-      active_from: v.date,
-      active_to: null,
-      notes: 'تم تسجيلو من الكشف البنكي'
+      nom: nom.trim()||counterparty,
+      category: cat,
+      montant: Math.round(monthlyEq*100)/100,
+      active_from: date,
+      active_to,
+      notes,
     });
     if(r && r.__sbError) throw new Error(r.msg);
     const row = Array.isArray(r)?r[0]:r;
     if(row && typeof recurringCharges!=='undefined') recurringCharges.push(row);
-    toast('✅ تم تسجيل المصروف الثابت','success');
+    toast('✅ تم تسجيل المصروف · شهرياً '+fmtN(monthlyEq)+' DH','success');
     document.getElementById('modal-main').classList.remove('open');
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }

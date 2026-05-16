@@ -8472,14 +8472,16 @@ function applyChqCfgToPreview(){
     el.style.width = c.width+'mm';
     el.style.fontSize = c.size+'pt';
     el.style.textAlign = c.align;
-    el.style.fontWeight = c.weight||600;
-    el.style.letterSpacing = (c.spacing||0)+'px';
+    // Match print HTML fonts so preview = print (v186+ typography update).
+    el.style.fontWeight = Math.max(c.weight||800, 800);
+    el.style.letterSpacing = ((c.spacing||0)+0.5)+'px';
     el.style.fontFamily = c.font==='mono'
-      ? "'SF Mono','JetBrains Mono','Consolas','Courier New',monospace"
-      : "'Georgia','Times New Roman',serif";
+      ? "'Courier New','Consolas','SF Mono',monospace"
+      : "'Arial Black','Helvetica Neue','Arial',sans-serif";
     if(c.font==='mono'){
       el.style.fontFeatureSettings = '"tnum" 1';
-      el.style.letterSpacing = ((c.spacing||0)+0.4)+'px';
+      el.style.letterSpacing = ((c.spacing||0)+0.8)+'px';
+      el.style.fontWeight = 700;
     }
   });
   // Signature intentionally NOT rendered on cheque preview (matches print output).
@@ -8863,11 +8865,20 @@ function toWordsFR(n){
   return res.charAt(0).toUpperCase() + res.slice(1);
 }
 // Short closing dash (~1cm) after the amount-in-words — prevents adding text after
-const CHEQUE_WORDS_FILLER = ' ———';
+// Anti-fraud trailing filler — industry standard to prevent post-print
+// additions to the amount-in-words. QuickBooks / Dynamics / ChequeMan
+// all do this. Long enough to consume the rest of the underline.
+const CHEQUE_WORDS_FILLER = ' ━━━━━━━━━━━━━━';
 
 function fmtMontant(v){return Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});}
 // Wrap amount with # at start and end — security against tampering (can't add digits before/after)
-function fmtMontantCheque(v){return '#'+fmtMontant(v)+'#';}
+// Bracket the digital amount with #### (banking convention — like *** in QuickBooks)
+// to prevent prepending or appending digits. Match length to a fixed width so
+// short amounts don't sit alone in a big field.
+function fmtMontantCheque(v){
+  const core = fmtMontant(v);
+  return '#'+core+'#';
+}
 
 function updatePrintPreview(){
   const g=id=>(document.getElementById(id)||{value:''}).value;
@@ -8950,7 +8961,12 @@ function buildChequePrintHTML(d){
   };
   const fs = k => {
     const c = cfg(k); if(!c) return '';
-    return `top:${c.top}mm;left:${c.left}mm;width:${c.width}mm;font-size:${c.size}pt;text-align:${c.align};font-weight:${c.weight||600};letter-spacing:${c.spacing||0}px;`;
+    // Enforce minimum weight 700 (Bold) and minimum spacing 0.5px — banking
+    // typography convention. Users with old configs (weight 600 from earlier
+    // versions) automatically print at 700, no need to recalibrate.
+    const w = Math.max(c.weight||700, 700);
+    const sp = (c.spacing||0) + 0.3;
+    return `top:${c.top}mm;left:${c.left}mm;width:${c.width}mm;font-size:${c.size}pt;text-align:${c.align};font-weight:${w};letter-spacing:${sp}px;`;
   };
   const cl = k => { const c = cfg(k); return (c && c.font==='mono') ? 'mono' : 'serif'; };
   // Effet-only field: Date d'échéance. Top-right of the CDM lettre de change.
@@ -9007,16 +9023,20 @@ function buildChequePrintHTML(d){
     }
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}
-    body{font-family:'Georgia','Times New Roman',serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;}
+    /* Industry-standard cheque typography (per research 2026-05-16):
+       - Mono for digits: Courier New Bold — banking convention, prevents
+         digit substitution / addition because chars are fixed-width.
+       - Sans-serif Bold for text fields (payee, words, ville, date) —
+         Arial Black/Bold is what Sage/EBP/QuickBooks default to. Bold +
+         tight letter-spacing reads "heavy/inked" on inkjet, matching the
+         visual weight of a dot-matrix print. Georgia/Times was looking
+         too thin/anemic on consumer inkjets. */
+    body{font-family:'Arial Black','Helvetica Neue','Arial',sans-serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;font-weight:900;}
     .w{width:${pW}mm;height:${pH}mm;position:absolute;top:${oy}mm;left:${ox}mm;background:#fff;overflow:visible;}
-    .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;}
-    .f.wrap{white-space:normal;overflow:visible;line-height:1.28;}
-    /* Crisp mono for digits — Inconsolata/SF Mono/Consolas before fallback */
-    .mono{font-family:'SF Mono','JetBrains Mono','Consolas','Courier New',monospace;font-feature-settings:"tnum" 1;letter-spacing:0.02em;}
-    /* Georgia for text — taller x-height than Times so it scans clean at
-       small sizes, matching what real bank fields look like when filled
-       by typewriter-style printers. */
-    .serif{font-family:'Georgia','Times New Roman',serif;}
+    .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;font-weight:800;}
+    .f.wrap{white-space:normal;overflow:visible;line-height:1.32;}
+    .mono{font-family:'Courier New','Consolas','SF Mono','JetBrains Mono',monospace;font-feature-settings:"tnum" 1;letter-spacing:0.04em;font-weight:700;}
+    .serif{font-family:'Arial Black','Helvetica Neue','Arial',sans-serif;font-weight:900;letter-spacing:0.02em;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
     <div class="f wrap ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>

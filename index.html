@@ -24315,86 +24315,46 @@ function openOutVirementRecorder(virJson){
 }
 
 async function _recOutSalaire(v){
-  const sals = (typeof salariesData!=='undefined' && salariesData) ? salariesData : [];
-  const cpUpper = (v.counterparty||'').toUpperCase();
-  const suggested = sals.find(s => cpUpper.includes((s.nom||'').toUpperCase()) || (s.nom||'').toUpperCase().includes(cpUpper.split(' ')[0]||''));
-  const opts = sals.map(s => `<option value="${s.id}"${suggested && s.id===suggested.id?' selected':''}>${escB(s.nom||'—')}</option>`).join('');
-  // "+ Add new worker" option pre-fills with counterparty name. Useful for
-  // office workers not yet tracked in the salaries module (user has these
-  // working at the office vs depot — they're paid but not pointed).
+  // Simplified flow: record the salary as a one-time charge fixe entry
+  // (category='salaire') instead of creating a tracked salarie row +
+  // taswiya/avance. The user's workflow: bank-transferred salaries (mostly
+  // office staff) shouldn't pollute the الأجراء module — they're a pure
+  // monthly expense that just needs to land in total dépenses for TVA.
   const html = `<div style="padding:22px;max-width:480px">
     <div class="card-title" style="margin-bottom:6px">💼 تسجيل أجرة</div>
     <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${fmtDate(v.date)} · ${fmtN(v.montant)} DH · ${escB(v.counterparty)}</div>
-    <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الأجير</div>
-      <select id="rec-worker" onchange="document.getElementById('rec-worker-new').style.display=this.value==='__new__'?'block':'none'" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
-        ${opts}
-        <option value="__new__"${sals.length===0?' selected':''}>➕ أجير جديد (مكاتش مسجل قبل)</option>
-      </select>
-    </label>
-    <label id="rec-worker-new" style="display:${sals.length===0?'block':'none'};margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">اسم الأجير الجديد</div>
-      <input id="rec-worker-newname" value="${escB(v.counterparty||'')}" placeholder="مثلا: Hassan Tazi" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
-      <div style="font-size:10px;color:var(--text3);margin-top:4px">سيتم إضافتو ل قائمة الأجراء (بدون تتبع pointage)</div>
-    </label>
-    <label style="display:block;margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">النوع</div>
-      <select id="rec-worker-type" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
-        <option value="taswiya" selected>✅ تسوية (Salaire mensuel كامل)</option>
-        <option value="avance">💵 سلفة (Avance)</option>
-      </select>
-    </label>
+    <div style="font-size:11px;color:#10b981;margin-bottom:14px;padding:8px 10px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:6px;line-height:1.5">
+      💡 سيتم تسجيلو ك <b>مصروف</b> ديال هاد الشهر فقط (مكايتسجلش ف الأجراء). كيدخل ف total ديال المصاريف الشهرية.
+    </div>
+    <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">اسم الأجير</div>
+      <input id="rec-salname" value="${escB(v.counterparty||'')}" placeholder="مثلا: Hassan Tazi" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
     <div style="display:flex;gap:8px;margin-top:18px">
-      <button class="btn btn-accent" style="flex:1" onclick="_recOutSalaireSave(${v.montant},'${v.date}','${escB(v.counterparty)}')">💾 حفظ</button>
+      <button class="btn btn-accent" style="flex:1" onclick="_recOutSalaireSave(${v.montant},'${v.date}')">💾 حفظ كمصروف</button>
       <button class="btn" style="flex:1" onclick="_returnToBankReview()">إلغاء</button>
     </div>
   </div>`;
   document.getElementById('modal-main-c').innerHTML = html;
 }
-async function _recOutSalaireSave(montant, date, counterparty){
-  const sel = (document.getElementById('rec-worker')||{}).value || '';
-  const type = (document.getElementById('rec-worker-type')||{}).value || 'avance';
-  let id = 0;
-  let nomSal = '';
+async function _recOutSalaireSave(montant, date){
+  const nom = ((document.getElementById('rec-salname')||{}).value||'').trim();
+  if(!nom){ toast('⚠️ كتب اسم الأجير','warning'); return; }
+  // One-time recurring_charges entry — limit active_to to end of month
+  // so it counts in this month's expenses only (not recurring).
+  const d = new Date(date);
+  const active_to = new Date(d.getFullYear(), d.getMonth()+1, 0).toISOString().slice(0,10);
   try{
-    if(sel === '__new__'){
-      const newName = ((document.getElementById('rec-worker-newname')||{}).value||'').trim();
-      if(!newName){ toast('⚠️ كتب اسم الأجير الجديد','warning'); return; }
-      // Create the salarie row first. Canonical schema (line 20425):
-      // nom, prenom, poste, tel, salaire_base, taux_hsup, actif, notes, cin.
-      // For an office worker added from the bank flow we just set the name +
-      // actif:true and a note pointing to the bank-flow origin.
-      const newSal = {nom: newName, prenom:'', poste:'', tel:'',
-        salaire_base: 0, taux_hsup: 0, actif: true,
-        notes: 'تم خلقو من مطابقة الكشف البنكي', cin: ''};
-      const sres = await sbFetch('salaries','POST', newSal);
-      if(sres && sres.__sbError) throw new Error(sres.msg);
-      const srow = Array.isArray(sres)?sres[0]:sres;
-      if(!srow || !srow.id) throw new Error('فشل خلق الأجير');
-      id = srow.id;
-      nomSal = srow.nom || newName;
-      if(typeof salariesData!=='undefined') salariesData.push(srow);
-    } else {
-      id = parseInt(sel)||0;
-      if(!id){ toast('⚠️ اختر الأجير','warning'); return; }
-      const sal = (salariesData||[]).find(s => s.id===id);
-      nomSal = sal ? sal.nom : counterparty;
-    }
-    if(type==='avance'){
-      const r = await sbFetch('salarie_avances','POST',{salarie_id:id, montant, date, rembourse:false});
-      if(r && r.__sbError) throw new Error(r.msg);
-      const row = Array.isArray(r)?r[0]:r;
-      if(row && typeof salarieAvances!=='undefined') salarieAvances.unshift(row);
-      toast('✅ سلفة '+nomSal+' · '+fmtN(montant)+' DH','success');
-    } else {
-      const r = await sbFetch('salarie_taswiyas','POST',{
-        salarie_id:id, montant,
-        date_from:date, date_to:date, date_paiement:date,
-        nom_salarie:nomSal
-      });
-      if(r && r.__sbError) throw new Error(r.msg);
-      const row = Array.isArray(r)?r[0]:r;
-      if(row && typeof salTaswiyas!=='undefined') salTaswiyas.unshift(row);
-      toast('✅ تسوية '+nomSal+' · '+fmtN(montant)+' DH','success');
-    }
-    try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+    const r = await sbFetch('recurring_charges','POST',{
+      nom: 'أجرة '+nom,
+      category: 'salaire',
+      montant,
+      active_from: date,
+      active_to,
+      notes: 'تحويل بنكي · '+fmtDate(date),
+    });
+    if(r && r.__sbError) throw new Error(r.msg);
+    const row = Array.isArray(r)?r[0]:r;
+    if(row && typeof recurringCharges!=='undefined') recurringCharges.push(row);
+    toast('✅ أجرة '+nom+' · '+fmtN(montant)+' DH (مصروف ديال هاد الشهر)','success');
     _returnToBankReview();
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }

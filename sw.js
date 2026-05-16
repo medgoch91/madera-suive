@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v190-tva-full-feature-set';
+const CACHE = 'suivi-v191-bank-reconciliation';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

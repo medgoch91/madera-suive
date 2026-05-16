@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v181-bg-stretch-full-plus-drag-to-position';
+const CACHE = 'suivi-v182-effet-preview-autoscale-fit';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

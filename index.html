@@ -8220,6 +8220,25 @@ function findDuplicatePrint(ordre, montant, date){
     && (h.date||'') === (date||'')
   ) || null;
 }
+let _autoScalePreviewWired = false;
+function autoScalePreview(){
+  const outer = document.getElementById('pc-preview-outer');
+  const scaler = document.getElementById('pc-preview-scaler');
+  const wrap = document.getElementById('pc-cheque-wrap');
+  if(!outer || !scaler || !wrap) return;
+  // Read intrinsic width BEFORE applying any scale (reset first so we always
+  // measure the true mm width, not last scale's CSS pixel width).
+  scaler.style.transform = '';
+  const intrinsic = wrap.offsetWidth;
+  if(!intrinsic) return;
+  const avail = outer.clientWidth;
+  const scale = Math.min(1, (avail - 4) / intrinsic);  // -4 fudge for borders/shadow
+  scaler.style.transform = 'scale('+scale+')';
+  // Shrink outer height to match scaled wrap height so it doesn't leave
+  // a tall gap below the preview when scale < 1.
+  outer.style.height = (wrap.offsetHeight * scale) + 'px';
+}
+
 function applyChqCfgToPreview(){
   const map = {montant:'pf-montant',lettres1:'pf-lettres1',lettres2:'pf-lettres2',ordre:'pf-ordre',ville:'pf-ville',date:'pf-date',echeance:'pf-echeance'};
   Object.keys(map).forEach(k=>{
@@ -8458,7 +8477,8 @@ function renderPrintCheque(){
       <div style="flex:1;min-width:0">
       <div class="card" style="margin-bottom:16px">
         <div class="card-title" style="margin-bottom:14px">${isEffet?'معاينة الورقة':'معاينة الشيك'}</div>
-        <div style="overflow-x:auto">
+        <div id="pc-preview-outer" style="overflow:hidden;width:100%">
+        <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
           <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#111">
             <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
               ${!bgImg?(isEffet?'<div style="text-align:center;color:#7c3aed"><div style="font-size:36px">📜</div><div style="font-size:13px;margin-top:6px">Effet / ورقة</div><div style="font-size:11px;margin-top:4px">ارفع صورة الورقة</div></div>':'<div style="text-align:center;color:#999"><div style="font-size:36px">🏦</div><div style="font-size:13px;margin-top:6px">Crédit du Maroc</div><div style="font-size:11px;margin-top:4px">ارفع صورة الشيك</div></div>'):''}
@@ -8471,6 +8491,7 @@ function renderPrintCheque(){
             <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
             <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
           </div>
+        </div>
         </div>
         <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — ${isEffet?'الورقة 200mm × 130mm':'الشيك 176mm × 80mm'} · 💡 <b>اسحب أي حقل</b> بالماوس لتحريكو فالمكان المناسب — كيتخزن أوتوماتيكي</div>
         <div style="font-size:12px;color:var(--accent);margin-top:6px;padding:8px 10px;background:rgba(124,58,237,.08);border-right:3px solid var(--accent);border-radius:6px;line-height:1.6">
@@ -8493,9 +8514,19 @@ function renderPrintCheque(){
   `;
   const dateEl=document.getElementById('pc-date');
   if(dateEl&&!dateEl.value)dateEl.valueAsDate=new Date();
-  if(bgImg){const bg=document.getElementById('pc-bg');if(bg){bg.style.background=`url('${bgImg}') center/cover no-repeat`;bg.innerHTML='';}}
+  if(bgImg){const bg=document.getElementById('pc-bg');if(bg){bg.style.background=`url('${bgImg}') 0 0/100% 100% no-repeat`;bg.innerHTML='';}}
   renderPrintHistory();
   applyChqCfgToPreview();
+  // Auto-scale the preview wrap so the full 200×130 (or 176×80) is visible
+  // inside whatever width the right column has. The wrap stays at exactly
+  // 200mm/176mm internally — only the visual presentation is scaled, so the
+  // drag math (which divides 200 by wrap.getBoundingClientRect().width) still
+  // gives the right mm-per-pixel ratio regardless of zoom.
+  autoScalePreview();
+  if(!_autoScalePreviewWired){
+    window.addEventListener('resize', autoScalePreview);
+    _autoScalePreviewWired = true;
+  }
   // If we arrived here from the التسويات list (or are re-rendering after a toggle),
   // prefill the form from the stashed cheque/effet. Keep pendingPrintData alive so
   // that switching شيك/ورقة doesn't wipe the values — clear only on explicit reset or print.
@@ -8529,7 +8560,7 @@ function loadChequeImg(input){
       try{ localStorage.setItem('cheque_bg_img', chequeImg); }catch(_){ }
     }
     const bg=document.getElementById('pc-bg');
-    if(bg){bg.style.background=`url('${data}') center/cover no-repeat`;bg.innerHTML='';}
+    if(bg){bg.style.background=`url('${data}') 0 0/100% 100% no-repeat`;bg.innerHTML='';}
     const icon=document.getElementById('pc-upload-icon');if(icon)icon.textContent='✅';
     const txt=document.getElementById('pc-upload-txt');if(txt)txt.textContent='صورة محملة — انقر لتغيير';
   };

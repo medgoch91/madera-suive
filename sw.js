@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v195-virement-daily-bundle-match';
+const CACHE = 'suivi-v196-virement-consec-days-same-sender-bundle';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

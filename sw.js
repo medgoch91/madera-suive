@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v204-bundle-merge-only-on-demand';
+const CACHE = 'suivi-v205-outgoing-virement-recorder';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

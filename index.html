@@ -24111,7 +24111,12 @@ function _showBankReconcileReview(matches, allTxs){
           </details>`;
         })():''}
         ${outExt.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:#ef4444;font-size:12px">⬆️ تحويلات خارجة (${outExt.length}) — خلاصات</summary>
-          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المستفيد</th></tr></thead><tbody>${outExt.map(v=>`<tr><td>${fmtDate(v.date)}</td><td style="color:#ef4444;font-weight:700">⁦${fmtN(v.montant)}⁩</td><td>${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>
+          <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>المبلغ</th><th>المستفيد</th><th>تسجيل</th></tr></thead><tbody>${outExt.map((v,i)=>`<tr>
+            <td>${fmtDate(v.date)}</td>
+            <td style="color:#ef4444;font-weight:700">⁦${fmtN(v.montant)}⁩</td>
+            <td>${escB(v.counterparty)}</td>
+            <td><button onclick='openOutVirementRecorder(${JSON.stringify({date:v.date,montant:v.montant,counterparty:v.counterparty}).replace(/'/g,"&#39;")})' style="background:rgba(16,185,129,.12);color:#10b981;border:1px solid rgba(16,185,129,.4);padding:3px 10px;border-radius:5px;cursor:pointer;font-family:'Cairo',sans-serif;font-size:10px;font-weight:700">➕ سجّل</button></td>
+          </tr>`).join('')}</tbody></table>
           <div style="font-size:10px;color:var(--text3);margin-top:6px">💡 المجموع: <b style="color:#ef4444">⁦${fmtN(outExt.reduce((s,v)=>s+v.montant,0))} DH⁩</b></div>
         </details>`:''}
       </div>`;
@@ -24248,6 +24253,147 @@ function _matchFacturesToVirements(virsIn, ym){
   const unmatchedBundles = remaining.filter((_,i) => !usedRemainIdx.has(i));
   const unmatchedFacts = factsInWin.filter(f => !usedFactIds.has(f.id));
   return {matches, unmatchedBundles, unmatchedFacts};
+}
+
+// ── Outgoing-virement recorder: 3 categories per the user's workflow ──
+//   💼 Salaire → avance for a worker (salarie_avances)
+//   📦 Fournisseur → cheque-like record with type='virement', status=مدفوع
+//   📋 Charge fixe → recurring_charges entry (loyer / comptable / etc.)
+function openOutVirementRecorder(virJson){
+  const v = (typeof virJson==='string') ? JSON.parse(virJson) : virJson;
+  if(!v) return;
+  // Auto-suggest a worker if counterparty matches any salaries.nom
+  const sals = (typeof salariesData!=='undefined' && salariesData) ? salariesData : [];
+  const cpUpper = (v.counterparty||'').toUpperCase();
+  const suggestedWorker = sals.find(s => {
+    const sn = (s.nom||'').toUpperCase();
+    if(!sn) return false;
+    return cpUpper.includes(sn) || sn.includes(cpUpper.split(' ')[0]||'');
+  });
+  const html = `<div style="padding:22px;max-width:560px">
+    <div class="card-title" style="margin-bottom:6px">➕ تسجيل تحويل خارج</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px;padding:10px 12px;background:var(--bg3);border-radius:8px">
+      📅 ${fmtDate(v.date)} · 💰 <b style="color:#ef4444">⁦${fmtN(v.montant)} DH⁩</b> · ↗️ ${escB(v.counterparty)}
+    </div>
+
+    <div style="display:grid;gap:10px">
+      <button onclick='_recOutSalaire(${JSON.stringify(v).replace(/'/g,"&#39;")})' style="display:flex;align-items:center;gap:14px;padding:14px;background:linear-gradient(135deg,rgba(59,130,246,.08),rgba(124,92,252,.04));border:1px solid rgba(59,130,246,.3);border-radius:10px;cursor:pointer;font-family:'Cairo',sans-serif;text-align:right;color:var(--text)">
+        <span style="font-size:24px">💼</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:#3b82f6">خلاص أجير (Salaire)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${suggestedWorker?'يقترح: '+escB(suggestedWorker.nom):'اختر الأجير من اللائحة'}</div>
+        </div>
+      </button>
+
+      <button onclick='_recOutFournisseur(${JSON.stringify(v).replace(/'/g,"&#39;")})' style="display:flex;align-items:center;gap:14px;padding:14px;background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(239,68,68,.04));border:1px solid rgba(245,158,11,.3);border-radius:10px;cursor:pointer;font-family:'Cairo',sans-serif;text-align:right;color:var(--text)">
+        <span style="font-size:24px">📦</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:#f59e0b">خلاص فورنيسور (Cheque/Virement)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">يخلق سجل تحويل بنوع virement، مدفوع</div>
+        </div>
+      </button>
+
+      <button onclick='_recOutCharge(${JSON.stringify(v).replace(/'/g,"&#39;")})' style="display:flex;align-items:center;gap:14px;padding:14px;background:linear-gradient(135deg,rgba(124,92,252,.08),rgba(16,185,129,.04));border:1px solid rgba(124,92,252,.3);border-radius:10px;cursor:pointer;font-family:'Cairo',sans-serif;text-align:right;color:var(--text)">
+        <span style="font-size:24px">📋</span>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:800;color:var(--accent)">مصروف ثابت (Comptable, autre)</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">يضيف للمصاريف الثابتة</div>
+        </div>
+      </button>
+    </div>
+
+    <div style="display:flex;justify-content:flex-end;margin-top:18px">
+      <button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+async function _recOutSalaire(v){
+  const sals = (typeof salariesData!=='undefined' && salariesData) ? salariesData : [];
+  if(!sals.length){ try{ toast('⚠️ ما عندكش أجراء مسجلين','warning'); }catch(e){} return; }
+  const cpUpper = (v.counterparty||'').toUpperCase();
+  const suggested = sals.find(s => cpUpper.includes((s.nom||'').toUpperCase()) || (s.nom||'').toUpperCase().includes(cpUpper.split(' ')[0]||''));
+  const opts = sals.map(s => `<option value="${s.id}"${suggested && s.id===suggested.id?' selected':''}>${escB(s.nom||'—')}</option>`).join('');
+  const html = `<div style="padding:22px;max-width:480px">
+    <div class="card-title" style="margin-bottom:6px">💼 تسجيل أجرة</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${fmtDate(v.date)} · ${fmtN(v.montant)} DH · ${escB(v.counterparty)}</div>
+    <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الأجير</div>
+      <select id="rec-worker" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">${opts}</select>
+    </label>
+    <label style="display:block;margin-top:10px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">النوع</div>
+      <select id="rec-worker-type" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+        <option value="avance">💵 سلفة (Avance)</option>
+        <option value="taswiya">✅ تسوية (Salaire mensuel)</option>
+      </select>
+    </label>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-accent" style="flex:1" onclick="_recOutSalaireSave(${v.montant},'${v.date}','${escB(v.counterparty)}')">💾 حفظ</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+}
+async function _recOutSalaireSave(montant, date, counterparty){
+  const id = parseInt((document.getElementById('rec-worker')||{}).value)||0;
+  const type = (document.getElementById('rec-worker-type')||{}).value || 'avance';
+  if(!id){ toast('⚠️ اختر الأجير','warning'); return; }
+  try{
+    if(type==='avance'){
+      const r = await sbFetch('salarie_avances','POST',{salarie_id:id, montant, date, notes:'تحويل بنكي '+counterparty, rembourse:false});
+      if(r && r.__sbError) throw new Error(r.msg);
+      toast('✅ تم تسجيل السلفة','success');
+    } else {
+      const r = await sbFetch('salarie_taswiyas','POST',{salarie_id:id, montant, date_to:date, notes:'تحويل بنكي '+counterparty});
+      if(r && r.__sbError) throw new Error(r.msg);
+      toast('✅ تم تسجيل التسوية','success');
+    }
+    document.getElementById('modal-main').classList.remove('open');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+async function _recOutFournisseur(v){
+  try{
+    const fourSel = (typeof fournisseurs!=='undefined' && fournisseurs) ? fournisseurs : [];
+    const fournNom = prompt('اسم الفورنيسور:', v.counterparty||'');
+    if(fournNom===null) return;
+    const num = 'VIR-'+v.date.replace(/-/g,'')+'-'+Math.floor(Math.random()*9999);
+    const payload = {
+      num, type:'virement', fournisseur:fournNom.trim()||v.counterparty,
+      montant:v.montant, date:v.date, echeance:v.date,
+      status:'مدفوع', paid_at:v.date, ville:'Agadir',
+      notes:'تم تسجيلو من مطابقة الكشف البنكي (تحويل خارج)',
+    };
+    const r = await sbFetch('cheques','POST',payload);
+    if(r && r.__sbError) throw new Error(r.msg);
+    const row = Array.isArray(r)?r[0]:r;
+    if(row && typeof cheques!=='undefined') cheques.unshift(row);
+    toast('✅ تم تسجيل تحويل '+fournNom,'success');
+    document.getElementById('modal-main').classList.remove('open');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+async function _recOutCharge(v){
+  const nom = prompt('اسم المصروف (مثلا: المحاسب):', v.counterparty||'');
+  if(nom===null) return;
+  const cat = prompt('الفئة (loyer / autre):', 'autre');
+  if(cat===null) return;
+  try{
+    const r = await sbFetch('recurring_charges','POST',{
+      nom: nom.trim()||v.counterparty,
+      category: (cat==='loyer'?'loyer':(cat==='salaire'?'salaire':'autre')),
+      montant: v.montant,
+      active_from: v.date,
+      active_to: null,
+      notes: 'تم تسجيلو من الكشف البنكي'
+    });
+    if(r && r.__sbError) throw new Error(r.msg);
+    const row = Array.isArray(r)?r[0]:r;
+    if(row && typeof recurringCharges!=='undefined') recurringCharges.push(row);
+    toast('✅ تم تسجيل المصروف الثابت','success');
+    document.getElementById('modal-main').classList.remove('open');
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }
 
 // Create a facture from an unmatched virement bundle. Date = end of the

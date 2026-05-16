@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v208-cheque-payload-canonical-columns';
+const CACHE = 'suivi-v209-taswiya-schema-fix-plus-stay-in-review';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

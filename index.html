@@ -23936,6 +23936,10 @@ async function parseAndMatchBankStatement(file){
               : 'will_update',
       };
     });
+    // Stash for "return to review" after each sub-flow save (avoids
+    // forcing the user to re-upload the PDF for every record).
+    window._lastBankMatches = matches;
+    window._lastBankAllTxs = txs;
     _showBankReconcileReview(matches, txs);
   }catch(e){
     console.error('bank parse', e);
@@ -24339,18 +24343,38 @@ async function _recOutSalaireSave(montant, date, counterparty){
   const id = parseInt((document.getElementById('rec-worker')||{}).value)||0;
   const type = (document.getElementById('rec-worker-type')||{}).value || 'avance';
   if(!id){ toast('⚠️ اختر الأجير','warning'); return; }
+  const sal = (salariesData||[]).find(s => s.id===id);
+  const nomSal = sal ? sal.nom : counterparty;
   try{
     if(type==='avance'){
-      const r = await sbFetch('salarie_avances','POST',{salarie_id:id, montant, date, notes:'تحويل بنكي '+counterparty, rembourse:false});
+      // salarie_avances schema: salarie_id, montant, date, rembourse (no notes)
+      const r = await sbFetch('salarie_avances','POST',{salarie_id:id, montant, date, rembourse:false});
       if(r && r.__sbError) throw new Error(r.msg);
-      toast('✅ تم تسجيل السلفة','success');
+      toast('✅ سلفة '+nomSal+' · '+fmtN(montant)+' DH','success');
     } else {
-      const r = await sbFetch('salarie_taswiyas','POST',{salarie_id:id, montant, date_to:date, notes:'تحويل بنكي '+counterparty});
+      // salarie_taswiyas schema: salarie_id, montant, date_from, date_to,
+      // date_paiement, nom_salarie (no notes column)
+      const r = await sbFetch('salarie_taswiyas','POST',{
+        salarie_id:id, montant,
+        date_from:date, date_to:date, date_paiement:date,
+        nom_salarie:nomSal
+      });
       if(r && r.__sbError) throw new Error(r.msg);
-      toast('✅ تم تسجيل التسوية','success');
+      toast('✅ تسوية '+nomSal+' · '+fmtN(montant)+' DH','success');
     }
-    document.getElementById('modal-main').classList.remove('open');
+    _returnToBankReview();
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
+
+// Return to the bank-reconcile review screen after a sub-flow save —
+// keeps the user in the review without forcing them to re-upload the PDF
+// for each record they want to file.
+function _returnToBankReview(){
+  if(window._lastBankMatches && window._lastBankAllTxs){
+    _showBankReconcileReview(window._lastBankMatches, window._lastBankAllTxs);
+  } else {
+    document.getElementById('modal-main').classList.remove('open');
+  }
 }
 
 async function _recOutFournisseur(v){
@@ -24369,7 +24393,7 @@ async function _recOutFournisseur(v){
     const row = Array.isArray(r)?r[0]:r;
     if(row && typeof cheques!=='undefined') cheques.unshift(row);
     toast('✅ تم تسجيل تحويل '+fournNom,'success');
-    document.getElementById('modal-main').classList.remove('open');
+    _returnToBankReview();
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }
 
@@ -24437,7 +24461,7 @@ async function _recOutChargeSave(actualAmount, date, counterparty){
     const row = Array.isArray(r)?r[0]:r;
     if(row && typeof recurringCharges!=='undefined') recurringCharges.push(row);
     toast('✅ تم تسجيل المصروف · شهرياً '+fmtN(monthlyEq)+' DH','success');
-    document.getElementById('modal-main').classList.remove('open');
+    _returnToBankReview();
   }catch(e){ toast('❌ '+(e.message||e),'error'); }
 }
 

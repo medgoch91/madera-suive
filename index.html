@@ -11,12 +11,14 @@
      unsafe-inline is needed for the page inline JS blocks and HTML event-attribute handlers;
      to compensate, we tightly whitelist external origins (jsdelivr for libs, Supabase API,
      Telegram bot API, Google Fonts). frame-ancestors blocks the page from being framed. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.telegram.org https://fonts.googleapis.com; worker-src 'self'; child-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.telegram.org https://fonts.googleapis.com https://cdn.jsdelivr.net; worker-src 'self' blob: https://cdn.jsdelivr.net; child-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="apple-touch-icon" href="logo.svg">
 <title>سويفي — إدارة التسويات والبونات</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs" type="module"></script>
+<script type="module">window.pdfjsLib = (await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs'));window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
 <style>
@@ -23639,8 +23641,8 @@ function openBankReconcile(){
         <li>يطابقهم مع الشيكات/الإيفيات اللي ف الأبليكاسيون حسب الرقم</li>
         <li>يقترح عليك تحديث الحالة → <b>مدفوع</b> ب التاريخ الحقيقي ديال البنك</li>
       </ol>
-      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:6px;padding:10px;margin-top:12px;font-size:11px;color:#f59e0b">
-        ⚠️ <b>أمن</b>: ما كنخزنوش الـ PDF فالسيرفر. الكشف كيتعالج مرة واحدة ثم يتمسح. مع ذلك، يُنصح بحجب رقم الحساب IBAN فالـ PDF قبل الرفع.
+      <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:6px;padding:10px;margin-top:12px;font-size:11px;color:#10b981">
+        🔒 <b>100% محلي مجاني</b>: الـ PDF كيتقرى ف المتصفح ديالك مباشرة — ما كيتسيفت لحتى سيرفر، ما كيتسيفت لأي API. كلشي محلي ومجاني.
       </div>
     </div>
     <input type="file" id="br-file" accept="application/pdf" style="display:none" onchange="parseAndMatchBankStatement(this.files[0])">
@@ -23660,27 +23662,56 @@ async function parseAndMatchBankStatement(file){
   const setStatus = (txt, color) => { if(statusEl){ statusEl.textContent = txt; statusEl.style.color = color||'var(--text2)'; } };
   setStatus('⏳ جاري قراءة الملف...', '#3b82f6');
   try{
-    // Read PDF as base64
-    const buf = await file.arrayBuffer();
-    const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
-    setStatus('🤖 جاري استخراج العمليات (قد يأخذ 20-40 ثانية)...', '#3b82f6');
-    // Call Edge Function
-    const tok = (typeof window!=='undefined' && window._sbAccessToken) || SB_KEY;
-    const res = await fetch(SB_URL+'/functions/v1/parse-bank-statement', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer '+tok,
-        'apikey': SB_KEY,
-      },
-      body: JSON.stringify({pdf: b64}),
-    });
-    const json = await res.json();
-    if(!json.ok){
-      setStatus('❌ '+(json.error||'فشل الاستخراج'), '#ef4444');
+    // 100% client-side: extract PDF text via PDF.js (free) → regex pull PAIEMENT
+    // CHEQUE/EFFET lines (CDM format is regular enough that this is more
+    // reliable than an LLM and costs nothing).
+    if(!window.pdfjsLib){
+      setStatus('⏳ جاري تحميل محرك PDF...', '#3b82f6');
+      // Wait briefly for the ESM module loader (in case the script hasn't finished)
+      await new Promise(res => { let i=0; const t=setInterval(()=>{ if(window.pdfjsLib||++i>40){ clearInterval(t); res(); } }, 100); });
+    }
+    if(!window.pdfjsLib){
+      setStatus('❌ ما تحملش PDF.js — جرب إعادة تحميل الصفحة', '#ef4444');
       return;
     }
-    const txs = Array.isArray(json.transactions) ? json.transactions : [];
+    setStatus('📄 جاري استخراج النص من PDF...', '#3b82f6');
+    const buf = await file.arrayBuffer();
+    const doc = await window.pdfjsLib.getDocument({data: buf}).promise;
+    let fullText = '';
+    for(let p=1; p<=doc.numPages; p++){
+      const page = await doc.getPage(p);
+      const content = await page.getTextContent();
+      // Build text by row: pdf.js gives items with transform (x,y). Group by y, sort by x.
+      const rows = {};
+      content.items.forEach(it => {
+        if(!it.str || !it.transform) return;
+        const y = Math.round(it.transform[5]);
+        if(!rows[y]) rows[y] = [];
+        rows[y].push({x: it.transform[4], str: it.str});
+      });
+      // Sort y desc (top to bottom in pdf coords y increases upward)
+      const ys = Object.keys(rows).map(Number).sort((a,b)=>b-a);
+      ys.forEach(y => {
+        const row = rows[y].sort((a,b)=>a.x-b.x).map(i=>i.str).join(' ');
+        fullText += row + '\n';
+      });
+      fullText += '\n';
+    }
+    setStatus('🔍 جاري البحث عن العمليات...', '#3b82f6');
+    // Regex: capture date-op + (CHEQUE|EFFET) + num + montant
+    // CDM rows look like:  "10 04 26 10 04 26 PAIEMENT CHEQUE 2616665 59 127,50"
+    const re = /(\d{2})\s+(\d{2})\s+(\d{2})\s+\d{2}\s+\d{2}\s+\d{2}\s+PAIEMENT\s+(CHEQUE|EFFET)\s+(\d+)\s+([\d\s]+[,\.]\d{2})/gi;
+    const txs = [];
+    let mm;
+    while((mm = re.exec(fullText)) !== null){
+      const [_, dd, mo, yy, type, num, montantStr] = mm;
+      const year = 2000 + parseInt(yy,10);
+      const date = year+'-'+mo+'-'+dd;
+      const montant = parseFloat(montantStr.replace(/\s/g,'').replace(',','.')) || 0;
+      if(montant > 0){
+        txs.push({date, type: type.toLowerCase()==='effet'?'effet':'cheque', num: num.trim(), montant});
+      }
+    }
     if(!txs.length){
       setStatus('⚠️ ما لقيت حتى عملية د PAIEMENT CHEQUE/EFFET فهاد الكشف', '#f59e0b');
       return;

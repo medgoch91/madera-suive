@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v191-bank-reconciliation';
+const CACHE = 'suivi-v192-bank-reconcile-client-side-free';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

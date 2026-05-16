@@ -24187,12 +24187,17 @@ function _matchFacturesToVirements(virsIn, ym){
   for(const v of sorted){
     const last = bundles[bundles.length-1];
     const lastTx = last && last.transfers[last.transfers.length-1];
-    // Only chain when BOTH transfers are from a known multi-transfer customer
-    // (ONE TEAM and family) AND same sender AND within 1 day of each other.
-    // Everything else (cash-deposit virements from various names) = solo bundle.
-    if(lastTx && isBundler(v.counterparty) && isBundler(lastTx.counterparty)
+    // Chain rule: only ONE TEAM-style aggregators, same sender, AND the
+    // current bundle spans at most TWO calendar dates total. Once a
+    // bundle has used both Day-N and Day-(N+1), Day-(N+2) starts fresh.
+    // This handles the "midnight rollover" case (one payment session
+    // straddling 00:00) without lumping 3+ consecutive days into one
+    // facture (user's real flow: each day's deliveries = its own facture).
+    const wouldChain = lastTx && isBundler(v.counterparty) && isBundler(lastTx.counterparty)
        && normSender(lastTx.counterparty)===normSender(v.counterparty)
-       && daysBetween(lastTx.date, v.date) <= 1){
+       && daysBetween(lastTx.date, v.date) <= 1
+       && daysBetween(last.startDate, v.date) <= 1;
+    if(wouldChain){
       last.transfers.push(v);
       last.total += v.montant;
       last.endDate = v.date;

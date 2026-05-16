@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v211-bank-rematch-after-each-save';
+const CACHE = 'suivi-v212-salaries-canonical-schema';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

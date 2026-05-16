@@ -24357,9 +24357,13 @@ async function _recOutSalaireSave(montant, date, counterparty){
     if(sel === '__new__'){
       const newName = ((document.getElementById('rec-worker-newname')||{}).value||'').trim();
       if(!newName){ toast('⚠️ كتب اسم الأجير الجديد','warning'); return; }
-      // Create the salarie row first. Schema (from sbFetch elsewhere):
-      // nom, type (e.g., 'salaire' default), salaire_journalier, actif.
-      const newSal = {nom: newName, type:'salaire', salaire_journalier:0, actif:true};
+      // Create the salarie row first. Canonical schema (line 20425):
+      // nom, prenom, poste, tel, salaire_base, taux_hsup, actif, notes, cin.
+      // For an office worker added from the bank flow we just set the name +
+      // actif:true and a note pointing to the bank-flow origin.
+      const newSal = {nom: newName, prenom:'', poste:'', tel:'',
+        salaire_base: 0, taux_hsup: 0, actif: true,
+        notes: 'تم خلقو من مطابقة الكشف البنكي', cin: ''};
       const sres = await sbFetch('salaries','POST', newSal);
       if(sres && sres.__sbError) throw new Error(sres.msg);
       const srow = Array.isArray(sres)?sres[0]:sres;

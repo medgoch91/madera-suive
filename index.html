@@ -23839,8 +23839,30 @@ function _showBankReconcileReview(matches, allTxs){
       const external = virs.filter(v => !v.isPersonal);
       const outExt = external.filter(v => v.type==='out');
       const inExt = external.filter(v => v.type==='in');
+      const totIn = inExt.reduce((s,v)=>s+v.montant,0);
+      const totOut = outExt.reduce((s,v)=>s+v.montant,0);
+      const totPersonal = personal.reduce((s,v)=>s+(v.type==='in'?v.montant:-v.montant),0);
+      const net = totIn - totOut;
       return `<div style="margin-bottom:18px">
-        <div style="font-size:13px;font-weight:700;color:#3b82f6;margin-bottom:8px">🔁 تحويلات بنكية (${virs.length})</div>
+        <div style="font-size:13px;font-weight:700;color:#3b82f6;margin-bottom:6px">🔁 تحويلات بنكية (${virs.length})</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+          <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);padding:8px 10px;border-radius:6px">
+            <div style="font-size:10px;color:var(--text3);font-weight:600">⬇️ داخل (${inExt.length})</div>
+            <div style="font-size:14px;font-weight:800;color:#10b981;margin-top:2px">⁦+${fmtN(totIn)}⁩</div>
+          </div>
+          <div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.25);padding:8px 10px;border-radius:6px">
+            <div style="font-size:10px;color:var(--text3);font-weight:600">⬆️ خارج (${outExt.length})</div>
+            <div style="font-size:14px;font-weight:800;color:#ef4444;margin-top:2px">⁦-${fmtN(totOut)}⁩</div>
+          </div>
+          <div style="background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.25);padding:8px 10px;border-radius:6px">
+            <div style="font-size:10px;color:var(--text3);font-weight:600">🔄 شخصي (${personal.length})</div>
+            <div style="font-size:14px;font-weight:800;color:var(--accent);margin-top:2px">⁦${totPersonal>=0?'+':''}${fmtN(totPersonal)}⁩</div>
+          </div>
+          <div style="background:${net>=0?'rgba(16,185,129,.04)':'rgba(239,68,68,.04)'};border:1px solid ${net>=0?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};padding:8px 10px;border-radius:6px">
+            <div style="font-size:10px;color:var(--text3);font-weight:600">📊 الصافي</div>
+            <div style="font-size:14px;font-weight:800;color:${net>=0?'#10b981':'#ef4444'};margin-top:2px">⁦${net>=0?'+':''}${fmtN(net)}⁩</div>
+          </div>
+        </div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px">العمليات د VIREMENT/VIRINST اللي بانت ف الكشف</div>
         ${personal.length?`<details style="margin-bottom:10px;padding:8px 12px;background:rgba(124,92,252,.05);border:1px solid rgba(124,92,252,.2);border-radius:6px"><summary style="cursor:pointer;font-weight:600;color:var(--accent);font-size:12px">🔄 تحويلات داخلية mع الحساب الشخصي (${personal.length})</summary>
           <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>التاريخ</th><th>الإتجاه</th><th>المبلغ</th><th>الطرف</th></tr></thead><tbody>${personal.map(v=>`<tr><td>${fmtDate(v.date)}</td><td>${v.type==='out'?'⬅️ خرج':'➡️ دخل'}</td><td>⁦${fmtN(v.montant)}⁩</td><td style="color:var(--text3)">${escB(v.counterparty)}</td></tr>`).join('')}</tbody></table>

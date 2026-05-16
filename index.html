@@ -8233,6 +8233,58 @@ function applyChqCfgToPreview(){
     if(!c && printMode==='effet' && typeof EFFET_CFG_DEFAULTS!=='undefined') c = EFFET_CFG_DEFAULTS[k];
     // echeance only exists in effet mode — hide its preview element otherwise.
     if(!c){ el.style.display='none'; return; }
+    // Make the field draggable in the preview — visual handle for fast calibration.
+    // User clicks + drags → updates chequeCfg top/left in real-time, persists on mouseup.
+    if(!el.dataset.dragWired){
+      el.dataset.dragWired = '1';
+      el.style.cursor = 'move';
+      el.style.outline = '1px dashed rgba(124,92,252,.0)';
+      el.title = 'اسحب لتحريك الحقل';
+      el.addEventListener('mouseenter', ()=>{ el.style.outline = '1px dashed rgba(124,92,252,.7)'; el.style.background = 'rgba(124,92,252,.06)'; });
+      el.addEventListener('mouseleave', ()=>{ if(!el.dataset.dragging){ el.style.outline = '1px dashed rgba(124,92,252,.0)'; el.style.background = ''; } });
+      el.addEventListener('mousedown', (ev)=>{
+        ev.preventDefault();
+        const wrap = document.getElementById('pc-cheque-wrap');
+        if(!wrap) return;
+        const wrapRect = wrap.getBoundingClientRect();
+        const mmPerPxX = 200/wrapRect.width * (printMode==='effet' ? 1 : 176/200);
+        const mmPerPxY = (printMode==='effet'?130:80) / wrapRect.height;
+        const startMmX = ev.clientX * mmPerPxX;
+        const startMmY = ev.clientY * mmPerPxY;
+        const cfg = chequeCfg[k] || (printMode==='effet' ? EFFET_CFG_DEFAULTS[k] : null);
+        if(!cfg) return;
+        const startTop = cfg.top, startLeft = cfg.left;
+        el.dataset.dragging = '1';
+        el.style.opacity = '0.85';
+        el.style.outline = '2px solid var(--accent)';
+        const move = (e)=>{
+          const dx = e.clientX * mmPerPxX - startMmX;
+          const dy = e.clientY * mmPerPxY - startMmY;
+          chequeCfg[k] = {...cfg, top: Math.max(0, Math.round((startTop+dy)*10)/10), left: Math.max(0, Math.round((startLeft+dx)*10)/10)};
+          el.style.top = chequeCfg[k].top+'mm';
+          el.style.left = chequeCfg[k].left+'mm';
+        };
+        const up = ()=>{
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+          delete el.dataset.dragging;
+          el.style.opacity = '';
+          el.style.outline = '1px dashed rgba(124,92,252,.0)';
+          el.style.background = '';
+          try{
+            _pcSyncActive();
+            localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+            // Refresh config panel inputs if open
+            if(typeof renderChqCfgPanel==='function'){
+              const panel = document.getElementById('chq-cfg-panel');
+              if(panel) renderChqCfgPanel();
+            }
+          }catch(e){}
+        };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      });
+    }
     el.style.display = '';
     el.style.top = c.top+'mm';
     el.style.left = c.left+'mm';
@@ -8408,7 +8460,7 @@ function renderPrintCheque(){
         <div class="card-title" style="margin-bottom:14px">${isEffet?'معاينة الورقة':'معاينة الشيك'}</div>
         <div style="overflow-x:auto">
           <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.5);color:#111">
-            <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') center/cover no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
+            <div id="pc-bg" style="position:absolute;inset:0;background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
               ${!bgImg?(isEffet?'<div style="text-align:center;color:#7c3aed"><div style="font-size:36px">📜</div><div style="font-size:13px;margin-top:6px">Effet / ورقة</div><div style="font-size:11px;margin-top:4px">ارفع صورة الورقة</div></div>':'<div style="text-align:center;color:#999"><div style="font-size:36px">🏦</div><div style="font-size:13px;margin-top:6px">Crédit du Maroc</div><div style="font-size:11px;margin-top:4px">ارفع صورة الشيك</div></div>'):''}
             </div>
             <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
@@ -8420,7 +8472,7 @@ function renderPrintCheque(){
             <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — ${isEffet?'الورقة 200mm × 130mm':'الشيك 176mm × 80mm'}</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:8px">📐 معاينة 1:1 — ${isEffet?'الورقة 200mm × 130mm':'الشيك 176mm × 80mm'} · 💡 <b>اسحب أي حقل</b> بالماوس لتحريكو فالمكان المناسب — كيتخزن أوتوماتيكي</div>
         <div style="font-size:12px;color:var(--accent);margin-top:6px;padding:8px 10px;background:rgba(124,58,237,.08);border-right:3px solid var(--accent);border-radius:6px;line-height:1.6">
           🖨️ <b>طريقة الطباعة الصحيحة:</b><br>
           1. الطابعة كتطبع على <b>A4</b> (هاكا كيخدم 100% على Windows+Mac)<br>

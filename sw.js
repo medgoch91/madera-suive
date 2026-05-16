@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v189-tva-collectee-correct-columns';
+const CACHE = 'suivi-v190-tva-full-feature-set';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

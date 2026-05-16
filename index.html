@@ -4473,6 +4473,39 @@ function renderDashboard(){
 
     </div>
 
+    <!-- ═══ TVA WIDGET: current month declaration status ═══ -->
+    ${(function(){
+      try{
+        const now = new Date();
+        const ym = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+        const bk = _tvaRateBreakdown(ym);
+        const tvaCol = Object.values(bk.collected).reduce((s,r)=>s+r.tva, 0);
+        const tvaDed = Object.values(bk.deducted).reduce((s,r)=>s+r.tva, 0);
+        const credit = _tvaCreditCarriedIn(ym);
+        const pay = tvaCol - tvaDed - credit;
+        const decl = (typeof tvaDecls!=='undefined') ? tvaDecls.find(d=>d.month===ym) : null;
+        const status = decl ? (decl.status||'brouillon') : 'brouillon';
+        const statusCfg = {brouillon:{c:'#94a3b8',i:'📝',t:'مسودة'},declared:{c:'#3b82f6',i:'📤',t:'مُعلن'},paid:{c:'#10b981',i:'✅',t:'مدفوع'}}[status];
+        // Deadline = end of next month (typical MA monthly TVA)
+        const dl = new Date(now.getFullYear(), now.getMonth()+1, 20);
+        const daysLeft = Math.ceil((dl - now) / (1000*60*60*24));
+        return `<div onclick="showPage('tva',document.getElementById('nav-tva'))" style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(232,64,64,.04));border:1px solid rgba(245,158,11,.3);border-radius:14px;padding:14px 18px;margin-bottom:18px;cursor:pointer;display:flex;align-items:center;gap:18px;flex-wrap:wrap" onmouseover="this.style.borderColor='rgba(245,158,11,.55)'" onmouseout="this.style.borderColor='rgba(245,158,11,.3)'">
+          <div style="font-size:24px">📊</div>
+          <div style="flex:1;min-width:160px">
+            <div style="font-size:11px;color:var(--text3);font-weight:700;letter-spacing:1px;text-transform:uppercase">TVA ${_monthLabel(ym)}</div>
+            <div style="font-size:20px;font-weight:800;color:${pay>=0?'#f59e0b':'#10b981'};margin-top:2px">${fmtK(Math.max(0,pay))} <span style="font-size:11px;color:var(--text3)">DH ${pay<0?'(رصيد)':'يخلص'}</span></div>
+          </div>
+          <div style="display:flex;gap:14px;font-size:11px;color:var(--text2)">
+            <div><span style="color:var(--text3)">📤 Coll.</span> <b style="color:#10b981">${fmtK(tvaCol)}</b></div>
+            <div><span style="color:var(--text3)">📥 Ded.</span> <b style="color:var(--accent)">${fmtK(tvaDed)}</b></div>
+            ${credit>0?`<div><span style="color:var(--text3)">📥 رصيد</span> <b style="color:#10b981">${fmtK(credit)}</b></div>`:''}
+          </div>
+          <span style="background:rgba(255,255,255,.06);color:${statusCfg.c};padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700">${statusCfg.i} ${statusCfg.t}</span>
+          ${status==='brouillon'&&daysLeft<=10?`<span style="background:rgba(239,68,68,.12);color:#ef4444;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700">⏰ ${daysLeft} يوم للأجل</span>`:''}
+        </div>`;
+      }catch(e){ console.warn('TVA widget', e); return ''; }
+    })()}
+
     <!-- ═══ MAIN CHART: Revenue vs Expenses 12 months ═══ -->
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px 22px 12px;margin-bottom:18px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:12px">
@@ -23025,6 +23058,84 @@ async function _loadTva(){
   }
 }
 
+// ── Per-rate TVA breakdown — iterate facture lignes, group by tva rate ──
+// Returns {collected: {20:{ht,tva,count}, 14:{...}}, deducted: {20:{...}}}.
+// For factures: use lignes[].tva (rate per line) — accurate. For bons: assume
+// 20% default since bons don't track per-line TVA rates (most MA furniture
+// purchases are 20% standard rate).
+function _tvaRateBreakdown(ym){
+  const collected = {};
+  const deducted  = {};
+  const ensure = (obj, rate) => { if(!obj[rate]) obj[rate] = {ht:0, tva:0, count:0}; return obj[rate]; };
+  // Collectée — from factures dated in ym
+  const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
+  factsInMonth.forEach(f => {
+    const lignes = Array.isArray(f.lignes)?f.lignes:[];
+    if(lignes.length){
+      lignes.forEach(l => {
+        const rate = Number(l.tva)||20;
+        const qte  = Number(l.qte)||0;
+        const pu   = Number(l.prix_u)||0;
+        // If facture is mode='ttc' the prix_u already includes TVA; otherwise it's HT.
+        const isTTC = f.mode === 'ttc';
+        const lineTTC = isTTC ? qte*pu : qte*pu*(1+rate/100);
+        const lineHT  = isTTC ? qte*pu/(1+rate/100) : qte*pu;
+        const lineTVA = lineTTC - lineHT;
+        const slot = ensure(collected, rate);
+        slot.ht  += lineHT;
+        slot.tva += lineTVA;
+        slot.count++;
+      });
+    } else {
+      // No lignes → fall back to facture-level total at default 20%
+      const slot = ensure(collected, 20);
+      slot.ht  += Number(f.total_ht)||0;
+      slot.tva += Number(f.total_tva)||0;
+      slot.count++;
+    }
+  });
+  // Déductible — from bons whose cheque is paid in ym (régime encaissements)
+  (bons||[]).forEach(b => {
+    if(!b.chequeId) return;
+    const ch = (cheques||[]).find(c => c.id===b.chequeId);
+    if(!ch || ch.status !== 'مدفوع') return;
+    const paidAt = ch.paid_at || ch.paidAt;
+    if(!paidAt || !String(paidAt).startsWith(ym+'-')) return;
+    // Bons assume 20% standard rate (no per-line TVA tracking on bons)
+    const ttc = Number(b.total)||0;
+    const ht  = ttc/1.2;
+    const tva = ttc - ht;
+    const slot = ensure(deducted, 20);
+    slot.ht  += ht;
+    slot.tva += tva;
+    slot.count++;
+  });
+  return {collected, deducted};
+}
+
+// ── Crédit de TVA carry-forward — if last month had déductible > collectée ──
+// returns the credit amount to deduct from this month's net TVA payable
+function _tvaCreditCarriedIn(ym){
+  // Previous month
+  const [y,m] = ym.split('-').map(Number);
+  const prevDate = new Date(y, m-2, 1);
+  const prevYm = prevDate.getFullYear()+'-'+String(prevDate.getMonth()+1).padStart(2,'0');
+  const prevDecl = tvaDecls.find(d => d.month === prevYm);
+  if(!prevDecl) return 0;
+  return Number(prevDecl.credit_carried_out)||0;
+}
+
+// ── Status helpers ──
+function _tvaStatusBadge(status){
+  const cfg = {
+    brouillon: {bg:'rgba(148,163,184,.15)', color:'#94a3b8', icon:'📝', label:'مسودة'},
+    declared:  {bg:'rgba(59,130,246,.15)',  color:'#3b82f6', icon:'📤', label:'مُعلن'},
+    paid:      {bg:'rgba(16,185,129,.15)',  color:'#10b981', icon:'✅', label:'مدفوع'},
+  };
+  const c = cfg[status] || cfg.brouillon;
+  return `<span style="background:${c.bg};color:${c.color};padding:4px 12px;border-radius:6px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">${c.icon} ${c.label}</span>`;
+}
+
 // Effective monthly amount for a charge in a given month, considering active dates + overrides.
 // Returns null if the charge isn't applicable that month (not yet active / archived / skipped).
 function _chargeMonthly(charge, ym){
@@ -23272,13 +23383,14 @@ async function renderTva(){
   const page = document.getElementById('page-tva');
   if(!page) return;
   const ym = _tvaMonth;
-  // ── Reference: app factures in this month (for hint only)
-  // The factures schema uses total_ttc / total_ht / total_tva columns
-  // (NOT just `total`). Fall back to total_ttc/1.2 if total_ht missing.
+  const breakdown = _tvaRateBreakdown(ym);
+  // Total Collectée from rate breakdown (= sum across all rates)
+  const collectedRates = Object.keys(breakdown.collected).sort((a,b)=>b-a);
+  const deductedRates  = Object.keys(breakdown.deducted).sort((a,b)=>b-a);
   const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
   const factsTotalTTC = factsInMonth.reduce((s,f)=>s+(Number(f.total_ttc)||0), 0);
-  const factsTotalHT  = factsInMonth.reduce((s,f)=>s+(Number(f.total_ht)||Number(f.total_ttc)/1.2||0), 0);
-  const factsTVA      = factsInMonth.reduce((s,f)=>s+(Number(f.total_tva)||(Number(f.total_ttc)||0)-(Number(f.total_ttc)||0)/1.2||0), 0);
+  const factsTotalHT  = collectedRates.reduce((s,r)=>s+breakdown.collected[r].ht, 0);
+  const factsTVA      = collectedRates.reduce((s,r)=>s+breakdown.collected[r].tva, 0);
   // ── Auto TVA déductible: bons whose cheque is مدفوع AND paid_at in this month
   const deductibleRows = (bons||[]).filter(b => {
     if(!b.chequeId) return false;
@@ -23303,7 +23415,32 @@ async function renderTva(){
   const caHT = decl ? Number(decl.ca_ht)||0 : factsTotalHT;
   const tvaCol = decl ? Number(decl.tva_collectee)||0 : factsTVA;
   const tvaDed = decl && decl.tva_deductible_override!=null ? Number(decl.tva_deductible_override) : dedTotalTVA;
-  const tvaPay = tvaCol - tvaDed;
+  const creditIn = decl ? Number(decl.credit_carried_in)||0 : _tvaCreditCarriedIn(ym);
+  const tvaPayBefore = tvaCol - tvaDed;
+  const tvaPay = tvaPayBefore - creditIn;
+  const creditOut = tvaPay < 0 ? Math.abs(tvaPay) : 0;  // déductible > collectée → carry to next
+  const status = decl ? (decl.status||'brouillon') : 'brouillon';
+  const isLocked = status === 'declared' || status === 'paid';
+
+  // ── Comparison strip: this M / M-1 / M-12
+  const [y,m] = ym.split('-').map(Number);
+  const _ymOf = (dt) => dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');
+  const ymM1 = _ymOf(new Date(y, m-2, 1));
+  const ymM12 = _ymOf(new Date(y-1, m-1, 1));
+  const _payOf = (yym) => {
+    const d = tvaDecls.find(x => x.month === yym);
+    if(d) return Number(d.tva_collectee)-Number(d.tva_deductible_override||0)-Number(d.credit_carried_in||0);
+    // Compute on-the-fly from data
+    const bk = _tvaRateBreakdown(yym);
+    const c = Object.values(bk.collected).reduce((s,r)=>s+r.tva, 0);
+    const d2 = Object.values(bk.deducted).reduce((s,r)=>s+r.tva, 0);
+    return c - d2 - _tvaCreditCarriedIn(yym);
+  };
+  const payCur = tvaPay;
+  const payM1  = _payOf(ymM1);
+  const payM12 = _payOf(ymM12);
+  const _trendCls = (diff) => diff > 0 ? 'color:#e84040' : (diff < 0 ? 'color:#10b981' : 'color:var(--text3)');
+  const _trendIcn = (diff) => diff > 0 ? '↑' : (diff < 0 ? '↓' : '→');
 
   // ── Charges fixes total
   const chargesTotal = recurringCharges.reduce((s,c)=>{
@@ -23313,12 +23450,36 @@ async function renderTva(){
 
   page.innerHTML = `
     <div style="padding:18px 22px;max-width:1200px;margin:0 auto">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:18px;flex-wrap:wrap">
+      <!-- Top bar: month + status + actions -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
         <label style="font-size:14px;color:var(--text2);font-weight:600">الشهر:</label>
         <select onchange="setTvaMonth(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 14px;font-family:'Cairo',sans-serif;font-size:14px">${_monthOpts(ym)}</select>
+        ${_tvaStatusBadge(status)}
         <div style="flex:1"></div>
-        <button class="btn btn-accent" onclick="saveTvaDecl()" style="padding:10px 18px">💾 حفظ التصريح</button>
+        ${isLocked ? `<button class="btn btn-outline" onclick="tvaUnlock()" style="padding:10px 16px">🔓 إعادة فتح</button>` :
+        `<button class="btn btn-accent" onclick="saveTvaDecl()" style="padding:10px 18px">💾 حفظ مسودة</button>
+         <button class="btn" style="background:#3b82f6;color:#fff;border:0;padding:10px 18px" onclick="tvaDeclare()">📤 إعلان</button>`}
+        ${status==='declared' ? `<button class="btn" style="background:#10b981;color:#fff;border:0;padding:10px 18px" onclick="tvaMarkPaid()">✅ مدفوع</button>`:''}
         <button class="btn" onclick="printTvaForComptable()" style="padding:10px 18px">🖨️ طبع للمحاسب</button>
+      </div>
+
+      <!-- Comparison strip: M / M-1 / M-12 -->
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px">
+        <div style="background:var(--bg2);border:1px solid var(--accent);border-radius:8px;padding:12px 14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px;text-transform:uppercase">هاد الشهر</div>
+          <div style="font-size:18px;font-weight:800;color:${payCur>=0?'#f59e0b':'#10b981'};margin-top:4px">⁦${fmtN(payCur)} DH⁩</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:2px">${_monthLabel(ym)}</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px;text-transform:uppercase">الشهر اللي فات</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text2);margin-top:4px">⁦${fmtN(payM1)} DH⁩</div>
+          <div style="font-size:11px;${_trendCls(payCur-payM1)};margin-top:2px">${_trendIcn(payCur-payM1)} ${fmtN(Math.abs(payCur-payM1))} مقارنة</div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px">
+          <div style="font-size:10px;color:var(--text3);font-weight:600;letter-spacing:.5px;text-transform:uppercase">نفس الشهر العام اللي فات</div>
+          <div style="font-size:18px;font-weight:800;color:var(--text2);margin-top:4px">⁦${fmtN(payM12)} DH⁩</div>
+          <div style="font-size:11px;${_trendCls(payCur-payM12)};margin-top:2px">${_trendIcn(payCur-payM12)} ${fmtN(Math.abs(payCur-payM12))} مقارنة</div>
+        </div>
       </div>
 
       <!-- TVA Collectée — AUTO from app factures -->
@@ -23392,13 +23553,41 @@ async function renderTva(){
         </div>
       </div>
 
-      <!-- Résumé TVA -->
+      <!-- Per-rate breakdown -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-title" style="margin-bottom:14px">📊 تفصيل حسب نسبة TVA</div>
+        <table class="data-table" style="font-size:13px">
+          <thead><tr><th>النسبة</th><th style="color:#10b981">HT مبيعات</th><th style="color:#10b981">TVA مبيعات</th><th style="color:var(--accent)">HT مشتريات</th><th style="color:var(--accent)">TVA مشتريات</th><th>TVA صافي</th></tr></thead>
+          <tbody>${(()=>{
+            const allRates = new Set([...Object.keys(breakdown.collected), ...Object.keys(breakdown.deducted)]);
+            if(allRates.size===0) return '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:18px">—</td></tr>';
+            return [...allRates].sort((a,b)=>Number(b)-Number(a)).map(r=>{
+              const c = breakdown.collected[r] || {ht:0,tva:0};
+              const d = breakdown.deducted[r] || {ht:0,tva:0};
+              const net = c.tva - d.tva;
+              return `<tr>
+                <td style="font-weight:700">${r}%</td>
+                <td>⁦${fmtN(c.ht)}⁩</td>
+                <td style="color:#10b981;font-weight:600">⁦${fmtN(c.tva)}⁩</td>
+                <td>⁦${fmtN(d.ht)}⁩</td>
+                <td style="color:var(--accent);font-weight:600">⁦${fmtN(d.tva)}⁩</td>
+                <td style="font-weight:700;color:${net>=0?'#f59e0b':'#10b981'}">⁦${fmtN(net)}⁩</td>
+              </tr>`;
+            }).join('');
+          })()}</tbody>
+        </table>
+        <div style="font-size:10px;color:var(--text3);margin-top:8px">💡 المبيعات حسب نسبة TVA للسطر · المشتريات تفترض 20% (افتراضي)</div>
+      </div>
+
+      <!-- Résumé TVA — clickable drilldown -->
       <div class="card" style="margin-bottom:14px;background:linear-gradient(135deg,rgba(245,158,11,.10),rgba(232,64,64,.06));border:1px solid rgba(245,158,11,.30)">
-        <div class="card-title" style="color:#f59e0b;margin-bottom:14px">💰 الخلاصة</div>
+        <div class="card-title" style="color:#f59e0b;margin-bottom:14px">💰 الخلاصة <span style="font-size:11px;color:var(--text3);font-weight:400">· انقر على القيم للتفاصيل</span></div>
         <table style="width:100%;font-size:14px">
-          <tr><td style="padding:6px 0">TVA Collectée:</td><td style="text-align:left;font-weight:700;color:#10b981">+⁦${fmtN(tvaCol)} DH⁩</td></tr>
-          <tr><td style="padding:6px 0">TVA Déductible:</td><td style="text-align:left;font-weight:700;color:var(--accent)">−⁦${fmtN(tvaDed)} DH⁩</td></tr>
-          <tr style="border-top:2px solid var(--border)"><td style="padding:12px 0;font-weight:700;font-size:16px">TVA à payer:</td><td style="text-align:left;font-weight:800;font-size:18px;color:${tvaPay>=0?'#f59e0b':'#10b981'}">⁦${fmtN(tvaPay)} DH⁩</td></tr>
+          <tr style="cursor:pointer" onclick="tvaDrillCollected()" title="عرض الفواتير"><td style="padding:6px 0">📤 TVA Collectée:</td><td style="text-align:left;font-weight:700;color:#10b981">+⁦${fmtN(tvaCol)} DH⁩ <span style="font-size:10px;opacity:.6">🔍</span></td></tr>
+          <tr style="cursor:pointer" onclick="tvaDrillDeducted()" title="عرض البونات المخلصة"><td style="padding:6px 0">📥 TVA Déductible:</td><td style="text-align:left;font-weight:700;color:var(--accent)">−⁦${fmtN(tvaDed)} DH⁩ <span style="font-size:10px;opacity:.6">🔍</span></td></tr>
+          ${creditIn>0?`<tr style="border-top:1px dashed var(--border)"><td style="padding:6px 0;color:#10b981">📥 رصيد TVA من الشهر اللي فات:</td><td style="text-align:left;font-weight:700;color:#10b981">−⁦${fmtN(creditIn)} DH⁩</td></tr>`:''}
+          <tr style="border-top:2px solid var(--border)"><td style="padding:12px 0;font-weight:700;font-size:16px">TVA à payer:</td><td style="text-align:left;font-weight:800;font-size:18px;color:${tvaPay>=0?'#f59e0b':'#10b981'}">⁦${fmtN(Math.max(0,tvaPay))} DH⁩</td></tr>
+          ${creditOut>0?`<tr style="background:rgba(16,185,129,.05)"><td style="padding:8px 0;color:#10b981;font-size:12px">📤 رصيد TVA للشهر الجاي:</td><td style="text-align:left;color:#10b981;font-weight:700">⁦${fmtN(creditOut)} DH⁩</td></tr>`:''}
         </table>
       </div>
 
@@ -23434,6 +23623,88 @@ async function renderTva(){
 
 function setTvaMonth(m){ _tvaMonth = m; renderTva(); }
 
+// ── Drilldown modals: click on collectée/déductible → see source list ──
+function tvaDrillCollected(){
+  const ym = _tvaMonth;
+  const items = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at)
+    .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const totalTTC = items.reduce((s,f)=>s+(Number(f.total_ttc)||0), 0);
+  const totalHT  = items.reduce((s,f)=>s+(Number(f.total_ht)||0), 0);
+  const totalTVA = items.reduce((s,f)=>s+(Number(f.total_tva)||0), 0);
+  const html = `<div style="padding:20px;max-width:900px;max-height:85vh;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:14px">📤 تفصيل TVA Collectée — ${_monthLabel(ym)} (${items.length} فاتورة)</div>
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th>التاريخ</th><th>رقم</th><th>الزبون</th><th>المدينة</th><th>HT</th><th>TVA</th><th>TTC</th></tr></thead>
+      <tbody>${items.map(f => {
+        const ttc=Number(f.total_ttc)||0, ht=Number(f.total_ht)||ttc/1.2, tva=Number(f.total_tva)||(ttc-ht);
+        return `<tr style="cursor:pointer" onclick="document.getElementById('modal-main').classList.remove('open');factOpenEdit&&factOpenEdit(${f.id})">
+          <td>${fmtDate(f.date)}</td>
+          <td style="font-weight:600">${escB(f.num||'—')}</td>
+          <td>${escB(f.client_nom||'—')}</td>
+          <td>${escB(f.client_ville||'—')}</td>
+          <td>⁦${fmtN(ht)}⁩</td>
+          <td style="color:#10b981;font-weight:600">⁦${fmtN(tva)}⁩</td>
+          <td style="font-weight:700">⁦${fmtN(ttc)}⁩</td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="font-weight:800;border-top:2px solid var(--border)">
+        <td colspan="4" style="text-align:left">المجموع:</td>
+        <td>⁦${fmtN(totalHT)}⁩</td>
+        <td style="color:#10b981">⁦${fmtN(totalTVA)}⁩</td>
+        <td>⁦${fmtN(totalTTC)}⁩</td>
+      </tr></tfoot>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إغلاق</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+function tvaDrillDeducted(){
+  const ym = _tvaMonth;
+  const items = (bons||[]).filter(b => {
+    if(!b.chequeId) return false;
+    const ch = (cheques||[]).find(c => c.id===b.chequeId);
+    if(!ch || ch.status!=='مدفوع') return false;
+    const paidAt = ch.paid_at || ch.paidAt;
+    return paidAt && String(paidAt).startsWith(ym+'-');
+  }).map(b => ({bon:b, cheque:(cheques||[]).find(c=>c.id===b.chequeId)}))
+    .sort((a,b)=>(b.cheque.paid_at||'').localeCompare(a.cheque.paid_at||''));
+  const totalTTC = items.reduce((s,r)=>s+(Number(r.bon.total)||0), 0);
+  const totalHT  = totalTTC/1.2;
+  const totalTVA = totalTTC - totalHT;
+  const html = `<div style="padding:20px;max-width:900px;max-height:85vh;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:14px">📥 تفصيل TVA Déductible — ${_monthLabel(ym)} (${items.length} بون)</div>
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th>تاريخ خلاص</th><th>بون</th><th>فورنيسور</th><th>شيك</th><th>HT</th><th>TVA</th><th>TTC</th></tr></thead>
+      <tbody>${items.map(r => {
+        const ttc=Number(r.bon.total)||0, ht=ttc/1.2, tva=ttc-ht;
+        return `<tr>
+          <td>${fmtDate(r.cheque.paid_at||r.cheque.paidAt)}</td>
+          <td style="font-weight:600">${escB(r.bon.num||'—')}</td>
+          <td>${escB(r.bon.fournisseur||'—')}</td>
+          <td>${escB(r.cheque.num||'—')}</td>
+          <td>⁦${fmtN(ht)}⁩</td>
+          <td style="color:var(--accent);font-weight:600">⁦${fmtN(tva)}⁩</td>
+          <td style="font-weight:700">⁦${fmtN(ttc)}⁩</td>
+        </tr>`;
+      }).join('')}</tbody>
+      <tfoot><tr style="font-weight:800;border-top:2px solid var(--border)">
+        <td colspan="4" style="text-align:left">المجموع:</td>
+        <td>⁦${fmtN(totalHT)}⁩</td>
+        <td style="color:var(--accent)">⁦${fmtN(totalTVA)}⁩</td>
+        <td>⁦${fmtN(totalTTC)}⁩</td>
+      </tr></tfoot>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إغلاق</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
 function recalcTvaCol(htStr){
   const ht = parseFloat(htStr)||0;
   const col = document.getElementById('tva-col');
@@ -23454,7 +23725,44 @@ function resyncTvaFromFactures(){
   try{ toast('↻ تم تحديث '+factsInMonth.length+' فاتورة · HT '+fmtN(ht)+' · TVA '+fmtN(tva),'info'); }catch(e){}
 }
 
-async function saveTvaDecl(){
+async function tvaDeclare(){
+  if(!confirm('باش تعلن هاد الشهر؟\nمن بعد ما تعلن، ما تقدرش تبدل البيانات إلا إيلا فتحتي الشهر مرة أخرى.')) return;
+  await _tvaUpdateStatus('declared');
+}
+async function tvaUnlock(){
+  if(!confirm('فتح الشهر يخليك تبدل البيانات. تأكد؟')) return;
+  await _tvaUpdateStatus('brouillon');
+}
+async function tvaMarkPaid(){
+  if(!confirm('تأكيد أن TVA دهاد الشهر تخلصات؟')) return;
+  await _tvaUpdateStatus('paid');
+}
+async function _tvaUpdateStatus(newStatus){
+  const ym = _tvaMonth;
+  const existing = tvaDecls.find(d => d.month===ym);
+  const patch = {status: newStatus};
+  if(newStatus==='declared') patch.declared_at = new Date().toISOString();
+  if(newStatus==='paid')     patch.paid_at     = new Date().toISOString();
+  try{
+    let r;
+    if(existing){
+      r = await sbFetch('tva_monthly_declarations','PATCH',patch,'month=eq.'+ym);
+    } else {
+      // Need to save the declaration first
+      await saveTvaDecl(true);
+      r = await sbFetch('tva_monthly_declarations','PATCH',patch,'month=eq.'+ym);
+    }
+    if(r && r.__sbError) throw new Error(r.msg);
+    const refreshed = tvaDecls.find(d => d.month===ym);
+    if(refreshed) Object.assign(refreshed, patch);
+    renderTva();
+    toast('✅ تم تحديث الحالة','success');
+  }catch(e){
+    toast('❌ '+(e.message||e),'error');
+  }
+}
+
+async function saveTvaDecl(silent){
   const ym = _tvaMonth;
   const ca_ht = parseFloat(document.getElementById('tva-ht').value)||0;
   const tva_collectee = parseFloat(document.getElementById('tva-col').value)||0;
@@ -23469,12 +23777,21 @@ async function saveTvaDecl(){
   });
   const autoTvaDed = dedRows.reduce((s,b)=>{const t=Number(b.total)||0;return s+(t-t/1.2);}, 0);
   const tva_deductible_override = (dedStr && Math.abs(parseFloat(dedStr) - autoTvaDed) > 0.01) ? parseFloat(dedStr) : null;
-  const payload = {month:ym, ca_ht, tva_collectee, tva_deductible_override};
+  const effDed = tva_deductible_override!=null ? tva_deductible_override : autoTvaDed;
+  const credit_carried_in = _tvaCreditCarriedIn(ym);
+  const netPay = tva_collectee - effDed - credit_carried_in;
+  const credit_carried_out = netPay < 0 ? Math.abs(netPay) : 0;
+  // Build per-rate breakdown for the audit trail
+  const bk = _tvaRateBreakdown(ym);
+  const rate_breakdown = {};
+  Object.keys(bk.collected).forEach(r => { rate_breakdown[r] = {...rate_breakdown[r], ht_col: bk.collected[r].ht, tva_col: bk.collected[r].tva}; });
+  Object.keys(bk.deducted).forEach(r => { rate_breakdown[r] = {...rate_breakdown[r], ht_ded: bk.deducted[r].ht, tva_ded: bk.deducted[r].tva}; });
+  const payload = {month:ym, ca_ht, tva_collectee, tva_deductible_override, credit_carried_in, credit_carried_out, rate_breakdown};
   try{
     const existing = tvaDecls.find(d=>d.month===ym);
     let r;
     if(existing){
-      r = await sbFetch('tva_monthly_declarations','PATCH',{ca_ht, tva_collectee, tva_deductible_override},'month=eq.'+ym);
+      r = await sbFetch('tva_monthly_declarations','PATCH',{ca_ht, tva_collectee, tva_deductible_override, credit_carried_in, credit_carried_out, rate_breakdown},'month=eq.'+ym);
     } else {
       r = await sbFetch('tva_monthly_declarations','POST',payload);
     }
@@ -23485,8 +23802,8 @@ async function saveTvaDecl(){
       const row = Array.isArray(r)?r[0]:r;
       tvaDecls.unshift(row||payload);
     }
-    toast('✅ تم حفظ التصريح ل '+_monthLabel(ym),'success');
-  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+    if(!silent){ toast('✅ تم حفظ التصريح ل '+_monthLabel(ym),'success'); renderTva(); }
+  }catch(e){ if(!silent){ toast('❌ '+(e.message||e),'error'); } else { throw e; } }
 }
 
 function printTvaForComptable(){

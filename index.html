@@ -21352,15 +21352,188 @@ function renderFactList(){
   }
 
   // ── Top bar: search + new button ──
-  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">'
-    +'<input id="fact-search" type="text" placeholder="🔍  بحث عن فاتورة أو عميل..." oninput="renderFactList2(this.value)" '
-      +'style="flex:1;padding:9px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none">'
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'
+    +'<input id="fact-search" type="text" placeholder="🔍  بحث عن فاتورة أو عميل..." oninput="factApplyFilters()" '
+      +'style="flex:1;min-width:200px;padding:9px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:Cairo,sans-serif;font-size:13px;outline:none">'
+    +'<button onclick="printFactList()" title="طبع/تصدير القائمة" style="padding:9px 14px;background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.4);border-radius:10px;font-family:Cairo,sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🖨️ طبع القائمة</button>'
     +'<button onclick="factGoto(\'new\')" style="padding:9px 18px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-family:Cairo,sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;box-shadow:0 4px 12px rgba(79,142,247,0.3)">＋ فاتورة جديدة</button>'
   +'</div>';
 
+  // ── Date filters ──
+  html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);padding:10px 14px;border-radius:10px">'
+    +'<span style="font-size:11px;color:var(--text3);font-weight:600">تصفية:</span>'
+    +'<select id="fact-date-by" onchange="factApplyFilters()" style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px">'
+      +'<option value="date"'+(factListFilterDateBy==='date'?' selected':'')+'>تاريخ الفاتورة</option>'
+      +'<option value="created_at"'+(factListFilterDateBy==='created_at'?' selected':'')+'>تاريخ الإنشاء</option>'
+    +'</select>'
+    +'<span style="font-size:11px;color:var(--text3)">من</span>'
+    +'<input id="fact-date-from" type="date" value="'+escB(factListFilterFrom||'')+'" onchange="factApplyFilters()" style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px;direction:ltr">'
+    +'<span style="font-size:11px;color:var(--text3)">إلى</span>'
+    +'<input id="fact-date-to" type="date" value="'+escB(factListFilterTo||'')+'" onchange="factApplyFilters()" style="padding:6px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px;direction:ltr">'
+    +'<button onclick="factClearFilters()" style="padding:6px 12px;background:transparent;color:var(--text3);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px">✖ مسح</button>'
+    +'<span style="margin-right:auto"></span>'
+    +'<span id="fact-filter-count" style="font-size:11px;color:var(--accent);font-weight:700"></span>'
+  +'</div>';
+
   // ── Table ──
-  html+='<div id="fact-list-body">'+buildFactTable(sorted)+'</div>';
+  html+='<div id="fact-list-body">'+buildFactTable(factApplyFiltersToList(sorted))+'</div>';
   return html;
+}
+
+// Filter state — persists across re-renders within the session
+var factListFilterFrom = '';
+var factListFilterTo = '';
+var factListFilterDateBy = 'date';   // 'date' | 'created_at'
+
+function factClearFilters(){
+  factListFilterFrom = '';
+  factListFilterTo = '';
+  factListFilterDateBy = 'date';
+  const inFrom = document.getElementById('fact-date-from');
+  const inTo = document.getElementById('fact-date-to');
+  const inBy = document.getElementById('fact-date-by');
+  const inSearch = document.getElementById('fact-search');
+  if(inFrom) inFrom.value = '';
+  if(inTo) inTo.value = '';
+  if(inBy) inBy.value = 'date';
+  if(inSearch) inSearch.value = '';
+  factApplyFilters();
+}
+
+function factApplyFiltersToList(rows){
+  factListFilterFrom = (document.getElementById('fact-date-from')||{}).value || factListFilterFrom || '';
+  factListFilterTo   = (document.getElementById('fact-date-to')||{}).value   || factListFilterTo   || '';
+  factListFilterDateBy = (document.getElementById('fact-date-by')||{}).value || factListFilterDateBy || 'date';
+  const q = ((document.getElementById('fact-search')||{}).value || '').trim().toLowerCase();
+  return rows.filter(f => {
+    // Date-range filter
+    const dt = (factListFilterDateBy==='created_at' ? (f.created_at||'').slice(0,10) : (f.date||''));
+    if(factListFilterFrom && dt < factListFilterFrom) return false;
+    if(factListFilterTo && dt > factListFilterTo) return false;
+    // Text search
+    if(q){
+      const hay = (String(f.num||'')+' '+String(f.client_nom||'')+' '+String(f.client_ice||'')+' '+String(f.date||'')).toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function factApplyFilters(){
+  const sorted = [...factures].sort((a,b)=>{
+    const ay=a.date?a.date.substring(0,4):'0', by=b.date?b.date.substring(0,4):'0';
+    if(by!==ay) return by.localeCompare(ay);
+    return (Number(b.num)||0)-(Number(a.num)||0);
+  });
+  const filtered = factApplyFiltersToList(sorted);
+  const body = document.getElementById('fact-list-body');
+  if(body) body.innerHTML = buildFactTable(filtered);
+  const cnt = document.getElementById('fact-filter-count');
+  if(cnt) cnt.textContent = filtered.length===factures.length ? '' : (filtered.length+' / '+factures.length);
+}
+
+// Print a clean A4 list of the currently-filtered factures — useful for
+// verification (not for delivering to client). Shows num, date, client,
+// HT, TVA, TTC, status.
+function printFactList(){
+  const sorted = [...factures].sort((a,b)=>{
+    const ay=a.date?a.date.substring(0,4):'0', by=b.date?b.date.substring(0,4):'0';
+    if(by!==ay) return by.localeCompare(ay);
+    return (Number(b.num)||0)-(Number(a.num)||0);
+  });
+  const rows = factApplyFiltersToList(sorted);
+  if(!rows.length){ try{ toast('⚠️ لا فواتير ل الطبع','warning'); }catch(e){} return; }
+  const totHT  = rows.reduce((s,f)=>s+(Number(f.total_ht)||0), 0);
+  const totTVA = rows.reduce((s,f)=>s+(Number(f.total_tva)||0), 0);
+  const totTTC = rows.reduce((s,f)=>s+(Number(f.total_ttc)||0), 0);
+  const soc = (typeof factSociete!=='undefined' && factSociete) ? factSociete : {nom:'MADERA DECO'};
+  const dateRange = (factListFilterFrom||factListFilterTo) ? 'من '+(factListFilterFrom?fmtDate(factListFilterFrom):'…')+' إلى '+(factListFilterTo?fmtDate(factListFilterTo):'…') : 'كل الفواتير';
+  const dateBy = factListFilterDateBy==='created_at' ? 'تاريخ الإنشاء' : 'تاريخ الفاتورة';
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>قائمة الفواتير</title>
+<style>
+@page{size:A4 portrait;margin:12mm}
+*{box-sizing:border-box;font-family:'Cairo',Arial,sans-serif}
+body{margin:0;color:#0f172a;font-size:10pt;line-height:1.5}
+.header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px}
+h1{font-size:18pt;margin:0 0 2px}
+.h-info{font-size:9pt;color:#475569}
+.period{background:#fef3c7;border-right:4px solid #f59e0b;padding:8px 14px;margin:10px 0 14px;font-weight:700;font-size:11pt;display:flex;justify-content:space-between}
+table{width:100%;border-collapse:collapse;font-size:9.5pt}
+th{background:#f1f5f9;text-align:right;padding:7px 8px;border:1px solid #cbd5e1;font-weight:700;font-size:9pt}
+td{padding:6px 8px;border:1px solid #e2e8f0}
+.num-col{font-weight:700;color:#0f172a;direction:ltr;text-align:left}
+.amt{direction:ltr;text-align:left;font-family:'Cairo',sans-serif}
+.tot-row{background:#0f172a;color:#fff;font-weight:800}
+.tot-row td{border-color:#0f172a}
+.st-paid{background:rgba(16,185,129,.15);color:#10b981;padding:1px 6px;border-radius:3px;font-size:8pt;font-weight:700}
+.st-pending{background:rgba(245,158,11,.15);color:#f59e0b;padding:1px 6px;border-radius:3px;font-size:8pt;font-weight:700}
+.foot{margin-top:16px;font-size:8pt;color:#64748b;display:flex;justify-content:space-between;border-top:1px solid #e2e8f0;padding-top:8px}
+.actions{position:fixed;top:5mm;right:5mm;display:flex;gap:6px;z-index:999}
+.actions button{padding:6px 14px;font:700 11px Cairo,sans-serif;border:0;border-radius:5px;cursor:pointer}
+@media print{.actions{display:none}}
+</style></head><body>
+<div class="actions">
+  <button onclick="window.print()" style="background:#7c5cfc;color:#fff">🖨️ طبع</button>
+  <button onclick="window.close()" style="background:#475569;color:#fff">✖ إغلاق</button>
+</div>
+<div class="header">
+  <div><h1>${escB(soc.nom||'MADERA DECO')}</h1>
+    <div class="h-info">${soc.ice?'ICE: '+escB(soc.ice)+' &nbsp;·&nbsp; ':''}${soc.if?'IF: '+escB(soc.if)+' &nbsp;·&nbsp; ':''}${soc.rc?'RC: '+escB(soc.rc):''}</div>
+  </div>
+  <div style="text-align:left">
+    <h1 style="margin:0;font-size:14pt">🧾 قائمة الفواتير</h1>
+    <div class="h-info">تاريخ الإصدار: ${fmtDate(new Date().toISOString().slice(0,10))}</div>
+  </div>
+</div>
+<div class="period">
+  <span>📅 ${dateBy} · ${dateRange}</span>
+  <span>${rows.length} فاتورة</span>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th>
+    <th>تاريخ الفاتورة</th>
+    <th>تاريخ الإنشاء</th>
+    <th>رقم</th>
+    <th>الزبون</th>
+    <th>ICE</th>
+    <th>HT</th>
+    <th>TVA</th>
+    <th>TTC</th>
+    <th>الحالة</th>
+  </tr></thead>
+  <tbody>${rows.map((f,i) => {
+    const isPaid = f.statut === 'مدفوعة';
+    return `<tr>
+      <td>${i+1}</td>
+      <td class="num-col">${fmtDate(f.date)}</td>
+      <td class="num-col" style="color:#64748b">${f.created_at?fmtDate((f.created_at||'').slice(0,10)):'—'}</td>
+      <td class="num-col">F-${escB(f.num||'')}</td>
+      <td>${escB(f.client_nom||'—')}</td>
+      <td style="font-size:8pt;color:#64748b">${escB(f.client_ice||'—')}</td>
+      <td class="amt">${fmtN(Number(f.total_ht)||0)}</td>
+      <td class="amt">${fmtN(Number(f.total_tva)||0)}</td>
+      <td class="amt" style="font-weight:700">${fmtN(Number(f.total_ttc)||0)}</td>
+      <td><span class="${isPaid?'st-paid':'st-pending'}">${escB(f.statut||'—')}</span></td>
+    </tr>`;
+  }).join('')}</tbody>
+  <tfoot><tr class="tot-row">
+    <td colspan="6" style="text-align:right">المجموع (${rows.length} فاتورة):</td>
+    <td class="amt">${fmtN(totHT)}</td>
+    <td class="amt">${fmtN(totTVA)}</td>
+    <td class="amt">${fmtN(totTTC)}</td>
+    <td></td>
+  </tr></tfoot>
+</table>
+<div class="foot">
+  <span>سويفي — ${escB(soc.nom||'MADERA DECO')}</span>
+  <span>صفحة 1</span>
+</div>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=1100,height=900');
+  if(!w){ try{ toast('⚠️ النوافذ المنبثقة محظورة','warning'); }catch(e){} return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{w.focus();}catch(e){} }, 200);
 }
 
 var factListSelected={};

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v200-create-facture-from-bundle';
+const CACHE = 'suivi-v201-fact-list-date-filters-print';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

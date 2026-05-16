@@ -23809,8 +23809,14 @@ async function renderTva(){
 
       <!-- Charges fixes summary -->
       <div class="card" style="margin-bottom:14px">
-        <div class="card-title" style="margin-bottom:10px">📋 المصاريف الثابتة دهاد الشهر</div>
-        ${recurringCharges.length===0?'<div style="color:var(--text3);font-size:12px">لا توجد مصاريف ثابتة. <button class="btn-ghost" onclick="showPage(\'charges\',document.getElementById(\'nav-charges\'))">إضافة من هنا</button></div>':
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+          <div class="card-title" style="margin:0">📋 المصاريف الثابتة دهاد الشهر</div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-accent" style="padding:6px 12px;font-size:11px" onclick="openTvaQuickCharge('${ym}')">➕ إضافة مصروف</button>
+            <button class="btn" style="padding:6px 12px;font-size:11px" onclick="showPage('charges',document.getElementById('nav-charges'))">⚙️ إدارة</button>
+          </div>
+        </div>
+        ${recurringCharges.length===0?'<div style="color:var(--text3);font-size:12px;text-align:center;padding:14px">لا توجد مصاريف ثابتة بعد. زيد واحد من الفوق ↑</div>':
         `<table class="data-table" style="font-size:13px">
           <tbody>${recurringCharges.map(c=>{const a=_chargeMonthly(c,ym);return `<tr style="${a==null?'opacity:.4':''}">
             <td>${({salaire:'💼',loyer:'🏠'})[c.category]||'🧾'} ${escB(c.nom||'')}</td>
@@ -23838,6 +23844,75 @@ async function renderTva(){
 }
 
 function setTvaMonth(m){ _tvaMonth = m; renderTva(); }
+
+// Quick-add a recurring charge directly from the TVA page (skips the trip
+// to the Charges Fixes module). Pre-fills active_from to the 1st of the
+// current TVA month so the entry applies retroactively to this month.
+function openTvaQuickCharge(ym){
+  const [y,mo] = (ym||_tvaMonth).split('-').map(Number);
+  const firstOfMonth = ym+'-01';
+  const html = `<div style="padding:22px;max-width:520px">
+    <div class="card-title" style="margin-bottom:14px">➕ إضافة مصروف ل ${_monthLabel(ym)}</div>
+    <div style="display:grid;gap:12px">
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الاسم</div>
+        <input id="qc-nom" placeholder="مثلا: المحاسب، الكراء، السلاير..." style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">الفئة</div>
+        <select id="qc-cat" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+          <option value="autre">🧾 آخر (Comptable, Internet, Eau...)</option>
+          <option value="loyer">🏠 كراء (Loyer)</option>
+          <option value="salaire">💼 أجرة (Salaire)</option>
+        </select></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">المبلغ المدفوع (DH)</div>
+        <input id="qc-mont" type="number" step="0.01" placeholder="0.00" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif"></label>
+      <label><div style="font-size:12px;color:var(--text2);margin-bottom:4px">دورية الدفع</div>
+        <select id="qc-freq" style="width:100%;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-family:'Cairo',sans-serif">
+          <option value="monthly">📅 شهرياً</option>
+          <option value="quarterly">📆 كل 3 شهور</option>
+          <option value="yearly">🗓️ سنوياً</option>
+          <option value="once" selected>⚡ مرة واحدة فقط (هاد الشهر)</option>
+        </select></label>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:18px">
+      <button class="btn btn-accent" style="flex:1" onclick="_saveTvaQuickCharge('${ym}')">💾 حفظ</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+  setTimeout(()=>{ try{document.getElementById('qc-nom').focus();}catch(e){} }, 50);
+}
+
+async function _saveTvaQuickCharge(ym){
+  const nom = ((document.getElementById('qc-nom')||{}).value||'').trim();
+  const cat = (document.getElementById('qc-cat')||{}).value || 'autre';
+  const actualAmount = parseFloat((document.getElementById('qc-mont')||{}).value)||0;
+  const freq = (document.getElementById('qc-freq')||{}).value || 'monthly';
+  if(!nom){ toast('⚠️ كتب الاسم','warning'); return; }
+  if(actualAmount<=0){ toast('⚠️ كتب المبلغ','warning'); return; }
+  let monthlyEq = actualAmount;
+  let freqLabel = '';
+  if(freq==='quarterly'){ monthlyEq = actualAmount/3; freqLabel = '(كل 3 شهور)'; }
+  else if(freq==='yearly'){ monthlyEq = actualAmount/12; freqLabel = '(سنوي)'; }
+  else if(freq==='once'){ monthlyEq = actualAmount; freqLabel = '(مرة واحدة)'; }
+  const [y,mo] = ym.split('-').map(Number);
+  const active_from = ym+'-01';
+  let active_to = null;
+  if(freq==='once') active_to = new Date(y, mo, 0).toISOString().slice(0,10);
+  try{
+    const r = await sbFetch('recurring_charges','POST',{
+      nom, category:cat,
+      montant: Math.round(monthlyEq*100)/100,
+      active_from, active_to,
+      notes: 'تم إضافتو من صفحة TVA · المبلغ الفعلي '+fmtN(actualAmount)+' '+freqLabel,
+    });
+    if(r && r.__sbError) throw new Error(r.msg);
+    const row = Array.isArray(r)?r[0]:r;
+    if(row && typeof recurringCharges!=='undefined') recurringCharges.push(row);
+    toast('✅ تم إضافة '+nom+' · شهرياً '+fmtN(monthlyEq)+' DH','success');
+    document.getElementById('modal-main').classList.remove('open');
+    renderTva();
+  }catch(e){ toast('❌ '+(e.message||e),'error'); }
+}
 
 // ══════════════════ BANK RECONCILIATION ══════════════════
 // Upload a CDM relevé bancaire → Claude extracts PAIEMENT CHEQUE/EFFET lines

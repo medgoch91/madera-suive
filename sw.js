@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v214-orphan-cheques-count-tva-deductible';
+const CACHE = 'suivi-v215-tva-quick-add-charge';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

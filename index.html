@@ -24183,28 +24183,19 @@ function _matchFacturesToVirements(virsIn, ym){
   const sorted = [...virsIn].sort((a,b)=> a.date.localeCompare(b.date));
   const normSender = s => (s||'').toUpperCase().replace(/[^A-Z]/g,'').slice(0,14);
   const daysBetween = (d1, d2) => Math.round((new Date(d2)-new Date(d1))/(1000*60*60*24));
-  const bundles = [];
-  for(const v of sorted){
-    const last = bundles[bundles.length-1];
-    const lastTx = last && last.transfers[last.transfers.length-1];
-    // Chain rule: only ONE TEAM-style aggregators, same sender, AND the
-    // current bundle spans at most TWO calendar dates total. Once a
-    // bundle has used both Day-N and Day-(N+1), Day-(N+2) starts fresh.
-    // This handles the "midnight rollover" case (one payment session
-    // straddling 00:00) without lumping 3+ consecutive days into one
-    // facture (user's real flow: each day's deliveries = its own facture).
-    const wouldChain = lastTx && isBundler(v.counterparty) && isBundler(lastTx.counterparty)
-       && normSender(lastTx.counterparty)===normSender(v.counterparty)
-       && daysBetween(lastTx.date, v.date) <= 1
-       && daysBetween(last.startDate, v.date) <= 1;
-    if(wouldChain){
-      last.transfers.push(v);
-      last.total += v.montant;
-      last.endDate = v.date;
-    } else {
-      bundles.push({startDate: v.date, endDate: v.date, counterparty: v.counterparty, transfers: [v], total: v.montant, isBundler: isBundler(v.counterparty)});
-    }
-  }
+
+  // Step 1: Group by DAY only — start from per-day bundles (no chaining).
+  // This is the correct default because most factures = one delivery day.
+  const dayBundles = [];
+  const byDate = {};
+  sorted.forEach(v => {
+    const k = v.date+'|'+normSender(v.counterparty);
+    if(!byDate[k]) byDate[k] = {startDate: v.date, endDate: v.date, counterparty: v.counterparty, transfers: [], total: 0, isBundler: isBundler(v.counterparty)};
+    byDate[k].transfers.push(v);
+    byDate[k].total += v.montant;
+  });
+  Object.values(byDate).forEach(b => dayBundles.push(b));
+  dayBundles.sort((a,b)=> a.startDate.localeCompare(b.startDate));
 
   // Window: ±3 months around relevé to cover late payments
   const [y,mo] = ym.split('-').map(Number);
@@ -24214,16 +24205,47 @@ function _matchFacturesToVirements(virsIn, ym){
 
   const usedFactIds = new Set();
   const matches = [];
-  const unmatchedBundles = [];
-  for(const b of bundles){
-    const candidate = factsInWin.find(f => !usedFactIds.has(f.id) && Math.abs((Number(f.total_ttc)||0) - b.total) <= 1);
-    if(candidate){
-      usedFactIds.add(candidate.id);
-      matches.push({bundle: b, facture: candidate});
-    } else {
-      unmatchedBundles.push(b);
+
+  // Step 2: First pass — try matching each day-bundle individually.
+  const matchSingle = b => factsInWin.find(f => !usedFactIds.has(f.id) && Math.abs((Number(f.total_ttc)||0) - b.total) <= 1);
+  const remaining = [];  // bundles that didn't match alone
+  for(const b of dayBundles){
+    const cand = matchSingle(b);
+    if(cand){ usedFactIds.add(cand.id); matches.push({bundle: b, facture: cand}); }
+    else remaining.push(b);
+  }
+
+  // Step 3: For unmatched bundles, try merging with adjacent unmatched
+  // bundle (same sender, ±1 day) — handles the midnight rollover case
+  // ("today + tomorrow = one facture") only when needed to find a match.
+  const usedRemainIdx = new Set();
+  for(let i=0; i<remaining.length; i++){
+    if(usedRemainIdx.has(i)) continue;
+    const b = remaining[i];
+    // Try merge with the next unmatched bundle
+    for(let j=i+1; j<remaining.length; j++){
+      if(usedRemainIdx.has(j)) continue;
+      const b2 = remaining[j];
+      if(!b.isBundler || !b2.isBundler) continue;
+      if(normSender(b.counterparty) !== normSender(b2.counterparty)) continue;
+      if(daysBetween(b.endDate, b2.startDate) !== 1) continue;
+      const merged = {
+        startDate: b.startDate, endDate: b2.endDate,
+        counterparty: b.counterparty,
+        transfers: [...b.transfers, ...b2.transfers],
+        total: b.total + b2.total,
+        isBundler: true,
+      };
+      const cand = matchSingle(merged);
+      if(cand){
+        usedFactIds.add(cand.id);
+        matches.push({bundle: merged, facture: cand});
+        usedRemainIdx.add(i); usedRemainIdx.add(j);
+        break;
+      }
     }
   }
+  const unmatchedBundles = remaining.filter((_,i) => !usedRemainIdx.has(i));
   const unmatchedFacts = factsInWin.filter(f => !usedFactIds.has(f.id));
   return {matches, unmatchedBundles, unmatchedFacts};
 }

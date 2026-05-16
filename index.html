@@ -23273,10 +23273,12 @@ async function renderTva(){
   if(!page) return;
   const ym = _tvaMonth;
   // ── Reference: app factures in this month (for hint only)
+  // The factures schema uses total_ttc / total_ht / total_tva columns
+  // (NOT just `total`). Fall back to total_ttc/1.2 if total_ht missing.
   const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
-  const factsTotalTTC = factsInMonth.reduce((s,f)=>s+(Number(f.total)||0), 0);
-  const factsTotalHT = factsTotalTTC/1.2;
-  const factsTVA = factsTotalTTC - factsTotalHT;
+  const factsTotalTTC = factsInMonth.reduce((s,f)=>s+(Number(f.total_ttc)||0), 0);
+  const factsTotalHT  = factsInMonth.reduce((s,f)=>s+(Number(f.total_ht)||Number(f.total_ttc)/1.2||0), 0);
+  const factsTVA      = factsInMonth.reduce((s,f)=>s+(Number(f.total_tva)||(Number(f.total_ttc)||0)-(Number(f.total_ttc)||0)/1.2||0), 0);
   // ── Auto TVA déductible: bons whose cheque is مدفوع AND paid_at in this month
   const deductibleRows = (bons||[]).filter(b => {
     if(!b.chequeId) return false;
@@ -23329,10 +23331,14 @@ async function renderTva(){
         `<div style="overflow-x:auto;margin-bottom:14px">
           <table class="data-table" style="font-size:12px">
             <thead><tr><th>التاريخ</th><th>رقم</th><th>الزبون</th><th>HT</th><th>TVA</th><th>TTC</th></tr></thead>
-            <tbody>${factsInMonth.map(f=>{const ttc=Number(f.total)||0;const ht=ttc/1.2;const tva=ttc-ht;return `<tr>
+            <tbody>${factsInMonth.map(f=>{
+              const ttc = Number(f.total_ttc)||0;
+              const ht  = Number(f.total_ht)||(ttc/1.2);
+              const tva = Number(f.total_tva)||(ttc-ht);
+              return `<tr>
               <td>${fmtDate(f.date)}</td>
               <td style="font-weight:600">${escB(f.num||'—')}</td>
-              <td>${escB(f.client||'—')}</td>
+              <td>${escB(f.client_nom||f.client||'—')}</td>
               <td>⁦${fmtN(ht)}⁩</td>
               <td style="color:#10b981;font-weight:700">⁦${fmtN(tva)}⁩</td>
               <td>⁦${fmtN(ttc)}⁩</td>
@@ -23438,13 +23444,14 @@ function useFactsAsRef(){ resyncTvaFromFactures(); }
 function resyncTvaFromFactures(){
   const ym = _tvaMonth;
   const factsInMonth = (factures||[]).filter(f => (f.date||'').startsWith(ym+'-') && !f.deleted_at);
-  const ttc = factsInMonth.reduce((s,f)=>s+(Number(f.total)||0), 0);
-  const ht = ttc/1.2;
+  const ttc = factsInMonth.reduce((s,f)=>s+(Number(f.total_ttc)||0), 0);
+  const ht  = factsInMonth.reduce((s,f)=>s+(Number(f.total_ht)||(Number(f.total_ttc)||0)/1.2), 0);
+  const tva = factsInMonth.reduce((s,f)=>s+(Number(f.total_tva)||((Number(f.total_ttc)||0)-(Number(f.total_ttc)||0)/1.2)), 0);
   const htInp = document.getElementById('tva-ht');
   const colInp = document.getElementById('tva-col');
   if(htInp) htInp.value = ht.toFixed(2);
-  if(colInp) colInp.value = (ttc-ht).toFixed(2);
-  try{ toast('↻ تم تحديث القيم من '+factsInMonth.length+' فاتورة','info'); }catch(e){}
+  if(colInp) colInp.value = tva.toFixed(2);
+  try{ toast('↻ تم تحديث '+factsInMonth.length+' فاتورة · HT '+fmtN(ht)+' · TVA '+fmtN(tva),'info'); }catch(e){}
 }
 
 async function saveTvaDecl(){

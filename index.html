@@ -16,7 +16,7 @@
 <link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="apple-touch-icon" href="logo.svg">
 <title>سويفي — إدارة التسويات والبونات</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
 <style>
@@ -8472,17 +8472,14 @@ function applyChqCfgToPreview(){
     el.style.width = c.width+'mm';
     el.style.fontSize = c.size+'pt';
     el.style.textAlign = c.align;
-    // Match print HTML fonts so preview = print (v186+ typography update).
-    el.style.fontWeight = Math.max(c.weight||800, 800);
-    el.style.letterSpacing = ((c.spacing||0)+0.5)+'px';
-    el.style.fontFamily = c.font==='mono'
-      ? "'Courier New','Consolas','SF Mono',monospace"
-      : "'Arial Black','Helvetica Neue','Arial',sans-serif";
-    if(c.font==='mono'){
-      el.style.fontFeatureSettings = '"tnum" 1';
-      el.style.letterSpacing = ((c.spacing||0)+0.8)+'px';
-      el.style.fontWeight = 700;
-    }
+    // v187: Single mono font (Courier Prime) for every field — matches the
+    // typewriter heritage of printed cheques/effets. Both 'mono' and 'serif'
+    // chequeCfg.font values map to the same family (legacy compat).
+    el.style.fontWeight = Math.max(c.weight||700, 700);
+    el.style.letterSpacing = ((c.spacing||0)+0.3)+'px';
+    el.style.fontFamily = "'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace";
+    el.style.fontFeatureSettings = '"tnum" 1';
+    el.style.textTransform = 'uppercase';
   });
   // Signature intentionally NOT rendered on cheque preview (matches print output).
 }
@@ -8612,6 +8609,9 @@ function renderPrintCheque(){
     .pc-card-title{font-size:14px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px}
     .pc-print-howto{font-size:12px;color:var(--text2);background:rgba(79,142,247,.05);border:1px solid rgba(79,142,247,.18);border-radius:8px;padding:12px 14px;line-height:1.7;margin-top:14px}
     .pc-print-howto b{color:#4f8ef7}
+    /* Trailing horizontal line after montant en lettres in the preview,
+       matches the .f.fill::after CSS in print HTML — clean pen-stroke. */
+    .pc-fill::after{content:'';display:inline-block;width:100%;border-bottom:1.5px solid #000;vertical-align:0.18em;margin-left:3px;}
   </style>
   <div class="pc-hero">
     <div class="pc-hero-head">
@@ -8636,7 +8636,7 @@ function renderPrintCheque(){
                 ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#999'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.5)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / ورقة':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
               </div>
               <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
-              <div id="pf-lettres1" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
+              <div id="pf-lettres1" class="pc-fill" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Courier Prime','Courier New',monospace;font-size:11pt;font-weight:700;color:#000;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.32;text-transform:uppercase"></div>
               <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
               <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
               <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
@@ -8865,10 +8865,12 @@ function toWordsFR(n){
   return res.charAt(0).toUpperCase() + res.slice(1);
 }
 // Short closing dash (~1cm) after the amount-in-words — prevents adding text after
-// Anti-fraud trailing filler — industry standard to prevent post-print
-// additions to the amount-in-words. QuickBooks / Dynamics / ChequeMan
-// all do this. Long enough to consume the rest of the underline.
-const CHEQUE_WORDS_FILLER = ' ━━━━━━━━━━━━━━';
+// No string-based trailing filler — the trailing horizontal line after
+// "montant en lettres" is now drawn by CSS `.f.fill::after` as a real
+// border-bottom (cleaner pen-stroke look, matches what tellers draw by
+// hand on actual cheques). Keep this constant as empty string so the
+// existing code paths that concat it don't break.
+const CHEQUE_WORDS_FILLER = '';
 
 function fmtMontant(v){return Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2});}
 // Wrap amount with # at start and end — security against tampering (can't add digits before/after)
@@ -9023,23 +9025,29 @@ function buildChequePrintHTML(d){
     }
     *{box-sizing:border-box;}
     html,body{margin:0;padding:0;background:#fff;}
-    /* Industry-standard cheque typography (per research 2026-05-16):
-       - Mono for digits: Courier New Bold — banking convention, prevents
-         digit substitution / addition because chars are fixed-width.
-       - Sans-serif Bold for text fields (payee, words, ville, date) —
-         Arial Black/Bold is what Sage/EBP/QuickBooks default to. Bold +
-         tight letter-spacing reads "heavy/inked" on inkjet, matching the
-         visual weight of a dot-matrix print. Georgia/Times was looking
-         too thin/anemic on consumer inkjets. */
-    body{font-family:'Arial Black','Helvetica Neue','Arial',sans-serif;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;font-weight:900;}
+    /* Banking typography (research 2026-05-16, deep-dive iteration 2):
+       Production Moroccan cheque/effet apps and the typewriter heritage
+       converge on ONE monospaced face for every field — mixing mono+sans
+       reads as word-processor output, not bank-grade. Courier Prime is
+       the refined Courier with better hinting; falls back to Courier New
+       on systems without the Google Font. ALL CAPS is the teller
+       convention (also defeats post-print letter additions).
+       Trailing fill on lettres uses a CSS border-bottom, NOT unicode
+       dashes — produces a clean pen-stroke line at the baseline. */
+    @import url('https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap');
+    body{font-family:'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace;color:#000;-webkit-font-smoothing:antialiased;font-smooth:always;font-weight:700;text-transform:uppercase;}
     .w{width:${pW}mm;height:${pH}mm;position:absolute;top:${oy}mm;left:${ox}mm;background:#fff;overflow:visible;}
-    .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;font-weight:800;}
+    .f{position:absolute;color:#000;white-space:nowrap;overflow:hidden;font-weight:700;font-family:'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace;font-feature-settings:"tnum" 1;letter-spacing:0.02em;}
     .f.wrap{white-space:normal;overflow:visible;line-height:1.32;}
-    .mono{font-family:'Courier New','Consolas','SF Mono','JetBrains Mono',monospace;font-feature-settings:"tnum" 1;letter-spacing:0.04em;font-weight:700;}
-    .serif{font-family:'Arial Black','Helvetica Neue','Arial',sans-serif;font-weight:900;letter-spacing:0.02em;}
+    /* Both .mono and .serif resolve to the same Courier Prime — keep the
+       class names so chequeCfg.font="mono"|"serif" still works without
+       forcing every saved config to migrate. */
+    .mono,.serif{font-family:'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace;font-weight:700;letter-spacing:0.02em;}
+    /* Trailing horizontal line after montant en lettres — pen-stroke style */
+    .f.fill::after{content:'';display:inline-block;width:100%;border-bottom:0.5mm solid #000;vertical-align:0.18em;margin-left:1mm;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
-    <div class="f wrap ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>
+    <div class="f wrap fill ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>
     ${lettres2HTML}
     <div class="f ${cl('ordre')}" style="${fs('ordre')}">${esc(ordre.toUpperCase())}</div>
     <div class="f ${cl('ville')}" style="${fs('ville')}">${esc(ville.toUpperCase())}</div>

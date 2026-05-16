@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v187-banking-grade-typography';
+const CACHE = 'suivi-v188-courier-prime-mono-everywhere';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

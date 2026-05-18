@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v223-new-cheque-num-hint-banner';
+const CACHE = 'suivi-v224-cheques-list-printed-badge';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

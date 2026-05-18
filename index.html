@@ -9862,6 +9862,31 @@ function renderChqCfgPanel(){
     </div>`;
 }
 
+// ── Saved templates panel (Banques) ──
+// One named layout per bank/account. Save current calibration with a
+// name, switch between them, delete. Templates are stored separately
+// for cheque vs effet (effet_templates_v2 / cheque_templates_v2).
+function _pc3TemplatesHTML(){
+  const tpls = (typeof loadChequeTemplates==='function') ? loadChequeTemplates() : {};
+  const names = Object.keys(tpls).sort();
+  const active = localStorage.getItem('cheque_active_template')||'';
+  return `<div class="pc3-style-card" style="overflow:visible">
+    <div class="pc3-style-body" style="display:block;border-top:0;padding:10px 12px 12px">
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <select id="chq-tpl-select" onchange="applyChequeTemplate(this.value)" style="flex:1;min-width:0;padding:6px 8px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif">
+          <option value="">— Choisir un modèle —</option>
+          ${names.map(n=>`<option value="${n.replace(/"/g,'&quot;')}" ${n===active?'selected':''}>${escB(n)}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="saveChequeTemplate()" title="Enregistrer la calibration actuelle" style="flex:1;padding:7px 10px;background:linear-gradient(135deg,var(--pc-gold),var(--pc-gold-deep));color:#fff;border:0;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;letter-spacing:.2px">💾 Enregistrer</button>
+        <button onclick="deleteChequeTemplate()" title="Supprimer le modèle sélectionné" style="padding:7px 10px;background:transparent;color:var(--red);border:1px solid var(--border);border-radius:6px;font-size:11px;cursor:pointer;font-family:'Cairo',sans-serif">🗑</button>
+      </div>
+      ${names.length ? `<div style="margin-top:9px;font-size:10px;color:var(--text3);line-height:1.5">📌 ${names.length} modèle${names.length>1?'s':''} · ${active?'Actuel : <b style="color:var(--pc-gold)">'+escB(active)+'</b>':'Aucun sélectionné'}</div>` : '<div style="margin-top:9px;font-size:10px;color:var(--text3);line-height:1.5">💡 Calibrez la position/taille, puis Enregistrer pour créer un modèle par banque/compte</div>'}
+    </div>
+  </div>`;
+}
+
 // ── Side style panel — per-field font size + spacing controls (live) ──
 // Compact accordion next to the preview. Inspired by Figma/Canva
 // "selected element properties" panels: click field name → expand → +/−
@@ -10190,9 +10215,11 @@ function renderPrintCheque(){
         </div>
       </div>
 
-      <!-- RIGHT: Style panel (font size + spacing controls per field, live update) -->
+      <!-- RIGHT: Style panel (templates + font size + spacing, live update) -->
       <div class="pc3-styles" id="pc3-styles">
-        <div class="pc3-styles-head">Typographie</div>
+        <div class="pc3-styles-head">Modèles enregistrés</div>
+        ${_pc3TemplatesHTML()}
+        <div class="pc3-styles-head" style="margin-top:14px">Typographie</div>
         ${_pc3StylesPanelHTML(isEffet)}
       </div>
 

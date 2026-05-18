@@ -2928,10 +2928,14 @@ function printCheque(id){
   let echeanceFromBon = '';
   try{
     const linkedBons = (bons||[]).filter(b => (c.bonIds||c.bon_ids||[]).includes(b.id));
-    const latestBonDate = linkedBons.reduce((latest, b) => (b.date && (!latest || b.date>latest)) ? b.date : latest, '');
+    // Use the OLDEST bon date — the supplier's clock starts on the first
+    // delivery, so the échéance for ALL bundled bons is anchored to the
+    // earliest one. Paying later than (oldest + N days) means we're late
+    // on the very first bon.
+    const oldestBonDate = linkedBons.reduce((earliest, b) => (b.date && (!earliest || b.date<earliest)) ? b.date : earliest, '');
     const four = (fournisseurs||[]).find(f => (f.nom||'').toLowerCase() === (c.fournisseur||'').toLowerCase());
     const days = (four && Number(four.paymentTermsDays)>0) ? Number(four.paymentTermsDays) : 60;
-    const base = latestBonDate || c.date;
+    const base = oldestBonDate || c.date;
     if(base){
       const _d = new Date(base+'T12:00:00Z');
       _d.setUTCDate(_d.getUTCDate()+days);
@@ -4008,19 +4012,19 @@ function suggestEcheance(){
   const nom = (document.getElementById('c-fournisseur')||{value:''}).value.trim();
   const four = nom ? (fournisseurs||[]).find(function(f){return f.nom===nom;}) : null;
   const days = four && four.paymentTermsDays!=null ? Number(four.paymentTermsDays)||0 : 0;
-  // Pick the LATEST date among selected bons (the supplier's clock ticks from
-  // the most recent purchase). Fallback to today if no bon is picked yet so
-  // the user still sees what the agreed delay maps to.
-  let latestBonDate = '';
+  // Pick the OLDEST bon date — the supplier's terms start on the EARLIEST
+  // delivery, so paying later than (oldest + N days) puts us late on the
+  // first bon. User feedback 2026-05-18: "i base ela la date d bon 9dim".
+  let oldestBonDate = '';
   selectedBonIds.forEach(function(id){
     const b = bons.find(function(x){return x.id===id;});
-    if(b && b.date && (!latestBonDate || b.date>latestBonDate)) latestBonDate = b.date;
+    if(b && b.date && (!oldestBonDate || b.date<oldestBonDate)) oldestBonDate = b.date;
   });
-  const baseDate = latestBonDate || (function(){
+  const baseDate = oldestBonDate || (function(){
     const t=new Date(); const p=n=>String(n).padStart(2,'0');
     return t.getFullYear()+'-'+p(t.getMonth()+1)+'-'+p(t.getDate());
   })();
-  const baseLbl = latestBonDate ? ('من بون <b>'+fmtDate(latestBonDate)+'</b>') : ('من <b>اليوم</b>');
+  const baseLbl = oldestBonDate ? ('من أقدم بون <b>'+fmtDate(oldestBonDate)+'</b>') : ('من <b>اليوم</b>');
   if(!days){
     if(hintEl){ hintEl.style.display='none'; hintEl.textContent=''; }
     return;

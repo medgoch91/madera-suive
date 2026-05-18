@@ -9230,14 +9230,12 @@ async function downloadChequePDF(){
     }
     const cW = isEff ? 200 : 176;
     const cH = isEff ? 130 : 80;
-    // Strategy decided per 2026-05-18 research (chequeprint.cloud consensus
-    // + macOS AirPrint regression diagnosis): page = A4 portrait, content
-    // at top-left at its real physical size (200×130 or 176×80mm). User
-    // feeds the physical cheque paper aligned to the top-left of the A4
-    // path, prints with "Actual size 100%". This sidesteps Chrome and
-    // macOS-AirPrint's broken custom-paper-size handling — A4 is the one
-    // size every printer driver agrees on.
-    // Apply per-printer offset (X/Y in mm) shifts the image within A4.
+    // 2026-05-18 follow-up research: v218 portrait A4 caused the printer
+    // driver / Preview to AUTO-ROTATE landscape cheque content 90° to "fit"
+    // the landscape-fed paper. Switch to A4 LANDSCAPE (297×210mm) — content
+    // sits naturally in the top-left at its real physical size, paper feeds
+    // short-edge-first, no driver rotation needed. User must print with
+    // "Auto-Rotate and Center" UNCHECKED in the print dialog.
     const ox = getPrintOffsetX();
     const oy = getPrintOffsetY();
     const canvas = await html2canvas(wrap, {
@@ -9247,7 +9245,7 @@ async function downloadChequePDF(){
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+    const doc = new jsPDF({orientation:'landscape', unit:'mm', format:'a4'});
     // Position content at top-left of A4 with offset; clip via negative
     // overflow if offset would push past page bounds (jsPDF tolerates this).
     doc.addImage(imgData, 'JPEG', ox, oy, cW, cH, undefined, 'FAST');
@@ -9270,7 +9268,7 @@ async function downloadChequePDF(){
     const filename = (isEff?'EFFET':'CHEQUE')+'-'+safeOrdre+(num?'-'+num:'')+'.pdf';
     doc.save(filename);
     try{ hideLoader(); }catch(e){}
-    try{ toast(`✅ تم تنزيل PDF A4 — افتحو ف Aperçu/Adobe، اطبعو ب "Taille réelle 100%" على A4 عادي، و حط ورقة ${isEff?'الإيفي':'الشيك'} f l-zaouia top-left`,'success'); }catch(e){}
+    try{ toast(`✅ PDF A4 landscape مع علامات الزوايا — افتحو ف Adobe Reader (مكاتش Aperçu)، Orientation=Landscape، Auto-Rotate=OFF، Actual Size=100%، Paper Size=A4`,'success'); }catch(e){}
   }catch(e){
     try{ hideLoader(); }catch(_){}
     console.error('downloadChequePDF', e);

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v219-force-echeance-render-in-pdf-png';
+const CACHE = 'suivi-v220-a4-landscape-pdf-no-rotation';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

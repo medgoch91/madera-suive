@@ -17,6 +17,7 @@
 <link rel="apple-touch-icon" href="logo.svg">
 <title>سويفي — إدارة التسويات والبونات</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Courier+Prime:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs" type="module"></script>
 <script type="module">window.pdfjsLib = (await import('https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.min.mjs'));window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
@@ -8656,7 +8657,8 @@ function renderPrintCheque(){
       </div>
       <div class="pc-hero-actions">
         <button class="btn btn-accent" onclick="doPrint()">${printBtnLbl}</button>
-        <button class="btn" style="background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:0" onclick="downloadChequePNG()" title="تنزيل كصورة PNG لطباعة مستقرة عبر Mac+Windows">📸 PNG</button>
+        <button class="btn" style="background:linear-gradient(135deg,#9333ea,#7c5cfc);color:#fff;border:0;font-weight:800" onclick="downloadChequePDF()" title="تنزيل PDF بالمقاس الحقيقي (200×130mm للإيفي / 176×80mm للشيك). افتحو ف Aperçu/Adobe و اطبعو ب 'Taille réelle 100%'. هاكا كيخدم 100% — مكاتعاودش navigateur.">📄 تنزيل PDF (المقاس الحقيقي)</button>
+        <button class="btn" style="background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:0" onclick="downloadChequePNG()" title="تنزيل كصورة PNG (alternative)">📸 PNG</button>
         <button class="btn btn-outline" onclick="printAlignmentTest()" title="ورقة معايرة">🎯 جرب</button>
         <button class="btn btn-outline" onclick="shareChequeToTelegram()" title="Telegram">📤</button>
         <button class="btn btn-outline" onclick="resetPrintForm()" title="تفريغ">↺</button>
@@ -8746,6 +8748,24 @@ function renderPrintCheque(){
           <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">↕️ إزاحة Y (مم) — موجب = تحت</div>
             <input id="po-y" type="number" step="0.5" value="${getPrintOffsetY()}" onchange="setPrintOffset('y',this.value)" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif"></label>
         </div>
+
+        <!-- 4-direction nudge buttons (post-print correction) -->
+        <div style="margin-top:12px;padding:10px;background:rgba(245,158,11,.04);border:1px dashed rgba(245,158,11,.3);border-radius:6px">
+          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;text-align:center;font-weight:700">⚡ بعد الطبع — صحح بسرعة</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;max-width:160px;margin:0 auto">
+            <div></div>
+            <button onclick="nudgePrintOffset('y',-1)" title="L-text yji shoyya fou9 (-1mm)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">↑</button>
+            <div></div>
+            <button onclick="nudgePrintOffset('x',-1)" title="L-text yji shoyya l-yamine (-1mm X)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">→</button>
+            <div style="text-align:center;padding-top:8px;font-size:10px;color:var(--text3)">1mm</div>
+            <button onclick="nudgePrintOffset('x',1)" title="L-text yji shoyya l-shma3 (+1mm X)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">←</button>
+            <div></div>
+            <button onclick="nudgePrintOffset('y',1)" title="L-text yji shoyya tht (+1mm Y)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">↓</button>
+            <div></div>
+          </div>
+          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px">طبع → شوف الإزاحة → كليك ⬆⬇⬅➡ — يخزن تلقائي</div>
+        </div>
+
         <div style="font-size:10px;color:var(--text3);margin-top:8px">💡 هاد القيم خاصة بهاد الطابعة فقط — مكاتأثرش على تصميم الحقول</div>
       </div>
 
@@ -9136,6 +9156,63 @@ async function downloadChequePNG(){
     console.error('downloadChequePNG', e);
     try{ toast('❌ '+(e&&e.message||'فشل'),'error'); }catch(_){}
   }
+}
+
+// PDF download at EXACT cheque/effet paper dimensions — the recommended
+// path per the 2026-05-18 research. Bypasses Chrome's @page lottery
+// (which silently ignored custom paper sizes → blank cheque output) by
+// generating a PDF document explicitly at 200×130mm (effet) or
+// 176×80mm (cheque). User opens the PDF in Preview / Adobe Reader and
+// prints with "Actual size / 100%" — the OS print pipeline then honors
+// the page size correctly across Mac + Windows + Epson drivers.
+async function downloadChequePDF(){
+  const wrap = document.getElementById('pc-cheque-wrap');
+  if(!wrap){ try{ toast('⚠️ المعاينة غير متوفرة','warning'); }catch(e){} return; }
+  if(typeof html2canvas === 'undefined' || typeof window.jspdf === 'undefined'){
+    try{ toast('⚠️ المكتبات قيد التحميل — أعد المحاولة بعد ثانية','warning'); }catch(e){}
+    return;
+  }
+  try{
+    try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF بالمقاس الحقيقي...'); }catch(e){}
+    const isEff = printMode==='effet';
+    const pW = isEff ? 200 : 176;
+    const pH = isEff ? 130 : 80;
+    // Render preview wrap → high-res canvas (4x for crisp 300dpi result)
+    const canvas = await html2canvas(wrap, {
+      backgroundColor: '#ffffff',
+      scale: 4, useCORS: true, allowTaint: true, logging: false,
+      width: wrap.offsetWidth, height: wrap.offsetHeight,
+    });
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    // jsPDF custom page size in MILLIMETRES — exactly matches real paper
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({orientation: pW>pH?'landscape':'portrait', unit: 'mm', format: [pW, pH]});
+    doc.addImage(imgData, 'JPEG', 0, 0, pW, pH, undefined, 'FAST');
+    const num = (document.getElementById('pc-num')||{value:''}).value || '';
+    const ordre = (document.getElementById('pc-ordre')||{value:''}).value.trim() || (isEff?'effet':'cheque');
+    const safeOrdre = ordre.replace(/[^A-Za-z0-9 _-]/g,'').slice(0,30).trim().replace(/\s+/g,'-') || (isEff?'effet':'cheque');
+    const filename = (isEff?'EFFET':'CHEQUE')+'-'+safeOrdre+(num?'-'+num:'')+'.pdf';
+    doc.save(filename);
+    try{ hideLoader(); }catch(e){}
+    try{ toast(`✅ تم تنزيل PDF (${pW}×${pH}mm) — افتحو ف Aperçu/Adobe و اطبعو ب "Taille réelle / 100%"`,'success'); }catch(e){}
+  }catch(e){
+    try{ hideLoader(); }catch(_){}
+    console.error('downloadChequePDF', e);
+    try{ toast('❌ '+(e&&e.message||'فشل'),'error'); }catch(_){}
+  }
+}
+
+// ── Post-print nudge buttons: 4-direction offset correction in 1mm steps ──
+// After a print, user observes the shift and clicks ↑↓←→ to adjust.
+// Each click adjusts print_offset_<mode>_<axis> by the step amount.
+function nudgePrintOffset(axis, delta){
+  const cur = (axis==='x') ? getPrintOffsetX() : getPrintOffsetY();
+  const next = Math.round((cur + delta) * 10) / 10;
+  setPrintOffset(axis, next);
+  // Update the input fields if visible
+  const inp = document.getElementById('po-'+axis);
+  if(inp) inp.value = next;
+  try{ toast(`↻ Offset ${axis.toUpperCase()} = ${next} mm`, 'info'); }catch(e){}
 }
 
 function sendChequeToPrinter(html){

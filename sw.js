@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v226-print-echeance-from-bon-date-plus-terms';
+const CACHE = 'suivi-v227-cheques-bulk-pdf-plus-print-list';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

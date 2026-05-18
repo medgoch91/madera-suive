@@ -6362,6 +6362,152 @@ function ckToggleSelAll(checked, ids){
   ckSelected = new Set(checked ? ids : []);
   renderCheques();
 }
+// Bulk PDF — generate a multi-page PDF with every selected cheque/effet
+// on its own A4 portrait page, content pre-rotated CCW so the printer's
+// auto-rotate cancels out. Single download for the whole batch.
+async function ckBulkPDF(){
+  if(!ckSelected.size){ try{ toast('⚠️ ما حددتي حتى شيك','warning'); }catch(e){} return; }
+  if(typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined'){
+    try{ toast('⚠️ المكتبات قيد التحميل — أعد المحاولة','warning'); }catch(e){} return;
+  }
+  const ids = [...ckSelected];
+  const items = ids.map(id => cheques.find(c => c.id===id)).filter(c => c && c.type !== 'espece');
+  if(!items.length){ try{ toast('⚠️ النقد لا يطبع كهذا — اختر شيكات/إيفيات','warning'); }catch(e){} return; }
+  try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF متعدد ('+items.length+' صفحة)...'); }catch(e){}
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+  let first = true;
+  // Walk each cheque: navigate the print-cheque page to it, capture the
+  // preview wrap, add as a PDF page. The navigation is synchronous via
+  // printCheque() + a short await to let renderPrintCheque finish.
+  for(const c of items){
+    try{
+      printCheque(c.id);
+      // Wait for renderPrintCheque + applyChqCfgToPreview + autoScalePreview
+      await new Promise(r => setTimeout(r, 350));
+      const wrap = document.getElementById('pc-cheque-wrap');
+      if(!wrap){ continue; }
+      // Force échéance auto-fill for effets
+      if(c.type === 'effet'){
+        const echInp = document.getElementById('pc-echeance');
+        const pfEch = document.getElementById('pf-echeance');
+        if(echInp && !echInp.value){
+          // Use the echeance that printCheque pre-computed (echeanceFromBon)
+          // or fallback to the cheque's stored echeance.
+          const fallback = c.echeance || '';
+          if(fallback){
+            echInp.value = fallback;
+            if(pfEch){ pfEch.textContent = fmtDate(fallback); pfEch.style.display='block'; }
+          }
+        }
+        try{ updatePrintPreview(); }catch(e){}
+        await new Promise(r => setTimeout(r, 100));
+      }
+      const canvas = await html2canvas(wrap, {backgroundColor:'#ffffff', scale:3, useCORS:true, allowTaint:true, logging:false, width:wrap.offsetWidth, height:wrap.offsetHeight});
+      // Pre-rotate 90° CCW (same trick as downloadChequePDF)
+      const rot = document.createElement('canvas');
+      rot.width = canvas.height; rot.height = canvas.width;
+      const rctx = rot.getContext('2d');
+      rctx.translate(rot.width/2, rot.height/2);
+      rctx.rotate(-Math.PI/2);
+      rctx.drawImage(canvas, -canvas.width/2, -canvas.height/2);
+      const imgData = rot.toDataURL('image/jpeg', 0.92);
+      const cW = c.type === 'effet' ? 200 : 176;
+      const cH = c.type === 'effet' ? 130 : 80;
+      if(!first) doc.addPage('a4','portrait');
+      first = false;
+      // Image is rotated → swap dimensions
+      doc.addImage(imgData, 'JPEG', 0, 0, cH, cW, undefined, 'FAST');
+      // Corner marks
+      doc.setDrawColor(255,80,80);
+      doc.setLineWidth(0.3);
+      [[0,0],[cH,0],[0,cW],[cH,cW]].forEach(([x,y])=>{ doc.line(x-1.5,y,x+1.5,y); doc.line(x,y-1.5,x,y+1.5); });
+    }catch(e){ console.warn('bulk pdf page failed', c.id, e); }
+  }
+  try{ hideLoader(); }catch(e){}
+  const fname = 'CHEQUES-BULK-'+new Date().toISOString().slice(0,10)+'.pdf';
+  doc.save(fname);
+  try{ toast(`✅ تم تنزيل PDF ب ${items.length} صفحة · افتحو ف Adobe Reader و طبع`,'success'); }catch(e){}
+  // Navigate back to the cheques list when done
+  try{ showPage('cheques', document.querySelector('.nav-btn[onclick*="\'cheques\'"]')); }catch(e){}
+}
+
+// Print a clean A4 ledger of the selected cheques — for verification (not
+// for delivering as actual cheques). Similar to printFactList.
+function ckPrintList(){
+  if(!ckSelected.size){ try{ toast('⚠️ ما حددتي حتى شيك','warning'); }catch(e){} return; }
+  const items = [...ckSelected].map(id => cheques.find(c => c.id===id)).filter(Boolean);
+  items.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const totMontant = items.reduce((s,c)=>s+(Number(c.montant)||0), 0);
+  const soc = (typeof factSociete!=='undefined' && factSociete) ? factSociete : {nom:'MADERA DECO'};
+  const typeLbl = t => t==='effet'?'📜 إيفي':(t==='espece'?'💵 نقد':'💳 شيك');
+  const statusCol = s => s==='مدفوع'?'#10b981':(s==='معلق'?'#f59e0b':(s==='مرفوض'?'#ef4444':'#64748b'));
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>قائمة التسويات</title>
+<style>
+@page{size:A4 portrait;margin:12mm}
+*{box-sizing:border-box;font-family:'Cairo',Arial,sans-serif}
+body{margin:0;color:#0f172a;font-size:10pt;line-height:1.5}
+.header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px}
+h1{font-size:18pt;margin:0 0 2px}
+.h-info{font-size:9pt;color:#475569}
+.period{background:#fef3c7;border-right:4px solid #f59e0b;padding:8px 14px;margin:10px 0 14px;font-weight:700;font-size:11pt;display:flex;justify-content:space-between}
+table{width:100%;border-collapse:collapse;font-size:9.5pt}
+th{background:#f1f5f9;text-align:right;padding:7px 8px;border:1px solid #cbd5e1;font-weight:700;font-size:9pt}
+td{padding:6px 8px;border:1px solid #e2e8f0}
+.num{font-weight:700;direction:ltr;text-align:left}
+.amt{direction:ltr;text-align:left;font-family:'Cairo',sans-serif;font-weight:700}
+.tot{background:#0f172a;color:#fff;font-weight:800}
+.tot td{border-color:#0f172a}
+.pill{padding:1px 6px;border-radius:3px;font-size:8pt;font-weight:700}
+.actions{position:fixed;top:5mm;right:5mm;display:flex;gap:6px;z-index:999}
+.actions button{padding:6px 14px;font:700 11px Cairo,sans-serif;border:0;border-radius:5px;cursor:pointer}
+@media print{.actions{display:none}}
+</style></head><body>
+<div class="actions">
+  <button onclick="window.print()" style="background:#7c5cfc;color:#fff">🖨️ طبع</button>
+  <button onclick="window.close()" style="background:#475569;color:#fff">✖ إغلاق</button>
+</div>
+<div class="header">
+  <div><h1>${escB(soc.nom||'MADERA DECO')}</h1>
+    <div class="h-info">${soc.ice?'ICE: '+escB(soc.ice)+' · ':''}${soc.if?'IF: '+escB(soc.if)+' · ':''}${soc.rc?'RC: '+escB(soc.rc):''}</div>
+  </div>
+  <div style="text-align:left">
+    <h1 style="margin:0;font-size:14pt">💳 قائمة التسويات</h1>
+    <div class="h-info">${fmtDate(new Date().toISOString().slice(0,10))}</div>
+  </div>
+</div>
+<div class="period">
+  <span>📋 ${items.length} تسوية مختارة</span>
+  <span>المجموع: <span class="amt" style="color:#7c5cfc">${fmtN(totMontant)} DH</span></span>
+</div>
+<table>
+  <thead><tr>
+    <th>#</th><th>النوع</th><th>الرقم</th><th>الفورنيسور</th>
+    <th>التاريخ</th><th>الاستحقاق</th><th>المبلغ</th><th>الحالة</th>
+  </tr></thead>
+  <tbody>${items.map((c,i) => `<tr>
+    <td>${i+1}</td>
+    <td>${typeLbl(c.type)}</td>
+    <td class="num">${escB(c.num||'')}</td>
+    <td>${escB(c.fournisseur||'—')}</td>
+    <td class="num">${fmtDate(c.date)}</td>
+    <td class="num">${c.type==='espece'?'—':fmtDate(c.echeance)}</td>
+    <td class="amt">${fmtN(Number(c.montant)||0)}</td>
+    <td><span class="pill" style="background:${statusCol(c.status)}22;color:${statusCol(c.status)}">${escB(c.status||'—')}</span></td>
+  </tr>`).join('')}</tbody>
+  <tfoot><tr class="tot">
+    <td colspan="6" style="text-align:right">المجموع (${items.length} تسوية):</td>
+    <td class="amt">${fmtN(totMontant)}</td>
+    <td></td>
+  </tr></tfoot>
+</table>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=1100,height=900');
+  if(!w){ try{ toast('⚠️ النوافذ المنبثقة محظورة','warning'); }catch(e){} return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{w.focus();}catch(e){} }, 200);
+}
+
 async function ckBulkStatus(status){
   if(!ckSelected.size) return;
   if(!confirm(`تعديل ${ckSelected.size} شيك إلى "${status}"؟`)) return;
@@ -6510,6 +6656,9 @@ function renderCheques(){
       <span style="font-weight:700;color:var(--accent);font-size:13px">☑️ <span id="ck-bulk-cnt">${ckSelected.size}</span> شيك محدد</span>
       <span style="font-size:12px;color:var(--text2)">المجموع: <b style="color:var(--accent)">${fmt(selSum)}</b></span>
       <div style="display:flex;gap:6px;margin-inline-start:auto;flex-wrap:wrap">
+        <button class="btn-ghost" onclick="ckBulkPDF()" style="color:var(--accent);font-size:12px;font-weight:700">📄 PDF متعدد</button>
+        <button class="btn-ghost" onclick="ckPrintList()" style="color:var(--accent);font-size:12px">🖨️ طبع القائمة</button>
+        <span style="width:1px;background:var(--border);margin:0 4px"></span>
         <button class="btn-ghost" onclick="ckBulkStatus('مدفوع')" style="color:var(--green);font-size:12px">✅ مدفوع</button>
         <button class="btn-ghost" onclick="ckBulkStatus('معلق')" style="color:var(--amber);font-size:12px">⏳ معلق</button>
         <button class="btn-ghost" onclick="ckBulkStatus('مرفوض')" style="color:var(--red);font-size:12px">🚫 مرفوض</button>

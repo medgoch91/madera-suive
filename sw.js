@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v220-a4-landscape-pdf-no-rotation';
+const CACHE = 'suivi-v221-pdf-pre-rotated-compensate-printer';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

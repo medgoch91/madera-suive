@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v247-print-cheque-pro-redesign';
+const CACHE = 'suivi-v248-cheque-premium-banking-redesign';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

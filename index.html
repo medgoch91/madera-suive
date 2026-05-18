@@ -9880,147 +9880,186 @@ function renderPrintCheque(){
   document.getElementById('page-print-cheque').innerHTML=
   _renderChequesTabsHTML('print-cheque')
   +`<style>
-    /* ── Sticky top bar with mode + primary action ── */
-    .pc2-topbar{position:sticky;top:0;z-index:20;background:linear-gradient(180deg,var(--bg) 70%,transparent);padding:14px 0 12px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin-bottom:18px}
-    .pc2-mode{display:inline-flex;background:var(--bg2);padding:5px;border-radius:12px;border:1px solid var(--border);box-shadow:inset 0 1px 2px rgba(0,0,0,.04)}
-    .pc2-mode button{background:transparent;border:0;color:var(--text2);padding:9px 22px;font-size:13px;font-weight:700;cursor:pointer;font-family:'Cairo',sans-serif;border-radius:8px;transition:all .18s;display:flex;align-items:center;gap:6px}
-    .pc2-mode button.active{background:linear-gradient(135deg,#7c5cfc,#4f8ef7);color:#fff;box-shadow:0 4px 14px rgba(124,92,252,.45)}
-    .pc2-actions{display:flex;gap:8px;align-items:center}
-    .pc2-actions .btn-primary{padding:11px 22px;font-size:13px;font-weight:800;background:linear-gradient(135deg,#10b981,#06b6d4);color:#fff;border:0;border-radius:10px;cursor:pointer;font-family:'Cairo',sans-serif;box-shadow:0 4px 14px rgba(16,185,129,.4);transition:transform .12s,box-shadow .12s}
-    .pc2-actions .btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(16,185,129,.55)}
-    .pc2-actions .btn-secondary{padding:11px 16px;font-size:13px;font-weight:700;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;cursor:pointer;font-family:'Cairo',sans-serif;transition:all .12s;display:inline-flex;align-items:center;gap:6px}
-    .pc2-actions .btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
-    .pc2-menu{position:relative}
-    .pc2-menu-btn{padding:11px 14px;font-size:16px;font-weight:800;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:10px;cursor:pointer}
-    .pc2-menu-list{display:none;position:absolute;top:calc(100% + 6px);right:0;min-width:240px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,.35);padding:6px;z-index:30}
-    .pc2-menu.open .pc2-menu-list{display:block}
-    .pc2-menu-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;color:var(--text);font-size:13px;font-weight:600;border:0;background:transparent;width:100%;font-family:'Cairo',sans-serif;text-align:start}
-    .pc2-menu-item:hover{background:var(--bg3);color:var(--accent)}
-    .pc2-menu-item .em{font-size:18px}
+    /* ─────────────────────────────────────────────────────────────
+       Premium banking aesthetic — inspired by Stripe Dashboard +
+       Pennylane + Sage Business Cloud. Sophisticated, less emoji,
+       crisp typography hierarchy, generous breathing room.
+       ───────────────────────────────────────────────────────────── */
 
-    /* ── Main 2-col grid: form (left) + preview (right) ── */
-    .pc2-grid{display:grid;grid-template-columns:380px 1fr;gap:20px;align-items:start;margin-bottom:18px}
-    @media (max-width:1050px){.pc2-grid{grid-template-columns:1fr}}
+    /* Banking-blue palette + parchment paper */
+    :root{--pc-blue:#0a4d8f;--pc-blue-2:#1e6cb8;--pc-gold:#c8a44a;--pc-paper:#fdfcf7;--pc-ink:#0a1929}
 
-    /* ── Form card ── */
-    .pc2-form{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;position:sticky;top:88px}
-    .pc2-form-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border)}
-    .pc2-form-title{font-size:15px;font-weight:800;color:var(--text);display:flex;align-items:center;gap:8px}
-    .pc2-section{margin-bottom:14px}
-    .pc2-section:last-child{margin-bottom:0}
-    .pc2-section-lbl{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:5px}
-    .pc2-row{display:grid;gap:10px}
-    .pc2-row.cols-2{grid-template-columns:1fr 1fr}
-    .pc2-field-lbl{font-size:11px;color:var(--text2);font-weight:600;margin-bottom:4px;display:block}
-    .pc2-input{width:100%;padding:9px 11px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:13px;font-family:'Cairo',sans-serif;transition:border-color .15s}
-    .pc2-input:focus{border-color:var(--accent);outline:0;box-shadow:0 0 0 3px rgba(124,92,252,.12)}
-    .pc2-lettres{background:linear-gradient(135deg,rgba(79,142,247,.08),rgba(124,92,252,.05));border:1px solid rgba(79,142,247,.25);border-radius:10px;padding:11px 14px;margin-top:8px}
-    .pc2-lettres-lbl{font-size:9px;color:#4f8ef7;font-weight:800;letter-spacing:1.2px;margin-bottom:4px}
-    .pc2-lettres-val{font-size:12px;font-weight:700;color:var(--text);direction:ltr;font-family:'Courier Prime','Courier New',monospace;line-height:1.4;min-height:18px}
-    #pc-msg{text-align:center;font-size:12px;min-height:16px;font-weight:600;margin-top:8px}
+    /* ─── HERO HEADER ─── */
+    .pc3-hero{position:relative;background:linear-gradient(135deg,#0a4d8f 0%,#1e3a72 60%,#0f2447 100%);color:#fff;padding:26px 28px 22px;border-radius:16px 16px 0 0;margin-bottom:0;overflow:hidden}
+    .pc3-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 200px at 10% 30%,rgba(200,164,74,.10),transparent 60%);pointer-events:none}
+    .pc3-hero-top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative}
+    .pc3-hero-title{display:flex;align-items:center;gap:14px}
+    .pc3-hero-mark{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,#c8a44a,#9a7d30);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;box-shadow:0 4px 14px rgba(200,164,74,.4);font-family:'Inter','Cairo',sans-serif;letter-spacing:-.5px}
+    .pc3-hero-h{font-size:18px;font-weight:800;letter-spacing:-.3px;font-family:'Inter','Cairo',sans-serif;color:#fff}
+    .pc3-hero-sub{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.4px;font-weight:500}
+    .pc3-status{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);color:#fff;padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
+    .pc3-status::before{content:'';width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981}
 
-    /* ── Preview area ── */
-    .pc2-preview{display:flex;flex-direction:column;gap:12px}
-    .pc2-preview-card{background:radial-gradient(ellipse at top,rgba(124,92,252,.05),transparent 60%);border:1px solid var(--border);border-radius:14px;padding:22px 18px;position:relative}
-    .pc2-preview-frame{background:#fff;border-radius:6px;box-shadow:0 24px 80px rgba(0,0,0,.55),0 0 0 1px rgba(0,0,0,.1);padding:0;overflow:visible;display:flex;justify-content:center}
-    .pc2-preview-info{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;font-size:11px;color:var(--text3)}
-    .pc2-preview-info .badge{background:rgba(16,185,129,.12);color:#10b981;padding:4px 10px;border-radius:20px;font-weight:700;border:1px solid rgba(16,185,129,.3);font-size:10px}
-    .pc2-howto{font-size:11px;color:var(--text2);background:rgba(79,142,247,.05);border:1px solid rgba(79,142,247,.2);border-radius:10px;padding:11px 14px;line-height:1.7}
-    .pc2-howto b{color:#4f8ef7}
+    /* Mode tabs — elegant underline style */
+    .pc3-tabs{display:flex;gap:0;margin-top:18px;border-bottom:1px solid rgba(255,255,255,.15);position:relative}
+    .pc3-tab{background:transparent;border:0;color:rgba(255,255,255,.55);padding:11px 22px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;border-bottom:2px solid transparent;transition:color .18s,border-color .18s;margin-bottom:-1px;letter-spacing:.2px}
+    .pc3-tab:hover{color:rgba(255,255,255,.85)}
+    .pc3-tab.active{color:#fff;border-bottom-color:#c8a44a;font-weight:700}
+
+    /* ─── ACTION BAR (right of hero) ─── */
+    .pc3-cta{display:flex;gap:8px;align-items:center}
+    .pc3-cta .pc3-btn-primary{padding:11px 22px;font-size:13px;font-weight:700;background:#fff;color:var(--pc-ink);border:0;border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.18),inset 0 -2px 0 rgba(0,0,0,.06);transition:transform .12s,box-shadow .12s;letter-spacing:.2px}
+    .pc3-cta .pc3-btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(0,0,0,.25),inset 0 -2px 0 rgba(0,0,0,.06)}
+    .pc3-cta .pc3-btn-ghost{padding:11px 14px;font-size:13px;font-weight:600;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;transition:background .12s;letter-spacing:.2px}
+    .pc3-cta .pc3-btn-ghost:hover{background:rgba(255,255,255,.18)}
+    .pc3-menu{position:relative}
+    .pc3-menu-btn{padding:11px 13px;font-size:18px;font-weight:800;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;line-height:1}
+    .pc3-menu-btn:hover{background:rgba(255,255,255,.18)}
+    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:30}
+    .pc3-menu.open .pc3-menu-list{display:block}
+    .pc3-menu-item{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:8px;cursor:pointer;color:var(--text);font-size:12.5px;font-weight:600;border:0;background:transparent;width:100%;font-family:'Cairo',sans-serif;text-align:start}
+    .pc3-menu-item:hover{background:var(--bg3);color:var(--accent)}
+    .pc3-menu-item span:first-child{font-size:15px;width:20px;text-align:center;opacity:.8}
+
+    /* ─── MAIN WORKSPACE ─── */
+    .pc3-workspace{background:var(--bg2);border:1px solid var(--border);border-top:0;border-radius:0 0 16px 16px;padding:24px 24px 24px;margin-bottom:18px}
+    .pc3-grid{display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start}
+    @media (max-width:1050px){.pc3-grid{grid-template-columns:1fr}}
+
+    /* ─── FORM PANEL ─── */
+    .pc3-form{position:sticky;top:20px}
+    .pc3-section{margin-bottom:20px}
+    .pc3-section:last-child{margin-bottom:0}
+    .pc3-section-head{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;font-family:'Inter','Cairo',sans-serif}
+    .pc3-section-head .num{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#0a4d8f,#1e6cb8);color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif}
+    .pc3-input-wrap{position:relative}
+    .pc3-input{width:100%;padding:11px 13px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:10px;font-size:13px;font-family:'Cairo',sans-serif;transition:all .18s}
+    .pc3-input:focus{border-color:var(--pc-blue-2);outline:0;box-shadow:0 0 0 3px rgba(30,108,184,.15);background:var(--bg2)}
+    .pc3-input.big{font-size:22px;font-weight:800;direction:ltr;font-family:'Courier Prime','Inter',monospace;letter-spacing:.5px;padding:12px 13px}
+    .pc3-row{display:grid;gap:10px}
+    .pc3-row.cols-2{grid-template-columns:1fr 1fr}
+    .pc3-flbl{font-size:10px;color:var(--text2);font-weight:600;margin-bottom:5px;display:block;letter-spacing:.3px;text-transform:uppercase}
+    .pc3-lettres{background:linear-gradient(135deg,#fdfcf7 0%,#f5f0e0 100%);border:1px solid rgba(200,164,74,.4);border-radius:10px;padding:13px 16px;margin-top:10px;position:relative}
+    .pc3-lettres::before{content:'EN LETTRES';position:absolute;top:-7px;left:14px;font-size:8px;font-weight:800;color:#c8a44a;background:var(--bg2);padding:1px 8px;letter-spacing:1.2px;font-family:'Inter','Cairo',sans-serif}
+    .pc3-lettres-val{font-size:11.5px;font-weight:700;color:#0a1929;direction:ltr;font-family:'Courier Prime','Courier New',monospace;line-height:1.5;min-height:18px;text-transform:uppercase;letter-spacing:.3px}
+    #pc-msg{text-align:center;font-size:12px;min-height:16px;font-weight:600;margin-top:10px}
+
+    /* ─── PREVIEW PANEL ─── */
+    .pc3-canvas{background:linear-gradient(135deg,#1a2332 0%,#0f1825 100%);border:1px solid var(--border);border-radius:14px;padding:32px 24px;position:relative;overflow:visible}
+    .pc3-canvas::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.025) 1px,transparent 1px);background-size:18px 18px;border-radius:14px;pointer-events:none;opacity:.6}
+    .pc3-canvas-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;position:relative;z-index:1}
+    .pc3-canvas-lbl{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:1.5px;text-transform:uppercase;font-family:'Inter','Cairo',sans-serif}
+    .pc3-size-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(200,164,74,.12);color:#c8a44a;padding:5px 12px;border-radius:20px;font-weight:700;border:1px solid rgba(200,164,74,.35);font-size:10px;letter-spacing:.8px;font-family:'Inter',sans-serif}
+    .pc3-paper-stage{display:flex;justify-content:center;align-items:center;position:relative;z-index:1;min-height:280px}
+    .pc3-paper{background:#fff;border-radius:4px;box-shadow:0 30px 60px -10px rgba(0,0,0,.5),0 18px 36px -18px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.06);overflow:visible;position:relative;transition:transform .2s}
+    .pc3-paper::before{content:'';position:absolute;top:-2px;right:8px;width:36px;height:14px;background:linear-gradient(180deg,rgba(0,0,0,.10),transparent);transform:skewX(-25deg);pointer-events:none}
+    .pc3-tip{margin-top:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 16px;font-size:11px;color:rgba(255,255,255,.65);line-height:1.7;position:relative;z-index:1}
+    .pc3-tip b{color:#c8a44a;font-weight:700}
 
     /* Trailing line after montant en lettres in the preview */
     .pc-fill::after{content:'';display:inline-block;width:18%;border-bottom:1.2px solid #000;vertical-align:0.18em;margin-left:2px;}
+
+    /* Polish */
+    .pc3-form input::placeholder{color:var(--text3);opacity:.55}
   </style>
 
-  <!-- Sticky top bar -->
-  <div class="pc2-topbar">
-    <div class="pc2-mode">
-      <button class="${!isEffet?'active':''}" onclick="setPrintMode('cheque')">💳 شيك</button>
-      <button class="${isEffet?'active':''}" onclick="setPrintMode('effet')">📜 ورقة</button>
-    </div>
-    <div class="pc2-actions">
-      <button class="btn-primary" onclick="doPrint()">${printBtnLbl}</button>
-      <button class="btn-secondary" onclick="downloadChequePDF()" title="PDF بالمقاس الحقيقي"><span style="font-size:15px">📄</span> PDF</button>
-      <div class="pc2-menu" id="pc2-menu">
-        <button class="pc2-menu-btn" onclick="document.getElementById('pc2-menu').classList.toggle('open')" title="إجراءات أخرى">⋮</button>
-        <div class="pc2-menu-list">
-          <button class="pc2-menu-item" onclick="downloadChequePNG();document.getElementById('pc2-menu').classList.remove('open')"><span class="em">📸</span> تنزيل صورة PNG</button>
-          <button class="pc2-menu-item" onclick="printAlignmentGrid();document.getElementById('pc2-menu').classList.remove('open')"><span class="em">🎯</span> ورقة معايرة الطابعة</button>
-          <button class="pc2-menu-item" onclick="shareChequeToTelegram();document.getElementById('pc2-menu').classList.remove('open')"><span class="em">📤</span> إرسال على Telegram</button>
-          <button class="pc2-menu-item" onclick="document.getElementById('pc-img-input').click();document.getElementById('pc2-menu').classList.remove('open')"><span class="em">🖼️</span> ${bgImg?'تغيير':'رفع'} صورة الخلفية</button>
-          <button class="pc2-menu-item" onclick="resetPrintForm();document.getElementById('pc2-menu').classList.remove('open')" style="color:var(--red)"><span class="em">↺</span> تفريغ النموذج</button>
+  <!-- ─── HERO HEADER: banking gradient + brand + status + actions ─── -->
+  <div class="pc3-hero">
+    <div class="pc3-hero-top">
+      <div class="pc3-hero-title">
+        <div class="pc3-hero-mark">M</div>
+        <div>
+          <div class="pc3-hero-h">${isEffet?'Lettre de change':'Génération de chèque'}</div>
+          <div class="pc3-hero-sub">MADERA DECO · Crédit du Maroc · ${isEffet?'200 × 130 mm':'176 × 80 mm'}</div>
         </div>
       </div>
-      <input type="file" id="pc-img-input" accept="image/*" style="display:none" onchange="loadChequeImg(this)">
+      <div class="pc3-cta">
+        <button class="pc3-btn-primary" onclick="doPrint()">${printBtnLbl}</button>
+        <button class="pc3-btn-ghost" onclick="downloadChequePDF()" title="PDF بالمقاس الحقيقي">PDF</button>
+        <div class="pc3-menu" id="pc3-menu">
+          <button class="pc3-menu-btn" onclick="document.getElementById('pc3-menu').classList.toggle('open')" title="إجراءات أخرى">⋮</button>
+          <div class="pc3-menu-list">
+            <button class="pc3-menu-item" onclick="downloadChequePNG();document.getElementById('pc3-menu').classList.remove('open')"><span>📸</span> تنزيل صورة PNG</button>
+            <button class="pc3-menu-item" onclick="printAlignmentGrid();document.getElementById('pc3-menu').classList.remove('open')"><span>🎯</span> ورقة معايرة الطابعة</button>
+            <button class="pc3-menu-item" onclick="shareChequeToTelegram();document.getElementById('pc3-menu').classList.remove('open')"><span>📤</span> إرسال على Telegram</button>
+            <button class="pc3-menu-item" onclick="document.getElementById('pc-img-input').click();document.getElementById('pc3-menu').classList.remove('open')"><span>🖼️</span> ${bgImg?'تغيير':'رفع'} صورة الخلفية</button>
+            <button class="pc3-menu-item" onclick="resetPrintForm();document.getElementById('pc3-menu').classList.remove('open')" style="color:var(--red)"><span>↺</span> تفريغ النموذج</button>
+          </div>
+        </div>
+        <input type="file" id="pc-img-input" accept="image/*" style="display:none" onchange="loadChequeImg(this)">
+      </div>
+    </div>
+    <div class="pc3-tabs">
+      <button class="pc3-tab ${!isEffet?'active':''}" onclick="setPrintMode('cheque')">Chèque</button>
+      <button class="pc3-tab ${isEffet?'active':''}" onclick="setPrintMode('effet')">Effet / Lettre de change</button>
     </div>
   </div>
 
-  <!-- 2-col layout: form + preview -->
-  <div class="pc2-grid">
-    <!-- LEFT: Form -->
-    <div class="pc2-form">
-      <div class="pc2-form-head">
-        <div class="pc2-form-title">${modeTitle}</div>
-        <span style="font-size:10px;color:var(--text3);background:var(--bg3);padding:3px 8px;border-radius:10px;font-weight:700">${isEffet?'200×130':'176×80'} mm</span>
-      </div>
+  <!-- ─── MAIN WORKSPACE: form + canvas ─── -->
+  <div class="pc3-workspace">
+    <div class="pc3-grid">
 
-      <div class="pc2-section">
-        <div class="pc2-section-lbl">👤 المستفيد</div>
-        <div class="ac-wrap"><input class="pc2-input" id="pc-ordre" placeholder="اسم الفورنيسور" oninput="updatePrintPreview();acInput('pc-ordre','ac-pc')" onblur="setTimeout(()=>acHide('ac-pc'),150)">
-        <div class="ac-list" id="ac-pc" style="display:none"></div></div>
-      </div>
+      <!-- LEFT: Form panel (sticky) -->
+      <div class="pc3-form">
 
-      <div class="pc2-section">
-        <div class="pc2-section-lbl">💰 المبلغ</div>
-        <input class="pc2-input" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()" style="font-size:18px;font-weight:800;direction:ltr;text-align:left">
-        <div class="pc2-lettres">
-          <div class="pc2-lettres-lbl">MONTANT EN TOUTES LETTRES</div>
-          <div class="pc2-lettres-val" id="pc-lettres-preview">—</div>
+        <div class="pc3-section">
+          <div class="pc3-section-head"><span><span class="num">1</span> &nbsp; Bénéficiaire</span></div>
+          <div class="ac-wrap"><input class="pc3-input" id="pc-ordre" placeholder="Nom du fournisseur" oninput="updatePrintPreview();acInput('pc-ordre','ac-pc')" onblur="setTimeout(()=>acHide('ac-pc'),150)">
+          <div class="ac-list" id="ac-pc" style="display:none"></div></div>
         </div>
+
+        <div class="pc3-section">
+          <div class="pc3-section-head"><span><span class="num">2</span> &nbsp; Montant</span><span style="color:#c8a44a;font-weight:700">DH</span></div>
+          <input class="pc3-input big" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()">
+          <div class="pc3-lettres">
+            <div class="pc3-lettres-val" id="pc-lettres-preview">—</div>
+          </div>
+        </div>
+
+        <div class="pc3-section">
+          <div class="pc3-section-head"><span><span class="num">3</span> &nbsp; ${isEffet?'Dates &amp; Lieu':'Date &amp; Lieu'}</span></div>
+          <div class="pc3-row ${isEffet?'cols-2':'cols-2'}">
+            <div><label class="pc3-flbl">${isEffet?'Création *':'Date *'}</label>
+              <input class="pc3-input" id="pc-date" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
+            ${isEffet?'<div><label class="pc3-flbl">Échéance</label><input class="pc3-input" id="pc-echeance" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>':'<div><label class="pc3-flbl">Ville</label><input class="pc3-input" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div><input type="hidden" id="pc-echeance">'}
+          </div>
+          ${isEffet?'<div style="margin-top:10px"><label class="pc3-flbl">Ville</label><input class="pc3-input" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div>':''}
+        </div>
+
+        <div id="pc-msg"></div>
       </div>
 
-      <div class="pc2-section">
-        <div class="pc2-section-lbl">📅 ${isEffet?'تواريخ':'التاريخ'} & 📍 المدينة</div>
-        <div class="pc2-row ${isEffet?'cols-2':'cols-2'}">
-          <div><label class="pc2-field-lbl">${isEffet?'تاريخ الإنشاء *':'تاريخ الشيك *'}</label>
-            <input class="pc2-input" id="pc-date" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
-          ${isEffet?'<div><label class="pc2-field-lbl">الاستحقاق</label><input class="pc2-input" id="pc-echeance" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>':'<div><label class="pc2-field-lbl">المدينة</label><input class="pc2-input" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div><input type="hidden" id="pc-echeance">'}
+      <!-- RIGHT: Canvas (dark surface, paper centered) -->
+      <div class="pc3-canvas">
+        <div class="pc3-canvas-head">
+          <div class="pc3-canvas-lbl">Aperçu en temps réel · échelle 1:1</div>
+          <div class="pc3-size-badge">${isEffet?'EFFET · 200×130 mm':'CHÈQUE · 176×80 mm'}</div>
         </div>
-        ${isEffet?'<div style="margin-top:10px"><label class="pc2-field-lbl">المدينة</label><input class="pc2-input" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div>':''}
-      </div>
-
-      <div id="pc-msg"></div>
-    </div>
-
-    <!-- RIGHT: Live preview -->
-    <div class="pc2-preview">
-      <div class="pc2-preview-card">
-        <div class="pc2-preview-info">
-          <span>📐 معاينة 1:1 — حقيقي بالمقاس</span>
-          <span class="badge">${isEffet?'EFFET · 200×130mm':'CHÈQUE · 176×80mm'}</span>
-        </div>
-        <div class="pc2-preview-frame" id="pc-preview-frame">
-          <div id="pc-preview-outer" style="overflow:visible;width:100%">
-            <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
-              <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:visible;color:#111;outline:1px dashed rgba(124,92,252,.2);outline-offset:-1px">
-                <div id="pc-bg" style="position:absolute;top:0;left:0;right:0;height:${isEffet?'105mm':'100%'};background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
-                  ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#999'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.5)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / ورقة':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
+        <div class="pc3-paper-stage">
+          <div class="pc3-paper" id="pc-preview-frame">
+            <div id="pc-preview-outer" style="overflow:visible;width:100%">
+              <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
+                <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:visible;color:#111;outline:1px dashed rgba(124,92,252,.2);outline-offset:-1px">
+                  <div id="pc-bg" style="position:absolute;top:0;left:0;right:0;height:${isEffet?'105mm':'100%'};background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
+                    ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#666'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.6)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / Lettre de change':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
+                  </div>
+                  <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
+                  <div id="pf-lettres1" class="pc-fill" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Courier Prime','Courier New',monospace;font-size:11pt;font-weight:700;color:#000;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.32;text-transform:uppercase"></div>
+                  <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
+                  <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
+                  <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
+                  <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
+                  <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
                 </div>
-                <div id="pf-montant" style="position:absolute;top:3mm;left:133mm;width:25mm;font-family:'Courier New',monospace;font-size:13pt;font-weight:700;color:#111;text-align:center;letter-spacing:0.5px;direction:ltr"></div>
-                <div id="pf-lettres1" class="pc-fill" style="position:absolute;top:17mm;left:40mm;width:80mm;font-family:'Courier Prime','Courier New',monospace;font-size:11pt;font-weight:700;color:#000;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.32;text-transform:uppercase"></div>
-                <div id="pf-lettres2" style="position:absolute;top:23mm;left:8mm;width:160mm;font-family:'Times New Roman',serif;font-size:11pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:normal;overflow:visible;line-height:1.25"></div>
-                <div id="pf-ordre" style="position:absolute;top:28mm;left:30mm;width:130mm;font-family:'Times New Roman',serif;font-size:12pt;font-weight:600;color:#111;direction:ltr;text-align:left;white-space:nowrap;overflow:hidden"></div>
-                <div id="pf-ville" style="position:absolute;top:39mm;left:117mm;width:22mm;font-family:'Times New Roman',serif;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
-                <div id="pf-date" style="position:absolute;top:39mm;left:148mm;width:22mm;font-family:'Courier New',monospace;font-size:10pt;font-weight:600;color:#111;text-align:left;direction:ltr"></div>
-                <div id="pf-echeance" style="position:absolute;top:5mm;left:141mm;width:28mm;font-family:'Courier New',monospace;font-size:11pt;font-weight:700;color:#111;text-align:left;direction:ltr;display:${isEffet?'block':'none'}"></div>
               </div>
             </div>
           </div>
         </div>
+        <div class="pc3-tip">
+          <b>Astuce</b> · Faites glisser n'importe quel champ dans l'aperçu pour le repositionner — la position est enregistrée automatiquement. Pour imprimer, utilisez du papier A4 à 100% sans marges.
+        </div>
       </div>
-      <div class="pc2-howto">
-        🖨️ <b>طريقة الطبع</b>: A4 · Scale <b>100%</b> · Margins <b>None</b> · حط ${isEffet?'الإيفي':'الشيك'} ف multi-purpose tray مزبوط m3a top-left · 💡 اسحب أي حقل ف المعاينة لتحريكو
-      </div>
+
     </div>
   </div>
 

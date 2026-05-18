@@ -7220,9 +7220,17 @@ function renderEcheancier(){
         const tot = its.reduce((s,i)=>s+(Number(i.c.montant)||0),0);
         const isToday = (yy===today.getFullYear() && mm-1===today.getMonth() && day===today.getDate());
         const cellBg = its.length ? 'rgba(239,68,68,'+Math.min(0.35, 0.10+its.length*0.08)+')' : 'var(--bg3)';
-        html += '<div onclick="echOpenDay(\''+k+'-'+String(day).padStart(2,'0')+'\')" style="background:'+cellBg+';border:'+(isToday?'2px solid var(--accent)':'1px solid var(--border)')+';border-radius:6px;padding:6px;min-height:54px;cursor:'+(its.length?'pointer':'default')+';transition:transform .1s" '+(its.length?'onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'\'"':'')+'>'
-          + '<div style="font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--accent)':'var(--text2)')+';font-size:11px">'+day+'</div>'
-          + (its.length ? '<div style="font-size:9px;font-weight:700;color:#ef4444;margin-top:2px">'+its.length+' · '+fmtK(tot)+'</div>' : '')
+        // Show full montant (not K-shortform) + fournisseur name per row.
+        // If multiple cheques on the same day, list each on its own line.
+        const fournisseurs_list = its.map(i => {
+          const fnom = (i.c.fournisseur||'—').slice(0,18);
+          return '<div style="font-size:9px;font-weight:600;color:#0f172a;line-height:1.3"><span style="color:#475569">'+escB(fnom)+'</span> · <span style="color:#dc2626;font-weight:800">'+fmtN(Number(i.c.montant)||0)+'</span></div>';
+        }).join('');
+        const totalBlock = its.length > 1 ? '<div style="font-size:9px;font-weight:800;color:#7c1d1d;border-top:1px dashed rgba(220,38,38,.4);margin-top:3px;padding-top:2px">Σ '+fmtN(tot)+'</div>' : '';
+        html += '<div onclick="echOpenDay(\''+k+'-'+String(day).padStart(2,'0')+'\')" style="background:'+cellBg+';border:'+(isToday?'2px solid var(--accent)':'1px solid var(--border)')+';border-radius:6px;padding:5px 6px;min-height:'+(its.length?(40+its.length*16):54)+'px;cursor:'+(its.length?'pointer':'default')+';transition:transform .1s" '+(its.length?'onmouseover="this.style.transform=\'scale(1.03)\';this.style.zIndex=\'10\';this.style.position=\'relative\'" onmouseout="this.style.transform=\'\';this.style.zIndex=\'\'"':'')+'>'
+          + '<div style="font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--accent)':'var(--text2)')+';font-size:11px;margin-bottom:'+(its.length?'3':'0')+'px">'+day+'</div>'
+          + fournisseurs_list
+          + totalBlock
         + '</div>';
       }
       html += '</div></div>';

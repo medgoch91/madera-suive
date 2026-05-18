@@ -9086,7 +9086,12 @@ function pcBgSrc(){ return printMode==='effet' ? effetImg : chequeImg; }
 // ktba ou sieze … kamlo ikono nafs ou ktba tkon proo ou m9adaaa").
 // Sizes are in pt, positions in mm, spacing in px (letter-spacing).
 const CHEQUE_CFG_DEFAULTS = {
-  montant:  {top:5,  left:109, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
+  // montant: WIDE enough for "#1.234.567,00#" worst case (~14 chars × 2.7mm at 14pt
+  // ≈ 38mm). Earlier defaults (25-28mm) clipped the trailing "#" silently —
+  // user complaint 2026-05-18: "MONTANT B CHEFFRE MFIHA DIEZ FLKHER". The
+  // # markers around the amount are a CDM banking convention that prevents
+  // post-print tampering. Both #'s MUST print or the cheque is invalid.
+  montant:  {top:5,  left:128, width:42,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
   lettres1: {top:20, left:32,  width:78,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
   lettres2: {top:28, left:8,   width:160, size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
   ordre:    {top:34, left:18,  width:100, size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
@@ -9124,7 +9129,9 @@ const EFFET_CFG_DEFAULTS = {
   // v5 — widened montant + tightened lettres per user feedback 2026-05-18:
   // ar9am ma banch kamlo (truncated), lettres khas tkon more compact.
   echeance: {top:10,  left:168, width:32,  size:12, spacing:0.3, align:'left',   font:'mono',  weight:700},
-  montant:  {top:18,  left:165, width:35,  size:13, spacing:0.2, align:'right',  font:'mono',  weight:700},
+  // montant: bumped from 35 to 42mm so #1.234.567,00# fits on effet (same
+  // CDM convention as cheque — trailing # MUST appear)
+  montant:  {top:18,  left:158, width:42,  size:13, spacing:0.2, align:'right',  font:'mono',  weight:700},
   lettres1: {top:28,  left:153, width:47,  size:10, spacing:0.1, align:'left',   font:'serif', weight:700},
   // lettres2 parked off-page (effet uses single wrap)
   lettres2: {top:200, left:153, width:47,  size:10, spacing:0.1, align:'left',   font:'serif', weight:700},
@@ -9186,6 +9193,17 @@ let _pcCfgCheque = (function(){
     localStorage.setItem(migKey,'1');
     localStorage.setItem('cheque_cfg', JSON.stringify(out));
   }
+  // v4 migration — widened montant zone so the trailing # never gets clipped.
+  // User report 2026-05-18: "MONTANT B CHEFFRE MFIHA DIEZ FLKHER" (no # at the
+  // end). Bumped width from 28mm → 42mm + repositioned. Preserves the user's
+  // other calibrations.
+  if(!localStorage.getItem('cheque_cfg_mig_v4')){
+    if(!out.montant || (out.montant.width||0) < 38){
+      out.montant = {...CHEQUE_CFG_DEFAULTS.montant};
+      localStorage.setItem('cheque_cfg', JSON.stringify(out));
+    }
+    localStorage.setItem('cheque_cfg_mig_v4','1');
+  }
   return out;
 })();
 // One-time migration v2 — earlier builds (v135-v141) shipped first-pass effet
@@ -9215,6 +9233,17 @@ try{
   if(!localStorage.getItem('effet_cfg_mig_v5')){
     localStorage.removeItem('effet_cfg');
     localStorage.setItem('effet_cfg_mig_v5','1');
+  }
+  // v6 — widened montant box (35→42mm) + shifted left so the trailing # never
+  // clips. Selective reset: only the montant field, keep user's other calibrations.
+  if(!localStorage.getItem('effet_cfg_mig_v6')){
+    let raw = {};
+    try{ raw = JSON.parse(localStorage.getItem('effet_cfg')||'{}'); }catch(e){}
+    if(!raw.montant || (raw.montant.width||0) < 42){
+      raw.montant = {...EFFET_CFG_DEFAULTS.montant};
+      localStorage.setItem('effet_cfg', JSON.stringify(raw));
+    }
+    localStorage.setItem('effet_cfg_mig_v6','1');
   }
 }catch(e){}
 let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);

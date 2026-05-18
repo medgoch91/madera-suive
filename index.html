@@ -9704,10 +9704,14 @@ function applyChqCfgToPreview(){
     if(!el.dataset.dragWired){
       el.dataset.dragWired = '1';
       el.style.cursor = 'move';
-      el.style.outline = '1px dashed rgba(124,92,252,.0)';
-      el.title = 'اسحب لتحريك الحقل';
-      el.addEventListener('mouseenter', ()=>{ el.style.outline = '1px dashed rgba(124,92,252,.7)'; el.style.background = 'rgba(124,92,252,.06)'; });
-      el.addEventListener('mouseleave', ()=>{ if(!el.dataset.dragging){ el.style.outline = '1px dashed rgba(124,92,252,.0)'; el.style.background = ''; } });
+      // Always-visible faint dashed outline so user can SEE the draggable
+      // zones even when fields are empty (was invisible until hover —
+      // user feedback 2026-05-18: "BLACH MN HADCHI KAMLO ANA 3TIK LES
+      // PHOTO" / "IDA2A MKYSD9CH LIA" — they couldn't discover drag).
+      el.style.outline = '1px dashed rgba(124,92,252,.35)';
+      el.title = 'اسحب لتحريك الحقل — Glisser pour déplacer';
+      el.addEventListener('mouseenter', ()=>{ el.style.outline = '2px dashed rgba(124,92,252,.95)'; el.style.background = 'rgba(124,92,252,.10)'; });
+      el.addEventListener('mouseleave', ()=>{ if(!el.dataset.dragging){ el.style.outline = '1px dashed rgba(124,92,252,.35)'; el.style.background = ''; } });
       el.addEventListener('mousedown', (ev)=>{
         ev.preventDefault();
         const wrap = document.getElementById('pc-cheque-wrap');
@@ -9914,6 +9918,10 @@ function renderPrintCheque(){
       </div>
     </div>
     <div class="pc-prev-stage">
+      <div style="background:linear-gradient(90deg,rgba(124,92,252,.10),rgba(6,182,212,.06));border:1px solid rgba(124,92,252,.35);border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:16px">💡</span>
+        <span><b>اسحب أي حقل ف المعاينة</b> لتحريكه — كل زون ف المعاينة (المبلغ، الحروف، المستفيد، التاريخ...) فيه ⬚ ديال نقش يمكنك تنقل الفأرة عليه و تسحبه. التغيير يخزن تلقائي.</span>
+      </div>
       <div class="pc-prev-frame" id="pc-preview-frame">
         <div id="pc-preview-outer" style="overflow:hidden;width:100%">
           <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">

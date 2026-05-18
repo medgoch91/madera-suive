@@ -10083,7 +10083,13 @@ function renderPrintCheque(){
     .pc3-menu{position:relative}
     .pc3-menu-btn{padding:11px 13px;font-size:18px;font-weight:800;background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;line-height:1;transition:all .12s}
     .pc3-menu-btn:hover{background:rgba(200,164,74,.18);border-color:var(--pc-gold-edge);color:var(--pc-gold)}
-    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--pc-gold-edge);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:100}
+    /* Dropdown anchor: in RTL flex, .pc3-menu ends up on the visual LEFT
+       of the action group → 'right:0' would push the dropdown off the
+       left edge of the screen. Use inset-inline-end:0 (logical) which
+       maps to LEFT in RTL → dropdown extends rightward, stays on screen. */
+    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);inset-inline-end:0;right:auto;left:auto;min-width:240px;background:var(--bg2);border:1px solid var(--pc-gold-edge);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:100}
+    html[dir="ltr"] .pc3-menu-list{right:0;left:auto}
+    html[dir="rtl"] .pc3-menu-list{left:0;right:auto}
     .pc3-menu.open .pc3-menu-list{display:block}
     .pc3-menu-item{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:8px;cursor:pointer;color:var(--text);font-size:12.5px;font-weight:600;border:0;background:transparent;width:100%;font-family:'Cairo',sans-serif;text-align:start}
     .pc3-menu-item:hover{background:rgba(200,164,74,.10);color:var(--pc-gold)}

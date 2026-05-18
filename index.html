@@ -7157,6 +7157,8 @@ function echFourSummary(fourName){
 }
 
 // ── Excel/CSV export of the entire échéancier ──
+// Uses semicolon separator + "sep=;" magic line so Excel auto-detects columns
+// on fr-MA and ar locales (where comma is the default decimal separator).
 function exportEcheancierCSV(){
   const items = (cheques||[]).filter(c => {
     if((c.status||'')!=='معلق') return false;
@@ -7165,25 +7167,37 @@ function exportEcheancierCSV(){
     return true;
   }).sort((a,b)=>(a.echeance||'').localeCompare(b.echeance||''));
   if(!items.length){ try{ toast('⚠️ لا تسويات','warning'); }catch(e){} return; }
+  const today = new Date(); today.setHours(0,0,0,0);
   const rows = [
-    ['#','الاستحقاق','النوع','الرقم','الفورنيسور','المبلغ DH','الحالة','تاريخ الإصدار'],
-    ...items.map((c,i) => [
-      i+1,
-      c.echeance||'',
-      c.type==='effet'?'effet':'cheque',
-      c.num||'',
-      c.fournisseur||'',
-      (Number(c.montant)||0).toFixed(2),
-      c.status||'',
-      c.date||'',
-    ])
+    ['#','الاستحقاق','النوع','الرقم','الفورنيسور','المبلغ (DH)','أيام تبقى','الحالة','تاريخ الإصدار','ملاحظات','مثبت'],
+    ...items.map((c,i) => {
+      const d = c.echeance ? new Date(c.echeance) : null;
+      let daysLeft = '';
+      if(d){ d.setHours(0,0,0,0); daysLeft = Math.round((d - today)/86400000); }
+      return [
+        i+1,
+        c.echeance||'',
+        c.type==='effet'?'effet':(c.type==='virement'?'virement':'cheque'),
+        c.num||'',
+        c.fournisseur||'',
+        (Number(c.montant)||0).toFixed(2).replace('.',','),  // fr-MA decimal comma
+        daysLeft,
+        c.status||'',
+        c.date||'',
+        chequeNote(c.id)||'',
+        isChequePinned(c.id)?'نعم':'',
+      ];
+    })
   ];
+  const SEP = ';';
   const csv = rows.map(r => r.map(v => {
     const s = String(v==null?'':v);
-    return /[,"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
-  }).join(',')).join('\n');
-  const bom = '﻿';  // UTF-8 BOM for Excel Arabic
-  const blob = new Blob([bom+csv], {type:'text/csv;charset=utf-8'});
+    // Escape if contains separator, quote, or newline
+    return /[;"\n\r]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(SEP)).join('\r\n');
+  const bom = '﻿';   // UTF-8 BOM for Excel Arabic
+  const magic = 'sep=;\r\n';  // Excel hint: this file uses ; as separator
+  const blob = new Blob([bom + magic + csv], {type:'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -7191,7 +7205,7 @@ function exportEcheancierCSV(){
   document.body.appendChild(a);
   a.click();
   setTimeout(()=>{ try{ a.remove(); URL.revokeObjectURL(url); }catch(e){} }, 1500);
-  try{ toast('✅ تم تنزيل CSV — افتحو ف Excel','success'); }catch(e){}
+  try{ toast('✅ تم تنزيل CSV — افتحو ف Excel، كل خانة ف stir منفصلة','success'); }catch(e){}
 }
 
 // ── Daily cash-flow projection chart (90 days, line) ──

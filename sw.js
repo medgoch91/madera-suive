@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v229-echeance-from-oldest-bon-not-latest';
+const CACHE = 'suivi-v230-linked-articles-bypass-family-filter';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

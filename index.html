@@ -13335,18 +13335,24 @@ function bonArtFocus(){
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
   if(fourObj){
     const famFilter = _fourFamFilter(fourObj);
+    // Linked articles (via spLinks / prix) are pre-confirmed for this
+    // supplier and must ALWAYS be visible, even if their `cat` doesn't
+    // match the supplier's `families` whitelist. Family filter only
+    // applies to NON-linked articles (suggestion pool). User data showed
+    // an article cat="MDF ZAID" linked to Zaid Bois whose families=
+    // ["MDF/ BARDAGE/ BANDE DE CHANT"] — without this carve-out, the
+    // linked article never appeared in the picker.
+    const linkedArticles = articles.filter(function(a){ return _fourHasLink(fourObj, f, a); });
+    let pool;
     if(famFilter){
-      const pool = _bonExcludeSelected(articles.filter(famFilter));
-      bonArtShowPool(pool.slice(0,10), f, fourObj);
+      const filtered = articles.filter(function(a){ return famFilter(a) || _fourHasLink(fourObj, f, a); });
+      pool = _bonExcludeSelected(filtered);
+    } else if(linkedArticles.length){
+      pool = _bonExcludeSelected(linkedArticles);
     } else {
-      const hasLinks = _fourHasAnyLink(fourObj, f);
-      if(hasLinks){
-        const pool = _bonExcludeSelected(articles.filter(function(a){ return _fourHasLink(fourObj, f, a); }));
-        bonArtShowPool(pool.slice(0,10), f, fourObj);
-      } else {
-        bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, fourObj);
-      }
+      pool = _bonExcludeSelected(articles);
     }
+    bonArtShowPool(pool.slice(0,10), f, fourObj);
   } else {
     bonArtShowPool(_bonExcludeSelected(articles).slice(0,10), f, null);
   }
@@ -13404,15 +13410,17 @@ function bonArtSearch(val){
   const q = val.toLowerCase();
   const f = (document.getElementById('b-fournisseur')||{value:''}).value.trim();
 
-  // ── Articles — families filter takes priority, then supplier_products links ─
+  // ── Articles — linked articles ALWAYS pass through; family filter only
+  // narrows the NON-linked pool. See bonArtFocus for full rationale.
   const fourObj = f ? fournisseurs.find(function(x){ return x.nom===f; }) : null;
   const famFilter = _fourFamFilter(fourObj);
-  const hasLinks = !famFilter && _fourHasAnyLink(fourObj, f);
-  const pool = _bonExcludeSelected(famFilter
-    ? articles.filter(famFilter)
-    : (hasLinks
-        ? articles.filter(function(a){ return _fourHasLink(fourObj, f, a); })
-        : articles));
+  const pool = _bonExcludeSelected(
+    famFilter
+      ? articles.filter(function(a){ return famFilter(a) || _fourHasLink(fourObj, f, a); })
+      : (fourObj && _fourHasAnyLink(fourObj, f)
+          ? articles.filter(function(a){ return _fourHasLink(fourObj, f, a); })
+          : articles)
+  );
   const matches = pool.filter(function(a){
     return a.nom.toLowerCase().includes(q) || (a.ref||'').toLowerCase().includes(q);
   }).slice(0,8);

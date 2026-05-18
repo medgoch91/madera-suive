@@ -9888,7 +9888,10 @@ function renderPrintCheque(){
     .pc-hero-actions{display:flex;gap:8px;flex-wrap:wrap}
     .pc-hero-actions .btn{padding:9px 16px;font-size:13px;font-weight:700}
     .pc-prev-stage{display:flex;justify-content:center;background:radial-gradient(ellipse at center,rgba(255,255,255,.03),transparent 70%);padding:18px 8px;border-radius:10px}
-    .pc-prev-frame{background:#fff;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05);overflow:hidden}
+    /* overflow:visible so fields positioned beyond the cheque dimensions
+       (e.g. montant calibrated to right-edge) stay visible in preview.
+       The dashed outline on pc-cheque-wrap shows the actual cheque area. */
+    .pc-prev-frame{background:#fff;border-radius:8px;box-shadow:0 20px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.05);overflow:visible;padding:0 12mm}
     .pc-hint{margin-top:14px;padding:10px 14px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.22);border-radius:8px;font-size:12px;color:#f59e0b;line-height:1.6;display:flex;align-items:center;gap:8px}
     .pc-hint b{color:#f59e0b}
     .pc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:18px}
@@ -9919,9 +9922,9 @@ function renderPrintCheque(){
     </div>
     <div class="pc-prev-stage">
       <div class="pc-prev-frame" id="pc-preview-frame">
-        <div id="pc-preview-outer" style="overflow:hidden;width:100%">
+        <div id="pc-preview-outer" style="overflow:visible;width:100%">
           <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
-            <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:hidden;color:#111">
+            <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:visible;color:#111;outline:1px dashed rgba(124,92,252,.2);outline-offset:-1px">
               <div id="pc-bg" style="position:absolute;top:0;left:0;right:0;height:${isEffet?'105mm':'100%'};background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
                 ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#999'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.5)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / ورقة':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
               </div>

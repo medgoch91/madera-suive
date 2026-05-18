@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v243-cheque-remove-hint-banner';
+const CACHE = 'suivi-v244-cheque-preview-overflow-visible';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

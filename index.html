@@ -10878,17 +10878,67 @@ function doPrint(){
   setTimeout(()=>msg.textContent='',3000);
 }
 
+// Filter state for the print history table (persists across re-renders)
+var phFilter = (typeof phFilter !== 'undefined') ? phFilter : {q:'', from:'', to:'', status:'', limit:25};
+function setPhFilter(key, val){
+  phFilter[key] = (key==='limit') ? (Number(val)||25) : (val||'');
+  renderPrintHistory();
+}
+function clearPhFilter(){ phFilter = {q:'',from:'',to:'',status:'',limit:25}; renderPrintHistory(); }
+
 function renderPrintHistory(){
   const wrap=document.getElementById('pc-history-wrap');if(!wrap)return;
-  if(!printHistory.length){wrap.innerHTML='<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">لا توجد سجلات بعد</div>';return;}
-  wrap.innerHTML=`<table class="data-table"><thead><tr><th>التاريخ</th><th>المستفيد</th><th>المبلغ</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>${printHistory.slice(0,15).map((h,i)=>`<tr>
+  const all = printHistory || [];
+  // Apply filters
+  const _q = (phFilter.q||'').toLowerCase();
+  const _filtered = all.filter(h => {
+    if(_q && !((h.ordre||'').toLowerCase().includes(_q) || String(h.montant||'').includes(_q) || (h.num||'').toLowerCase().includes(_q))) return false;
+    if(phFilter.from && (h.date||'') < phFilter.from) return false;
+    if(phFilter.to   && (h.date||'') > phFilter.to)   return false;
+    if(phFilter.status && (h.status||'غير مدفوع') !== phFilter.status) return false;
+    return true;
+  });
+  const _totalAmount = _filtered.reduce((s,h)=>s+(Number(h.montant)||0),0);
+  const _hasFilter = phFilter.q || phFilter.from || phFilter.to || phFilter.status;
+
+  const _filterBar = all.length ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;margin-bottom:10px">
+      <input type="text" placeholder="🔍 بحث (اسم/مبلغ/رقم)" value="${(phFilter.q||'').replace(/"/g,'&quot;')}" oninput="setPhFilter('q',this.value)" style="flex:1;min-width:160px;padding:6px 10px;font-size:12px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)">من <input type="date" value="${phFilter.from||''}" onchange="setPhFilter('from',this.value)" style="padding:5px 7px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;direction:ltr"></label>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)">إلى <input type="date" value="${phFilter.to||''}" onchange="setPhFilter('to',this.value)" style="padding:5px 7px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;direction:ltr"></label>
+      <select onchange="setPhFilter('status',this.value)" style="padding:6px 8px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
+        <option value="">كل الحالات</option>
+        <option value="غير مدفوع" ${phFilter.status==='غير مدفوع'?'selected':''}>⏰ غير مدفوع</option>
+        <option value="مدفوع" ${phFilter.status==='مدفوع'?'selected':''}>✅ مدفوع</option>
+        <option value="مرفوض" ${phFilter.status==='مرفوض'?'selected':''}>❌ مرفوض</option>
+      </select>
+      <select onchange="setPhFilter('limit',this.value)" style="padding:6px 8px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
+        <option value="15" ${phFilter.limit==15?'selected':''}>أحدث 15</option>
+        <option value="25" ${phFilter.limit==25?'selected':''}>أحدث 25</option>
+        <option value="50" ${phFilter.limit==50?'selected':''}>أحدث 50</option>
+        <option value="999" ${phFilter.limit==999?'selected':''}>الكل</option>
+      </select>
+      ${_hasFilter?`<button class="btn-ghost" onclick="clearPhFilter()" style="padding:5px 10px;font-size:11px;color:var(--red)">✖ مسح</button>`:''}
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 4px 8px;font-size:11px;color:var(--text3)">
+      <span>📊 ${_filtered.length} / ${all.length} نتيجة</span>
+      <span>المجموع: <b style="color:var(--pc-gold);font-family:'Courier Prime',monospace">${Number(_totalAmount).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})} DH</b></span>
+    </div>` : '';
+
+  if(!all.length){wrap.innerHTML='<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">لا توجد سجلات بعد</div>';return;}
+  if(!_filtered.length){wrap.innerHTML = _filterBar + '<div style="text-align:center;color:var(--text3);padding:30px;font-size:13px">🔍 ما كاينش نتائج لهاد الفلتر</div>';return;}
+  const _slice = _filtered.slice(0, phFilter.limit||25);
+  // Override the slice + index + status color via wrapper variables.
+  // Below table uses printHistory.slice(0,15) — we replace with _slice via runtime.
+  const _renderItems = _slice;
+  wrap.innerHTML = _filterBar + `<table class="data-table"><thead><tr><th>التاريخ</th><th>المستفيد</th><th>المبلغ</th><th>الاستحقاق</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody>${_renderItems.map((h)=>{const i=printHistory.indexOf(h);return `<tr>
     <td style="color:var(--text2)">${fmtDate(h.date)}</td>
-    <td style="font-weight:600">${h.ordre}</td>
+    <td style="font-weight:600">${escB(h.ordre||'')}</td>
     <td style="color:var(--accent);font-weight:700">\u2066${Number(h.montant).toLocaleString('fr-MA')} DH\u2069</td>
     <td style="color:var(--text2)">${fmtDate(h.echeance)||'—'}</td>
     <td><select onchange="updatePrintStatus(${i},this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Cairo',sans-serif"><option ${h.status==='غير مدفوع'?'selected':''}>غير مدفوع</option><option ${h.status==='مدفوع'?'selected':''}>مدفوع</option><option ${h.status==='مرفوض'?'selected':''}>مرفوض</option></select></td>
     <td style="display:flex;gap:6px"><button class="btn-ghost" onclick="reloadPrint(${i})" title="إعادة">🖨️</button><button class="btn-ghost" onclick="deletePrint(${i})" style="color:var(--red)">🗑️</button></td>
-  </tr>`).join('')}</tbody></table>`;
+  </tr>`;}).join('')}</tbody></table>${_filtered.length > _slice.length ? `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text3)">... و ${_filtered.length - _slice.length} سجل آخر (زيد limit)</div>` : ''}`;
 }
 
 function updatePrintStatus(i,s){printHistory[i].status=s;localStorage.setItem('print_history',JSON.stringify(printHistory));renderPrintHistory();}

@@ -1094,6 +1094,25 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
   .nb-line-ref{display:none;}
 }
 
+/* ── Échéancier mobile-optimized — stacks cards, hides secondary KPIs ── */
+@media(max-width:680px){
+  #page-echeancier .card{padding:12px !important;}
+  #page-echeancier svg{max-width:100% !important;height:auto !important;}
+  /* Compact KPI grid */
+  #page-echeancier [style*="grid-template-columns:repeat(auto-fit,minmax(160px"]{grid-template-columns:repeat(2,1fr) !important;gap:6px !important;}
+  #page-echeancier [style*="grid-template-columns:repeat(auto-fit,minmax(140px"]{grid-template-columns:repeat(2,1fr) !important;gap:6px !important;}
+  /* Reduce font sizes for KPI strip */
+  #page-echeancier [style*="font-size:20px;font-weight:800"]{font-size:15px !important;}
+  /* Single-column comparison strip */
+  #page-echeancier [style*="grid-template-columns:1fr 1fr;gap:14px"]{grid-template-columns:1fr !important;}
+  /* Filter bar: stack inputs */
+  #page-echeancier input[type="text"]{flex:1 0 100% !important;min-width:0 !important;}
+  /* Calendar: smaller cells */
+  #page-echeancier [style*="grid-template-columns:repeat(7,1fr)"] > div{min-height:36px !important;padding:3px !important;font-size:9px !important;}
+  /* Bucket rows: tighter grid */
+  #page-echeancier [style*="grid-template-columns:auto 1fr auto auto"]{gap:8px !important;padding:8px 10px !important;}
+}
+
 /* Search with chip */
 .nb-search-wrap{position:relative;}
 .nb-search-hint{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:10px;color:var(--text3);pointer-events:none;opacity:.7;font-family:monospace;padding:2px 6px;background:rgba(255,255,255,.03);border-radius:4px;border:1px solid var(--border);}
@@ -6893,6 +6912,49 @@ let echFilterFour = '';
 let echFilterType = '';  // '' | 'cheque' | 'effet' | 'virement'
 let echFilterMin = 0;
 let echStartingBalance = 0; // for cash-flow forecast — user-set
+let echShowPinnedOnly = false;
+
+// ── Cheque metadata stored locally (no DB schema change) ──
+// Keys: cheque_notes (id→string), cheque_pinned (id→true), cheque_reminders (id→daysBefore int)
+function _chMetaGet(key){ try{ return JSON.parse(localStorage.getItem(key)||'{}'); }catch(e){ return {}; } }
+function _chMetaSet(key, obj){ try{ localStorage.setItem(key, JSON.stringify(obj)); }catch(e){} }
+function chequeNote(id){ const m=_chMetaGet('cheque_notes'); return m[id]||''; }
+function setChequeNote(id, txt){ const m=_chMetaGet('cheque_notes'); if(txt&&txt.trim()){ m[id]=String(txt).slice(0,200); } else { delete m[id]; } _chMetaSet('cheque_notes', m); }
+function isChequePinned(id){ const m=_chMetaGet('cheque_pinned'); return !!m[id]; }
+function toggleChequePin(id){ const m=_chMetaGet('cheque_pinned'); if(m[id]){ delete m[id]; } else { m[id]=true; } _chMetaSet('cheque_pinned', m); try{ renderEcheancier(); }catch(e){} }
+function chequeReminderDays(id){ const m=_chMetaGet('cheque_reminders'); return m[id]||null; }
+function setChequeReminder(id, days){ const m=_chMetaGet('cheque_reminders'); if(days&&Number(days)>0){ m[id]=Number(days); } else { delete m[id]; } _chMetaSet('cheque_reminders', m); }
+
+// ── Daily reminder check: fires once per day on app boot, sends Telegram for cheques due in N days ──
+function _echCheckReminders(){
+  try{
+    const lastChk = localStorage.getItem('ech_reminder_last_check') || '';
+    const todayISO = new Date().toISOString().slice(0,10);
+    if(lastChk === todayISO) return; // already checked today
+    const reminders = _chMetaGet('cheque_reminders');
+    const today = new Date(); today.setHours(0,0,0,0);
+    const matched = [];
+    (cheques||[]).forEach(c => {
+      if(c.status !== 'معلق' || !c.echeance) return;
+      const days = reminders[c.id];
+      if(!days) return;
+      const d = new Date(c.echeance); d.setHours(0,0,0,0);
+      const diff = Math.round((d - today)/86400000);
+      if(diff === Number(days) || (diff>=0 && diff<=Number(days) && diff%7===0)){
+        matched.push({c, diff});
+      }
+    });
+    if(matched.length && typeof sendTelegramBroadcast === 'function'){
+      const msg = '🔔 *تذكير بالاستحقاقات*\n\n' + matched.map(m =>
+        `• ${m.c.fournisseur||'—'} · ${m.c.num||''} · ${fmtN(m.c.montant)} DH · بعد ${m.diff} يوم (${fmtDate(m.c.echeance)})`
+      ).join('\n');
+      sendTelegramBroadcast(msg).catch(()=>{});
+    }
+    localStorage.setItem('ech_reminder_last_check', todayISO);
+  }catch(e){ console.warn('reminder check failed', e); }
+}
+// Run reminder check shortly after boot
+setTimeout(()=>{ try{ _echCheckReminders(); }catch(e){} }, 8000);
 function setEchHorizon(d){ echHorizon = Number(d)||90; renderEcheancier(); }
 function setEchView(v){ echViewMode = v; renderEcheancier(); }
 function setEchFilterFour(v){ echFilterFour = (v||'').trim().toLowerCase(); renderEcheancier(); }
@@ -6930,25 +6992,56 @@ function echOpenMonth(ym){
   document.getElementById('modal-main').classList.add('open');
 }
 
-// ── Postpone (تأجيل) a cheque/effet — opens a date picker + saves new echeance ──
+// ── Manage a cheque/effet: postpone + notes + pin + reminder, all in one modal ──
 function echPostpone(chequeId){
   const c = (cheques||[]).find(x => x.id===chequeId);
   if(!c) return;
   const cur = c.echeance || '';
-  const html = `<div style="padding:20px;max-width:420px">
-    <div class="card-title" style="margin-bottom:10px">🗓️ تأجيل التسوية</div>
-    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escB(c.fournisseur||'—')} · ${escB(c.num||'')} · ${fmtN(c.montant||0)} DH</div>
-    <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">الاستحقاق الحالي</div>
-      <input type="date" value="${cur}" disabled style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:Cairo,sans-serif"></label>
-    <label style="display:block;margin-top:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">الاستحقاق الجديد</div>
-      <input id="postpone-date" type="date" value="${cur}" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif"></label>
-    <div style="display:flex;gap:6px;margin-top:10px">
-      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+30);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 30 يوم</button>
-      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+60);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 60 يوم</button>
-      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+90);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 90 يوم</button>
+  const curNote = chequeNote(chequeId);
+  const isPinned = isChequePinned(chequeId);
+  const reminder = chequeReminderDays(chequeId);
+  const html = `<div style="padding:20px;max-width:480px;max-height:88vh;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:6px">🛠️ تدبير التسوية</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:16px">${escB(c.fournisseur||'—')} · ${escB(c.num||'')} · <b style="color:var(--accent)">${fmtN(c.montant||0)} DH</b></div>
+
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">🗓️ تأجيل الاستحقاق</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px">الحالي: ${fmtDate(cur)||'—'}</div>
+      <input id="postpone-date" type="date" value="${cur}" style="width:100%;padding:7px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px">
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+30);d.valueAsDate=v;})()" style="font-size:10px;padding:4px 8px;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:4px;cursor:pointer">+ 30 ي</button>
+        <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+60);d.valueAsDate=v;})()" style="font-size:10px;padding:4px 8px;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:4px;cursor:pointer">+ 60 ي</button>
+        <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+90);d.valueAsDate=v;})()" style="font-size:10px;padding:4px 8px;background:var(--bg2);color:var(--text2);border:1px solid var(--border);border-radius:4px;cursor:pointer">+ 90 ي</button>
+      </div>
     </div>
-    <div style="display:flex;gap:8px;margin-top:16px">
-      <button class="btn btn-accent" style="flex:1" onclick="_echPostponeSave(${chequeId})">💾 حفظ</button>
+
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">📝 ملاحظات (200 حرف)</div>
+      <textarea id="cheque-note" maxlength="200" placeholder="مثلاً: تواصل مع المسؤول قبل الإيداع..." style="width:100%;min-height:60px;padding:7px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px;resize:vertical">${escB(curNote)}</textarea>
+    </div>
+
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text)">📌 تثبيت</div>
+        <div style="font-size:10px;color:var(--text3)">يبان فأعلى الصفحة</div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input id="cheque-pinned" type="checkbox" ${isPinned?'checked':''} style="width:18px;height:18px;accent-color:var(--accent)">
+        <span style="font-size:13px;color:var(--text)">${isPinned?'مثبت':'تثبيت'}</span>
+      </label>
+    </div>
+
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">🔔 تذكير على Telegram</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${[0,1,3,7,15,30].map(d => `<button onclick="(()=>{document.getElementById('cheque-reminder').value='${d}'})()" style="font-size:11px;padding:5px 10px;background:${reminder==d?'var(--accent)':'var(--bg2)'};color:${reminder==d?'#fff':'var(--text2)'};border:1px solid var(--border);border-radius:5px;cursor:pointer">${d===0?'لا':d+' يوم'}</button>`).join('')}
+      </div>
+      <input id="cheque-reminder" type="number" min="0" max="60" value="${reminder||0}" placeholder="عدد الأيام" style="width:100%;margin-top:8px;padding:7px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px">
+      <div style="font-size:10px;color:var(--text3);margin-top:6px">سيتم إرسال تذكير لـ Telegram قبل ذلك العدد من الأيام</div>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-accent" style="flex:1" onclick="_echPostponeSave(${chequeId})">💾 حفظ الكل</button>
       <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
     </div>
   </div>`;
@@ -6957,17 +7050,31 @@ function echPostpone(chequeId){
 }
 async function _echPostponeSave(chequeId){
   const newDate = (document.getElementById('postpone-date')||{}).value;
-  if(!newDate){ try{ toast('⚠️ اختر تاريخ','warning'); }catch(e){} return; }
-  try{
-    const r = await sbFetch('cheques','PATCH',{echeance: newDate},'id=eq.'+chequeId);
-    if(r && r.__sbError) throw new Error(r.msg);
-    const local = cheques.find(c => c.id===chequeId);
-    if(local) local.echeance = newDate;
-    try{ saveCacheLS&&saveCacheLS(); }catch(e){}
-    try{ toast('✅ تم تأجيل التسوية إلى '+fmtDate(newDate),'success'); }catch(e){}
-    document.getElementById('modal-main').classList.remove('open');
-    if(typeof renderEcheancier==='function') renderEcheancier();
-  }catch(e){ try{ toast('❌ '+(e.message||e),'error'); }catch(_){} }
+  const note = (document.getElementById('cheque-note')||{}).value || '';
+  const pinned = !!(document.getElementById('cheque-pinned')||{}).checked;
+  const reminder = Number((document.getElementById('cheque-reminder')||{}).value)||0;
+  // Save local metadata always (no DB call needed)
+  setChequeNote(chequeId, note);
+  setChequeReminder(chequeId, reminder);
+  const m = _chMetaGet('cheque_pinned');
+  if(pinned){ m[chequeId]=true; } else { delete m[chequeId]; }
+  _chMetaSet('cheque_pinned', m);
+  // Save echeance if changed
+  const local = cheques.find(c => c.id===chequeId);
+  const curEch = local ? local.echeance : '';
+  if(newDate && newDate !== curEch){
+    try{
+      const r = await sbFetch('cheques','PATCH',{echeance: newDate},'id=eq.'+chequeId);
+      if(r && r.__sbError) throw new Error(r.msg);
+      if(local) local.echeance = newDate;
+      try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+      try{ toast('✅ تم الحفظ — استحقاق '+fmtDate(newDate),'success'); }catch(e){}
+    }catch(e){ try{ toast('❌ '+(e.message||e),'error'); }catch(_){} return; }
+  } else {
+    try{ toast('✅ تم حفظ الإعدادات','success'); }catch(e){}
+  }
+  document.getElementById('modal-main').classList.remove('open');
+  if(typeof renderEcheancier==='function') renderEcheancier();
 }
 
 // ── Per-fournisseur summary modal ──
@@ -7319,8 +7426,33 @@ function renderEcheancier(){
   items.filter(i=>i.diff>=0 && i.diff<=30).forEach(i=>{ const f=i.c.fournisseur||'—'; four30[f]=(four30[f]||0)+(Number(i.c.montant)||0); });
   const topFour30 = Object.entries(four30).sort((a,b)=>b[1]-a[1])[0] || null;
 
-  // ── Critical alerts banner ──
+  // ── Pinned cheques (always at top — sticky favorites) ──
   let html = '';
+  const pinnedItems = items.filter(i => isChequePinned(i.c.id));
+  if(pinnedItems.length){
+    html += '<div class="card" style="margin-bottom:14px;border-color:rgba(245,158,11,.5);background:linear-gradient(135deg,rgba(245,158,11,.04),rgba(124,92,252,.03))">'
+      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'
+        + '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">📌</span><span style="font-weight:800;color:#f59e0b">المثبتة</span><span style="font-size:11px;color:var(--text3)">· '+pinnedItems.length+' تسوية</span></div>'
+        + '<div style="font-size:14px;font-weight:800;color:var(--accent)">'+fmtK(pinnedItems.reduce((s,i)=>s+(Number(i.c.montant)||0),0))+' DH</div>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:6px">'
+      + pinnedItems.map(it => {
+          const c = it.c;
+          const note = chequeNote(c.id);
+          const dayLbl = it.diff===0?'اليوم':(it.diff>0?'بعد '+it.diff+' يوم':'متأخر '+Math.abs(it.diff)+' يوم');
+          const col = it.diff<0?'#ef4444':(it.diff<=7?'#f59e0b':(it.diff<=30?'#eab308':'#10b981'));
+          return '<div style="display:grid;grid-template-columns:auto 1fr auto auto;gap:10px;align-items:center;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px">'
+            +'<span style="font-size:14px">'+(c.type==='effet'?'📜':'💳')+'</span>'
+            +'<div style="min-width:0"><div style="font-weight:700;color:var(--text);font-size:12px">'+escB(c.fournisseur||'—')+' · '+escB(c.num||'')+'</div><div style="font-size:10px;color:'+col+';font-weight:600">'+fmtDate(c.echeance)+' · '+dayLbl+'</div>'+(note?'<div style="font-size:10px;color:var(--text2);margin-top:2px;font-style:italic">📝 '+escB(note)+'</div>':'')+'</div>'
+            +'<div style="font-size:13px;font-weight:800;color:var(--accent);direction:ltr">'+fmt(c.montant)+'</div>'
+            +'<button class="btn-ghost" onclick="toggleChequePin('+c.id+')" style="padding:5px 8px;font-size:11px" title="إلغاء التثبيت">📌</button>'
+          +'</div>';
+        }).join('')
+      + '</div>'
+    + '</div>';
+  }
+
+  // ── Critical alerts banner ──
   const urgentItems = items.filter(i=>i.diff<=7);
   const weekTotal = urgentItems.reduce((s,i)=>s+(Number(i.c.montant)||0),0);
   if(overdueCount > 0 || urgentItems.length > 0){
@@ -7670,9 +7802,15 @@ function renderEcheancier(){
       + bk.items.map(it=>{
           const c = it.c;
           const dayLbl = it.diff===0?'اليوم':(it.diff>0?'بعد '+it.diff+' يوم':'متأخر '+Math.abs(it.diff)+' يوم');
+          const note = chequeNote(c.id);
+          const pinned = isChequePinned(c.id);
+          const rem = chequeReminderDays(c.id);
+          const badges = (pinned?'<span title="مثبت">📌</span>':'')
+                       + (note?' <span title="'+escB(note)+'">📝</span>':'')
+                       + (rem?' <span title="تذكير قبل '+rem+' يوم">🔔</span>':'');
           return '<div onclick="showPage(\'cheques\');setTimeout(function(){try{scrollToRow(\'ck-row-'+c.id+'\');}catch(e){}},200)" style="display:grid;grid-template-columns:auto 1fr auto auto;gap:12px;align-items:center;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:background 0.12s" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'var(--bg3)\'">'
             +'<div>'+typeBadge(c.type)+'</div>'
-            +'<div style="min-width:0"><div style="font-weight:700;color:var(--text);font-size:13px">'+escB(c.fournisseur||'—')+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+escB(c.num||'')+' · '+fmtDay(c.echeance)+' <span style="color:'+bk.col+';font-weight:600">· '+dayLbl+'</span></div></div>'
+            +'<div style="min-width:0"><div style="font-weight:700;color:var(--text);font-size:13px">'+escB(c.fournisseur||'—')+(badges?' <span style="font-size:11px">'+badges+'</span>':'')+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+escB(c.num||'')+' · '+fmtDay(c.echeance)+' <span style="color:'+bk.col+';font-weight:600">· '+dayLbl+'</span></div>'+(note?'<div style="font-size:10px;color:var(--text2);margin-top:3px;font-style:italic;line-height:1.3">📝 '+escB(note)+'</div>':'')+'</div>'
             +'<div style="font-size:14px;font-weight:800;color:var(--accent);text-align:left;direction:ltr">'+fmt(c.montant)+'</div>'
             +'<div style="display:flex;gap:4px">'
               +'<button class="btn-ghost" style="padding:6px 8px;font-size:11px" onclick="event.stopPropagation();echPostpone('+c.id+')" title="تأجيل">🗓️</button>'

@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v234-postpone-four-summary-excel-daily-forecast-analytics';
+const CACHE = 'suivi-v235-notes-pin-reminders-mobile';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

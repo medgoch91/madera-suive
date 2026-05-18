@@ -9862,6 +9862,100 @@ function renderChqCfgPanel(){
     </div>`;
 }
 
+// ── Side style panel — per-field font size + spacing controls (live) ──
+// Compact accordion next to the preview. Inspired by Figma/Canva
+// "selected element properties" panels: click field name → expand → +/−
+// for size and letter-spacing. Updates chequeCfg + preview in real time.
+const PC3_STYLE_FIELDS = {
+  cheque: [
+    {k:'ordre',    lbl:'Bénéficiaire'},
+    {k:'montant',  lbl:'Montant'},
+    {k:'lettres1', lbl:'En lettres ligne 1'},
+    {k:'lettres2', lbl:'En lettres ligne 2', extra:'gap'},
+    {k:'date',     lbl:'Date'},
+    {k:'ville',    lbl:'Ville'},
+  ],
+  effet: [
+    {k:'ordre',    lbl:'Bénéficiaire'},
+    {k:'montant',  lbl:'Montant'},
+    {k:'lettres1', lbl:'En lettres'},
+    {k:'date',     lbl:'Date création'},
+    {k:'echeance', lbl:'Échéance'},
+    {k:'ville',    lbl:'Ville'},
+  ],
+};
+function _pc3StylesPanelHTML(isEffet){
+  const fields = isEffet ? PC3_STYLE_FIELDS.effet : PC3_STYLE_FIELDS.cheque;
+  return fields.map(f => {
+    const c = chequeCfg[f.k] || {};
+    const sz = c.size||11;
+    const sp = (c.spacing!=null?c.spacing:0.3);
+    const gap = (f.extra==='gap' && chequeCfg.lettres1 && chequeCfg.lettres2)
+      ? Math.round((chequeCfg.lettres2.top - chequeCfg.lettres1.top)*10)/10
+      : null;
+    return `<div class="pc3-style-card" id="pc3-sc-${f.k}">
+      <div class="pc3-style-hdr" onclick="document.getElementById('pc3-sc-${f.k}').classList.toggle('open')">
+        <div class="pc3-style-name"><span class="dot"></span>${f.lbl}</div>
+        <span class="pc3-style-chev">▾</span>
+      </div>
+      <div class="pc3-style-body">
+        <div class="pc3-style-row">
+          <span class="pc3-style-lbl">Taille</span>
+          <div class="pc3-style-ctrl">
+            <button class="pc3-style-btn" onclick="_pc3StyleNudge('${f.k}','size',-0.5)">−</button>
+            <span class="pc3-style-val" id="pc3-val-${f.k}-size">${sz}pt</span>
+            <button class="pc3-style-btn" onclick="_pc3StyleNudge('${f.k}','size',0.5)">+</button>
+          </div>
+        </div>
+        <div class="pc3-style-row">
+          <span class="pc3-style-lbl">Espacement</span>
+          <div class="pc3-style-ctrl">
+            <button class="pc3-style-btn" onclick="_pc3StyleNudge('${f.k}','spacing',-0.1)">−</button>
+            <span class="pc3-style-val" id="pc3-val-${f.k}-spacing">${(+sp).toFixed(1)}</span>
+            <button class="pc3-style-btn" onclick="_pc3StyleNudge('${f.k}','spacing',0.1)">+</button>
+          </div>
+        </div>
+        ${gap!=null ? `<div class="pc3-style-row">
+          <span class="pc3-style-lbl">Espace entre lignes</span>
+          <div class="pc3-style-ctrl">
+            <button class="pc3-style-btn" onclick="_pc3StyleNudgeGap(-0.5)">−</button>
+            <span class="pc3-style-val" id="pc3-val-gap">${gap}mm</span>
+            <button class="pc3-style-btn" onclick="_pc3StyleNudgeGap(0.5)">+</button>
+          </div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+function _pc3StyleNudge(field, prop, delta){
+  if(!chequeCfg[field]) return;
+  const cur = chequeCfg[field][prop] || 0;
+  const next = Math.round((cur + delta) * 10) / 10;
+  // Clamps: size 5-30pt, spacing -1 to 5
+  const clamped = prop==='size' ? Math.max(5, Math.min(30, next)) : Math.max(-1, Math.min(5, next));
+  chequeCfg[field][prop] = clamped;
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
+  applyChqCfgToPreview();
+  // Update the displayed value
+  const el = document.getElementById('pc3-val-'+field+'-'+prop);
+  if(el) el.textContent = prop==='size' ? clamped+'pt' : (+clamped).toFixed(1);
+}
+function _pc3StyleNudgeGap(delta){
+  // Adjusts lettres2.top relative to lettres1.top — controls visual gap
+  // between the two amount-in-letters lines (cheque only; effet wraps in
+  // a single field). User feedback 2026-05-18: 'espace bin ster ou ster mhm'.
+  if(!chequeCfg.lettres1 || !chequeCfg.lettres2) return;
+  const curGap = chequeCfg.lettres2.top - chequeCfg.lettres1.top;
+  const nextGap = Math.max(2, Math.min(40, Math.round((curGap + delta) * 10) / 10));
+  chequeCfg.lettres2.top = Math.round((chequeCfg.lettres1.top + nextGap) * 10) / 10;
+  localStorage.setItem(_pcStorageKey(), JSON.stringify(chequeCfg));
+  _pcSyncActive();
+  applyChqCfgToPreview();
+  const el = document.getElementById('pc3-val-gap');
+  if(el) el.textContent = nextGap+'mm';
+}
+
 function renderPrintCheque(){
   const isEffet = printMode==='effet';
   const bgImg   = pcBgSrc();
@@ -9923,8 +10017,31 @@ function renderPrintCheque(){
 
     /* ─── MAIN WORKSPACE ─── */
     .pc3-workspace{background:var(--bg2);border:1px solid var(--border);border-top:0;border-radius:0 0 16px 16px;padding:24px 24px 24px;margin-bottom:18px}
-    .pc3-grid{display:grid;grid-template-columns:340px 1fr;gap:24px;align-items:start}
-    @media (max-width:1050px){.pc3-grid{grid-template-columns:1fr}}
+    .pc3-grid{display:grid;grid-template-columns:300px 1fr 240px;gap:20px;align-items:start}
+    @media (max-width:1280px){.pc3-grid{grid-template-columns:280px 1fr;gap:16px}.pc3-styles{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}}
+    @media (max-width:1050px){.pc3-grid{grid-template-columns:1fr}.pc3-styles{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}}
+
+    /* ─── STYLE PANEL ─── */
+    .pc3-styles{position:sticky;top:20px;display:flex;flex-direction:column;gap:10px}
+    .pc3-styles-head{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;font-family:'Inter','Cairo',sans-serif;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+    .pc3-styles-head::before{content:'';width:4px;height:14px;background:linear-gradient(180deg,#c8a44a,#9a7d30);border-radius:2px}
+    .pc3-style-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s}
+    .pc3-style-card:hover{border-color:rgba(200,164,74,.35)}
+    .pc3-style-card.open{border-color:rgba(200,164,74,.55);background:linear-gradient(180deg,rgba(200,164,74,.04),var(--bg3))}
+    .pc3-style-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;user-select:none}
+    .pc3-style-name{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;font-family:'Inter','Cairo',sans-serif}
+    .pc3-style-name .dot{width:7px;height:7px;border-radius:50%;background:#c8a44a;flex-shrink:0}
+    .pc3-style-chev{font-size:14px;color:var(--text3);transition:transform .15s}
+    .pc3-style-card.open .pc3-style-chev{transform:rotate(180deg);color:#c8a44a}
+    .pc3-style-body{display:none;padding:4px 12px 12px;border-top:1px solid var(--border)}
+    .pc3-style-card.open .pc3-style-body{display:block}
+    .pc3-style-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
+    .pc3-style-row:first-child{margin-top:8px}
+    .pc3-style-lbl{font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.3px;flex:1}
+    .pc3-style-ctrl{display:inline-flex;align-items:center;gap:0;background:var(--bg2);border:1px solid var(--border);border-radius:7px;overflow:hidden}
+    .pc3-style-btn{background:transparent;border:0;color:var(--text2);width:24px;height:24px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter','Cairo',sans-serif}
+    .pc3-style-btn:hover{background:rgba(200,164,74,.15);color:#c8a44a}
+    .pc3-style-val{min-width:40px;text-align:center;font-size:11px;font-weight:700;color:var(--text);font-family:'Inter','Courier New',monospace;padding:0 6px;border-left:1px solid var(--border);border-right:1px solid var(--border);background:var(--bg);line-height:24px}
 
     /* ─── FORM PANEL ─── */
     .pc3-form{position:sticky;top:20px}
@@ -10058,6 +10175,12 @@ function renderPrintCheque(){
         <div class="pc3-tip">
           <b>Astuce</b> · Faites glisser n'importe quel champ dans l'aperçu pour le repositionner — la position est enregistrée automatiquement. Pour imprimer, utilisez du papier A4 à 100% sans marges.
         </div>
+      </div>
+
+      <!-- RIGHT: Style panel (font size + spacing controls per field, live update) -->
+      <div class="pc3-styles" id="pc3-styles">
+        <div class="pc3-styles-head">Typographie</div>
+        ${_pc3StylesPanelHTML(isEffet)}
       </div>
 
     </div>

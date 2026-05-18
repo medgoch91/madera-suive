@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v221-pdf-pre-rotated-compensate-printer';
+const CACHE = 'suivi-v222-effet-typography-v5-widen-montant-tighten-lettres';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

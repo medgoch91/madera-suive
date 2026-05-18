@@ -8006,11 +8006,13 @@ const CHEQUE_CFG_DEFAULTS = {
 //   • Lieu + Date création: row labeled "Lieu et date de création"
 //   • Montant en lettres: right column "Montant en lettres" (wraps)
 const EFFET_CFG_DEFAULTS = {
-  echeance: {top:10,  left:170, width:28,  size:12, spacing:0.5, align:'left',   font:'mono',  weight:700},
-  montant:  {top:18,  left:170, width:28,  size:14, spacing:0.5, align:'right',  font:'mono',  weight:700},
-  lettres1: {top:28,  left:155, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
-  // lettres2 parked off-page (effet uses single wrap) — see buildChequePrintHTML lettres2HTML guard
-  lettres2: {top:200, left:155, width:45,  size:12, spacing:0.3, align:'left',   font:'serif', weight:700},
+  // v5 — widened montant + tightened lettres per user feedback 2026-05-18:
+  // ar9am ma banch kamlo (truncated), lettres khas tkon more compact.
+  echeance: {top:10,  left:168, width:32,  size:12, spacing:0.3, align:'left',   font:'mono',  weight:700},
+  montant:  {top:18,  left:165, width:35,  size:13, spacing:0.2, align:'right',  font:'mono',  weight:700},
+  lettres1: {top:28,  left:153, width:47,  size:10, spacing:0.1, align:'left',   font:'serif', weight:700},
+  // lettres2 parked off-page (effet uses single wrap)
+  lettres2: {top:200, left:153, width:47,  size:10, spacing:0.1, align:'left',   font:'serif', weight:700},
   ordre:    {top:26,  left:80,  width:55,  size:13, spacing:0.3, align:'left',   font:'serif', weight:700},
   ville:    {top:38,  left:60,  width:25,  size:11, spacing:0.3, align:'left',   font:'serif', weight:700},
   date:     {top:38,  left:85,  width:25,  size:11, spacing:0.5, align:'left',   font:'mono',  weight:700},
@@ -8093,6 +8095,11 @@ try{
   if(!localStorage.getItem('effet_cfg_mig_v4')){
     localStorage.removeItem('effet_cfg');
     localStorage.setItem('effet_cfg_mig_v4','1');
+  }
+  // v5 — widened montant + tightened lettres after first real print test.
+  if(!localStorage.getItem('effet_cfg_mig_v5')){
+    localStorage.removeItem('effet_cfg');
+    localStorage.setItem('effet_cfg_mig_v5','1');
   }
 }catch(e){}
 let _pcCfgEffet  = _pcLoadCfg('effet_cfg', EFFET_CFG_DEFAULTS);
@@ -8647,7 +8654,7 @@ function renderPrintCheque(){
     .pc-print-howto b{color:#4f8ef7}
     /* Trailing horizontal line after montant en lettres in the preview,
        matches the .f.fill::after CSS in print HTML — clean pen-stroke. */
-    .pc-fill::after{content:'';display:inline-block;width:100%;border-bottom:1.5px solid #000;vertical-align:0.18em;margin-left:3px;}
+    .pc-fill::after{content:'';display:inline-block;width:55%;border-bottom:1.2px solid #000;vertical-align:0.18em;margin-left:3px;}
   </style>
   <div class="pc-hero">
     <div class="pc-hero-head">
@@ -9099,7 +9106,7 @@ function buildChequePrintHTML(d){
        forcing every saved config to migrate. */
     .mono,.serif{font-family:'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace;font-weight:700;letter-spacing:0.02em;}
     /* Trailing horizontal line after montant en lettres — pen-stroke style */
-    .f.fill::after{content:'';display:inline-block;width:100%;border-bottom:0.5mm solid #000;vertical-align:0.18em;margin-left:1mm;}
+    .f.fill::after{content:'';display:inline-block;width:55%;border-bottom:0.4mm solid #000;vertical-align:0.18em;margin-left:1mm;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
     <div class="f wrap fill ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>

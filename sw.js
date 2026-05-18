@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v249-cheque-side-style-panel-typography';
+const CACHE = 'suivi-v250-cheque-harmonize-navy-gold-palette';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

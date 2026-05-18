@@ -9708,10 +9708,10 @@ function applyChqCfgToPreview(){
       // zones even when fields are empty (was invisible until hover —
       // user feedback 2026-05-18: "BLACH MN HADCHI KAMLO ANA 3TIK LES
       // PHOTO" / "IDA2A MKYSD9CH LIA" — they couldn't discover drag).
-      el.style.outline = '1px dashed rgba(124,92,252,.35)';
+      el.style.outline = '1px dashed rgba(200,164,74,.45)';
       el.title = 'اسحب لتحريك الحقل — Glisser pour déplacer';
-      el.addEventListener('mouseenter', ()=>{ el.style.outline = '2px dashed rgba(124,92,252,.95)'; el.style.background = 'rgba(124,92,252,.10)'; });
-      el.addEventListener('mouseleave', ()=>{ if(!el.dataset.dragging){ el.style.outline = '1px dashed rgba(124,92,252,.35)'; el.style.background = ''; } });
+      el.addEventListener('mouseenter', ()=>{ el.style.outline = '2px dashed rgba(200,164,74,.95)'; el.style.background = 'rgba(200,164,74,.10)'; });
+      el.addEventListener('mouseleave', ()=>{ if(!el.dataset.dragging){ el.style.outline = '1px dashed rgba(200,164,74,.45)'; el.style.background = ''; } });
       el.addEventListener('mousedown', (ev)=>{
         ev.preventDefault();
         const wrap = document.getElementById('pc-cheque-wrap');
@@ -9975,103 +9975,116 @@ function renderPrintCheque(){
   _renderChequesTabsHTML('print-cheque')
   +`<style>
     /* ─────────────────────────────────────────────────────────────
-       Premium banking aesthetic — inspired by Stripe Dashboard +
-       Pennylane + Sage Business Cloud. Sophisticated, less emoji,
-       crisp typography hierarchy, generous breathing room.
+       Premium banking aesthetic — coherent navy + gold palette
+       v249 → v250: tightened color coordination per user request
+       'designe tatabo9 d alwan' (colors must match). Two-color
+       system only: NAVY for structure, GOLD for accents. Green
+       reserved for semantic status only.
        ───────────────────────────────────────────────────────────── */
 
-    /* Banking-blue palette + parchment paper */
-    :root{--pc-blue:#0a4d8f;--pc-blue-2:#1e6cb8;--pc-gold:#c8a44a;--pc-paper:#fdfcf7;--pc-ink:#0a1929}
+    :root{
+      --pc-navy-1:#0a4d8f;          /* main brand blue */
+      --pc-navy-2:#1e6cb8;          /* lighter brand */
+      --pc-navy-deep:#061d3a;       /* canvas darkness */
+      --pc-navy-darker:#020e1f;     /* canvas darkest */
+      --pc-gold:#c8a44a;            /* main gold */
+      --pc-gold-deep:#9a7d30;       /* darker gold */
+      --pc-gold-soft:rgba(200,164,74,.12);
+      --pc-gold-edge:rgba(200,164,74,.35);
+      --pc-gold-strong:rgba(200,164,74,.55);
+      --pc-ink:#0a1929;
+      --pc-paper:#fdfcf7;
+    }
 
-    /* ─── HERO HEADER ─── */
-    .pc3-hero{position:relative;background:linear-gradient(135deg,#0a4d8f 0%,#1e3a72 60%,#0f2447 100%);color:#fff;padding:26px 28px 22px;border-radius:16px 16px 0 0;margin-bottom:0;overflow:hidden}
-    .pc3-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 200px at 10% 30%,rgba(200,164,74,.10),transparent 60%);pointer-events:none}
+    /* ─── HERO HEADER (navy gradient + gold spotlight) ─── */
+    .pc3-hero{position:relative;background:linear-gradient(135deg,var(--pc-navy-1) 0%,var(--pc-navy-deep) 70%,var(--pc-navy-darker) 100%);color:#fff;padding:26px 28px 22px;border-radius:16px 16px 0 0;margin-bottom:0;overflow:hidden;border:1px solid var(--pc-gold-edge);border-bottom:0}
+    .pc3-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 200px at 10% 30%,var(--pc-gold-soft),transparent 60%);pointer-events:none}
     .pc3-hero-top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative}
     .pc3-hero-title{display:flex;align-items:center;gap:14px}
-    .pc3-hero-mark{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,#c8a44a,#9a7d30);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;box-shadow:0 4px 14px rgba(200,164,74,.4);font-family:'Inter','Cairo',sans-serif;letter-spacing:-.5px}
+    .pc3-hero-mark{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,var(--pc-gold),var(--pc-gold-deep));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;box-shadow:0 4px 14px rgba(200,164,74,.4);font-family:'Inter','Cairo',sans-serif;letter-spacing:-.5px}
     .pc3-hero-h{font-size:18px;font-weight:800;letter-spacing:-.3px;font-family:'Inter','Cairo',sans-serif;color:#fff}
     .pc3-hero-sub{font-size:11px;color:rgba(255,255,255,.7);margin-top:2px;letter-spacing:.4px;font-weight:500}
-    .pc3-status{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);color:#fff;padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.3px}
-    .pc3-status::before{content:'';width:6px;height:6px;border-radius:50%;background:#10b981;box-shadow:0 0 8px #10b981}
 
-    /* Mode tabs — elegant underline style */
-    .pc3-tabs{display:flex;gap:0;margin-top:18px;border-bottom:1px solid rgba(255,255,255,.15);position:relative}
+    /* Mode tabs — gold underline */
+    .pc3-tabs{display:flex;gap:0;margin-top:18px;border-bottom:1px solid rgba(255,255,255,.12);position:relative}
     .pc3-tab{background:transparent;border:0;color:rgba(255,255,255,.55);padding:11px 22px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:'Cairo',sans-serif;border-bottom:2px solid transparent;transition:color .18s,border-color .18s;margin-bottom:-1px;letter-spacing:.2px}
     .pc3-tab:hover{color:rgba(255,255,255,.85)}
-    .pc3-tab.active{color:#fff;border-bottom-color:#c8a44a;font-weight:700}
+    .pc3-tab.active{color:#fff;border-bottom-color:var(--pc-gold);font-weight:700}
 
-    /* ─── ACTION BAR (right of hero) ─── */
+    /* ─── ACTION BAR (gold-trimmed buttons on navy) ─── */
     .pc3-cta{display:flex;gap:8px;align-items:center}
-    .pc3-cta .pc3-btn-primary{padding:11px 22px;font-size:13px;font-weight:700;background:#fff;color:var(--pc-ink);border:0;border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;box-shadow:0 6px 18px rgba(0,0,0,.18),inset 0 -2px 0 rgba(0,0,0,.06);transition:transform .12s,box-shadow .12s;letter-spacing:.2px}
-    .pc3-cta .pc3-btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(0,0,0,.25),inset 0 -2px 0 rgba(0,0,0,.06)}
-    .pc3-cta .pc3-btn-ghost{padding:11px 14px;font-size:13px;font-weight:600;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;transition:background .12s;letter-spacing:.2px}
-    .pc3-cta .pc3-btn-ghost:hover{background:rgba(255,255,255,.18)}
+    .pc3-cta .pc3-btn-primary{padding:11px 22px;font-size:13px;font-weight:700;background:linear-gradient(135deg,var(--pc-gold),var(--pc-gold-deep));color:#fff;border:0;border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;box-shadow:0 6px 18px rgba(200,164,74,.35),inset 0 -2px 0 rgba(0,0,0,.10);transition:transform .12s,box-shadow .12s;letter-spacing:.2px}
+    .pc3-cta .pc3-btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(200,164,74,.5),inset 0 -2px 0 rgba(0,0,0,.10)}
+    .pc3-cta .pc3-btn-ghost{padding:11px 14px;font-size:13px;font-weight:600;background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;font-family:'Cairo',sans-serif;transition:all .12s;letter-spacing:.2px}
+    .pc3-cta .pc3-btn-ghost:hover{background:rgba(200,164,74,.18);border-color:var(--pc-gold-edge);color:var(--pc-gold)}
     .pc3-menu{position:relative}
-    .pc3-menu-btn{padding:11px 13px;font-size:18px;font-weight:800;background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;line-height:1}
-    .pc3-menu-btn:hover{background:rgba(255,255,255,.18)}
-    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:30}
+    .pc3-menu-btn{padding:11px 13px;font-size:18px;font-weight:800;background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;line-height:1;transition:all .12s}
+    .pc3-menu-btn:hover{background:rgba(200,164,74,.18);border-color:var(--pc-gold-edge);color:var(--pc-gold)}
+    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--pc-gold-edge);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:30}
     .pc3-menu.open .pc3-menu-list{display:block}
     .pc3-menu-item{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:8px;cursor:pointer;color:var(--text);font-size:12.5px;font-weight:600;border:0;background:transparent;width:100%;font-family:'Cairo',sans-serif;text-align:start}
-    .pc3-menu-item:hover{background:var(--bg3);color:var(--accent)}
+    .pc3-menu-item:hover{background:rgba(200,164,74,.10);color:var(--pc-gold)}
     .pc3-menu-item span:first-child{font-size:15px;width:20px;text-align:center;opacity:.8}
 
     /* ─── MAIN WORKSPACE ─── */
-    .pc3-workspace{background:var(--bg2);border:1px solid var(--border);border-top:0;border-radius:0 0 16px 16px;padding:24px 24px 24px;margin-bottom:18px}
+    .pc3-workspace{background:var(--bg2);border:1px solid var(--pc-gold-edge);border-top:0;border-radius:0 0 16px 16px;padding:24px 24px 24px;margin-bottom:18px;box-shadow:0 12px 40px rgba(10,77,143,.08)}
     .pc3-grid{display:grid;grid-template-columns:300px 1fr 240px;gap:20px;align-items:start}
     @media (max-width:1280px){.pc3-grid{grid-template-columns:280px 1fr;gap:16px}.pc3-styles{grid-column:1 / -1;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}}
     @media (max-width:1050px){.pc3-grid{grid-template-columns:1fr}.pc3-styles{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}}
 
-    /* ─── STYLE PANEL ─── */
+    /* ─── STYLE PANEL (gold accents, coordinated with hero/canvas) ─── */
     .pc3-styles{position:sticky;top:20px;display:flex;flex-direction:column;gap:10px}
-    .pc3-styles-head{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;font-family:'Inter','Cairo',sans-serif;padding:0 4px 4px;border-bottom:1px solid var(--border);margin-bottom:4px;display:flex;align-items:center;gap:6px}
-    .pc3-styles-head::before{content:'';width:4px;height:14px;background:linear-gradient(180deg,#c8a44a,#9a7d30);border-radius:2px}
-    .pc3-style-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:border-color .15s}
-    .pc3-style-card:hover{border-color:rgba(200,164,74,.35)}
-    .pc3-style-card.open{border-color:rgba(200,164,74,.55);background:linear-gradient(180deg,rgba(200,164,74,.04),var(--bg3))}
+    .pc3-styles-head{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.4px;text-transform:uppercase;font-family:'Inter','Cairo',sans-serif;padding:0 4px 4px;border-bottom:1px solid var(--pc-gold-edge);margin-bottom:4px;display:flex;align-items:center;gap:6px}
+    .pc3-styles-head::before{content:'';width:4px;height:14px;background:linear-gradient(180deg,var(--pc-gold),var(--pc-gold-deep));border-radius:2px}
+    .pc3-style-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:all .15s}
+    .pc3-style-card:hover{border-color:var(--pc-gold-edge);box-shadow:0 4px 12px rgba(200,164,74,.08)}
+    .pc3-style-card.open{border-color:var(--pc-gold-strong);background:linear-gradient(180deg,var(--pc-gold-soft),var(--bg3));box-shadow:0 6px 16px rgba(200,164,74,.12)}
     .pc3-style-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;cursor:pointer;user-select:none}
     .pc3-style-name{font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;font-family:'Inter','Cairo',sans-serif}
-    .pc3-style-name .dot{width:7px;height:7px;border-radius:50%;background:#c8a44a;flex-shrink:0}
+    .pc3-style-name .dot{width:7px;height:7px;border-radius:50%;background:var(--pc-gold);flex-shrink:0;box-shadow:0 0 6px rgba(200,164,74,.5)}
     .pc3-style-chev{font-size:14px;color:var(--text3);transition:transform .15s}
-    .pc3-style-card.open .pc3-style-chev{transform:rotate(180deg);color:#c8a44a}
-    .pc3-style-body{display:none;padding:4px 12px 12px;border-top:1px solid var(--border)}
+    .pc3-style-card.open .pc3-style-chev{transform:rotate(180deg);color:var(--pc-gold)}
+    .pc3-style-body{display:none;padding:4px 12px 12px;border-top:1px solid var(--pc-gold-edge)}
     .pc3-style-card.open .pc3-style-body{display:block}
     .pc3-style-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px}
     .pc3-style-row:first-child{margin-top:8px}
     .pc3-style-lbl{font-size:10px;font-weight:600;color:var(--text2);letter-spacing:.3px;flex:1}
     .pc3-style-ctrl{display:inline-flex;align-items:center;gap:0;background:var(--bg2);border:1px solid var(--border);border-radius:7px;overflow:hidden}
-    .pc3-style-btn{background:transparent;border:0;color:var(--text2);width:24px;height:24px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter','Cairo',sans-serif}
-    .pc3-style-btn:hover{background:rgba(200,164,74,.15);color:#c8a44a}
-    .pc3-style-val{min-width:40px;text-align:center;font-size:11px;font-weight:700;color:var(--text);font-family:'Inter','Courier New',monospace;padding:0 6px;border-left:1px solid var(--border);border-right:1px solid var(--border);background:var(--bg);line-height:24px}
+    .pc3-style-btn{background:transparent;border:0;color:var(--text2);width:24px;height:24px;font-size:13px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter','Cairo',sans-serif;transition:all .12s}
+    .pc3-style-btn:hover{background:var(--pc-gold-soft);color:var(--pc-gold)}
+    .pc3-style-val{min-width:40px;text-align:center;font-size:11px;font-weight:700;color:var(--pc-gold);font-family:'Inter','Courier New',monospace;padding:0 6px;border-left:1px solid var(--border);border-right:1px solid var(--border);background:var(--bg);line-height:24px}
 
     /* ─── FORM PANEL ─── */
     .pc3-form{position:sticky;top:20px}
     .pc3-section{margin-bottom:20px}
     .pc3-section:last-child{margin-bottom:0}
     .pc3-section-head{font-size:10px;font-weight:700;color:var(--text3);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;font-family:'Inter','Cairo',sans-serif}
-    .pc3-section-head .num{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,#0a4d8f,#1e6cb8);color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif}
+    .pc3-section-head .num{width:18px;height:18px;border-radius:50%;background:linear-gradient(135deg,var(--pc-navy-1),var(--pc-navy-2));color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;font-family:'Inter',sans-serif;box-shadow:0 2px 6px rgba(10,77,143,.3)}
+    .pc3-section-head .num-gold{background:linear-gradient(135deg,var(--pc-gold),var(--pc-gold-deep));box-shadow:0 2px 6px rgba(200,164,74,.4)}
     .pc3-input-wrap{position:relative}
     .pc3-input{width:100%;padding:11px 13px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:10px;font-size:13px;font-family:'Cairo',sans-serif;transition:all .18s}
-    .pc3-input:focus{border-color:var(--pc-blue-2);outline:0;box-shadow:0 0 0 3px rgba(30,108,184,.15);background:var(--bg2)}
-    .pc3-input.big{font-size:22px;font-weight:800;direction:ltr;font-family:'Courier Prime','Inter',monospace;letter-spacing:.5px;padding:12px 13px}
+    .pc3-input:focus{border-color:var(--pc-navy-2);outline:0;box-shadow:0 0 0 3px rgba(30,108,184,.18);background:var(--bg2)}
+    .pc3-input.big{font-size:22px;font-weight:800;direction:ltr;font-family:'Courier Prime','Inter',monospace;letter-spacing:.5px;padding:12px 13px;color:var(--pc-gold)}
     .pc3-row{display:grid;gap:10px}
     .pc3-row.cols-2{grid-template-columns:1fr 1fr}
     .pc3-flbl{font-size:10px;color:var(--text2);font-weight:600;margin-bottom:5px;display:block;letter-spacing:.3px;text-transform:uppercase}
-    .pc3-lettres{background:linear-gradient(135deg,#fdfcf7 0%,#f5f0e0 100%);border:1px solid rgba(200,164,74,.4);border-radius:10px;padding:13px 16px;margin-top:10px;position:relative}
-    .pc3-lettres::before{content:'EN LETTRES';position:absolute;top:-7px;left:14px;font-size:8px;font-weight:800;color:#c8a44a;background:var(--bg2);padding:1px 8px;letter-spacing:1.2px;font-family:'Inter','Cairo',sans-serif}
-    .pc3-lettres-val{font-size:11.5px;font-weight:700;color:#0a1929;direction:ltr;font-family:'Courier Prime','Courier New',monospace;line-height:1.5;min-height:18px;text-transform:uppercase;letter-spacing:.3px}
+    /* En-lettres: navy-tinted (was cream parchment — clashed with dark theme) */
+    .pc3-lettres{background:linear-gradient(135deg,rgba(10,77,143,.10) 0%,rgba(30,108,184,.06) 100%);border:1px solid var(--pc-gold-edge);border-radius:10px;padding:13px 16px;margin-top:10px;position:relative}
+    .pc3-lettres::before{content:'EN LETTRES';position:absolute;top:-7px;left:14px;font-size:8px;font-weight:800;color:var(--pc-gold);background:var(--bg2);padding:1px 8px;letter-spacing:1.2px;font-family:'Inter','Cairo',sans-serif}
+    .pc3-lettres-val{font-size:11.5px;font-weight:700;color:var(--text);direction:ltr;font-family:'Courier Prime','Courier New',monospace;line-height:1.5;min-height:18px;text-transform:uppercase;letter-spacing:.3px}
     #pc-msg{text-align:center;font-size:12px;min-height:16px;font-weight:600;margin-top:10px}
 
-    /* ─── PREVIEW PANEL ─── */
-    .pc3-canvas{background:linear-gradient(135deg,#1a2332 0%,#0f1825 100%);border:1px solid var(--border);border-radius:14px;padding:32px 24px;position:relative;overflow:visible}
-    .pc3-canvas::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,rgba(255,255,255,.025) 1px,transparent 1px);background-size:18px 18px;border-radius:14px;pointer-events:none;opacity:.6}
+    /* ─── PREVIEW CANVAS (navy-tinted darkness, matches hero) ─── */
+    .pc3-canvas{background:linear-gradient(135deg,var(--pc-navy-deep) 0%,var(--pc-navy-darker) 100%);border:1px solid var(--pc-gold-edge);border-radius:14px;padding:32px 24px;position:relative;overflow:visible;box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+    .pc3-canvas::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,rgba(200,164,74,.04) 1px,transparent 1px);background-size:20px 20px;border-radius:14px;pointer-events:none;opacity:.7}
     .pc3-canvas-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;position:relative;z-index:1}
     .pc3-canvas-lbl{font-size:10px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:1.5px;text-transform:uppercase;font-family:'Inter','Cairo',sans-serif}
-    .pc3-size-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(200,164,74,.12);color:#c8a44a;padding:5px 12px;border-radius:20px;font-weight:700;border:1px solid rgba(200,164,74,.35);font-size:10px;letter-spacing:.8px;font-family:'Inter',sans-serif}
+    .pc3-size-badge{display:inline-flex;align-items:center;gap:7px;background:var(--pc-gold-soft);color:var(--pc-gold);padding:5px 12px;border-radius:20px;font-weight:700;border:1px solid var(--pc-gold-edge);font-size:10px;letter-spacing:.8px;font-family:'Inter',sans-serif}
     .pc3-paper-stage{display:flex;justify-content:center;align-items:center;position:relative;z-index:1;min-height:280px}
-    .pc3-paper{background:#fff;border-radius:4px;box-shadow:0 30px 60px -10px rgba(0,0,0,.5),0 18px 36px -18px rgba(0,0,0,.4),0 0 0 1px rgba(0,0,0,.06);overflow:visible;position:relative;transition:transform .2s}
+    .pc3-paper{background:#fff;border-radius:4px;box-shadow:0 30px 60px -10px rgba(0,0,0,.5),0 18px 36px -18px rgba(0,0,0,.4),0 0 0 1px rgba(200,164,74,.15);overflow:visible;position:relative;transition:transform .2s}
     .pc3-paper::before{content:'';position:absolute;top:-2px;right:8px;width:36px;height:14px;background:linear-gradient(180deg,rgba(0,0,0,.10),transparent);transform:skewX(-25deg);pointer-events:none}
-    .pc3-tip{margin-top:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:11px 16px;font-size:11px;color:rgba(255,255,255,.65);line-height:1.7;position:relative;z-index:1}
-    .pc3-tip b{color:#c8a44a;font-weight:700}
+    .pc3-tip{margin-top:18px;background:rgba(255,255,255,.03);border:1px solid rgba(200,164,74,.18);border-radius:10px;padding:11px 16px;font-size:11px;color:rgba(255,255,255,.7);line-height:1.7;position:relative;z-index:1}
+    .pc3-tip b{color:var(--pc-gold);font-weight:700}
 
     /* Trailing line after montant en lettres in the preview */
     .pc-fill::after{content:'';display:inline-block;width:18%;border-bottom:1.2px solid #000;vertical-align:0.18em;margin-left:2px;}
@@ -10126,7 +10139,7 @@ function renderPrintCheque(){
         </div>
 
         <div class="pc3-section">
-          <div class="pc3-section-head"><span><span class="num">2</span> &nbsp; Montant</span><span style="color:#c8a44a;font-weight:700">DH</span></div>
+          <div class="pc3-section-head"><span><span class="num num-gold">2</span> &nbsp; Montant</span><span style="color:var(--pc-gold);font-weight:700">DH</span></div>
           <input class="pc3-input big" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()">
           <div class="pc3-lettres">
             <div class="pc3-lettres-val" id="pc-lettres-preview">—</div>
@@ -10156,7 +10169,7 @@ function renderPrintCheque(){
           <div class="pc3-paper" id="pc-preview-frame">
             <div id="pc-preview-outer" style="overflow:visible;width:100%">
               <div id="pc-preview-scaler" style="transform-origin:top right;direction:ltr">
-                <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:visible;color:#111;outline:1px dashed rgba(124,92,252,.2);outline-offset:-1px">
+                <div id="pc-cheque-wrap" style="width:${isEffet?'200':'176'}mm;height:${isEffet?'130':'80'}mm;position:relative;background:#fff;overflow:visible;color:#111;outline:1px dashed rgba(200,164,74,.3);outline-offset:-1px">
                   <div id="pc-bg" style="position:absolute;top:0;left:0;right:0;height:${isEffet?'105mm':'100%'};background:${bgImg?`url('${bgImg.replace(/'/g,"\\'")}') 0 0/100% 100% no-repeat`:(isEffet?'#f5f3ff':'#e8e0d0')};display:flex;align-items:center;justify-content:center">
                     ${!bgImg?`<div onclick="document.getElementById('pc-img-input').click()" style="cursor:pointer;text-align:center;color:${isEffet?'#7c3aed':'#666'};padding:18px;border:2px dashed currentColor;border-radius:10px;background:rgba(255,255,255,.6)"><div style="font-size:42px">${isEffet?'📜':'🏦'}</div><div style="font-size:14px;margin-top:8px;font-weight:700">${isEffet?'Effet / Lettre de change':'Crédit du Maroc'}</div><div style="font-size:12px;margin-top:6px">${uploadHint}</div></div>`:''}
                   </div>

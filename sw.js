@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v225-print-echeance-uses-payment-terms-days';
+const CACHE = 'suivi-v226-print-echeance-from-bon-date-plus-terms';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

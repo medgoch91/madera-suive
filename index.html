@@ -2921,12 +2921,30 @@ function printCheque(id){
   printMode = (c.type==='effet') ? 'effet' : 'cheque';
   try{ chequeCfg = (printMode==='effet') ? _pcCfgEffet : _pcCfgCheque; }catch(e){}
   // Stash the data — renderPrintCheque picks it up synchronously after innerHTML is set
+  // Pre-compute the "correct" échéance per the supplier's payment terms:
+  // base = latest linked bon date (fallback to cheque issue date), then add
+  // fournisseur.paymentTermsDays (fallback 60). This is what the user expects
+  // when they say "GADIMAT raha 120jr men la date d bon".
+  let echeanceFromBon = '';
+  try{
+    const linkedBons = (bons||[]).filter(b => (c.bonIds||c.bon_ids||[]).includes(b.id));
+    const latestBonDate = linkedBons.reduce((latest, b) => (b.date && (!latest || b.date>latest)) ? b.date : latest, '');
+    const four = (fournisseurs||[]).find(f => (f.nom||'').toLowerCase() === (c.fournisseur||'').toLowerCase());
+    const days = (four && Number(four.paymentTermsDays)>0) ? Number(four.paymentTermsDays) : 60;
+    const base = latestBonDate || c.date;
+    if(base){
+      const _d = new Date(base+'T12:00:00Z');
+      _d.setUTCDate(_d.getUTCDate()+days);
+      echeanceFromBon = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+    }
+  }catch(e){}
   _setPendingPrintData({
     id:       c.id,
     ordre:    c.fournisseur || '',
     montant:  c.montant || '',
     date:     c.date || '',
-    echeance: c.echeance || '',
+    echeance: c.echeance || echeanceFromBon || '',
+    echeanceFromBon: echeanceFromBon,
     ville:    c.ville || 'Agadir',
     num:      c.num || '',
     type:     c.type || 'cheque'

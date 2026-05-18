@@ -7384,6 +7384,29 @@ function _dailyForecastSVG(items, startBal){
   </svg>`;
 }
 
+// Quick-create a tswiya for a clicked calendar day — pre-fills the
+// échéance with that date and jumps to the new-cheque form.
+// User feedback 2026-05-18: 'ay date clikit eliha dkhlni direct ndir
+// taswiya' — clicking any calendar day should land them in the create
+// form with the date already set.
+function echNewTaswiyaForDate(ymd){
+  try{
+    if(typeof showPage==='function') showPage('new-cheque', null);
+    // Small delay so the page is in the DOM before we touch its inputs
+    setTimeout(()=>{
+      const echInp = document.getElementById('c-echeance');
+      if(echInp){ echInp.value = ymd; try{ echInp.dispatchEvent(new Event('input',{bubbles:true})); }catch(e){} }
+      // If issue date is empty, default to today (échéance is what mattered)
+      const dInp = document.getElementById('c-date');
+      if(dInp && !dInp.value){ dInp.valueAsDate = new Date(); }
+      // Focus the first useful field — fournisseur — so user can start typing
+      const fInp = document.getElementById('c-fournisseur') || document.getElementById('c-four');
+      if(fInp){ try{ fInp.focus(); }catch(e){} }
+      try{ toast('📅 استحقاق: '+fmtDate(ymd)+' — كمل المعلومات','info'); }catch(e){}
+    }, 60);
+  }catch(e){ console.warn('echNewTaswiyaForDate', e); }
+}
+
 // Open a day drilldown (used by calendar view) — list cheques due that day
 function echOpenDay(ymd){
   const items = (cheques||[]).filter(c => {
@@ -7707,10 +7730,18 @@ function renderEcheancier(){
           return '<div style="font-size:9px;font-weight:600;color:#0f172a;line-height:1.3"><span style="color:#475569">'+escB(fnom)+'</span> · <span style="color:#dc2626;font-weight:800">'+fmtN(Number(i.c.montant)||0)+'</span></div>';
         }).join('');
         const totalBlock = its.length > 1 ? '<div style="font-size:9px;font-weight:800;color:#7c1d1d;border-top:1px dashed rgba(220,38,38,.4);margin-top:3px;padding-top:2px">Σ '+fmtN(tot)+'</div>' : '';
-        html += '<div onclick="echOpenDay(\''+k+'-'+String(day).padStart(2,'0')+'\')" style="background:'+cellBg+';border:'+(isToday?'2px solid var(--accent)':'1px solid var(--border)')+';border-radius:6px;padding:5px 6px;min-height:'+(its.length?(40+its.length*16):54)+'px;cursor:'+(its.length?'pointer':'default')+';transition:transform .1s" '+(its.length?'onmouseover="this.style.transform=\'scale(1.03)\';this.style.zIndex=\'10\';this.style.position=\'relative\'" onmouseout="this.style.transform=\'\';this.style.zIndex=\'\'"':'')+'>'
-          + '<div style="font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--accent)':'var(--text2)')+';font-size:11px;margin-bottom:'+(its.length?'3':'0')+'px">'+day+'</div>'
-          + fournisseurs_list
-          + totalBlock
+        const ymd = k+'-'+String(day).padStart(2,'0');
+        // Day cell: clicking the CELL background opens new-tswiya for that
+        // date; clicking the small list of existing items opens the day
+        // drilldown (so user can still inspect what's already there).
+        const cellHandler = 'echNewTaswiyaForDate(\''+ymd+'\')';
+        const listHandler = its.length ? 'event.stopPropagation();echOpenDay(\''+ymd+'\')' : cellHandler;
+        html += '<div onclick="'+cellHandler+'" title="انقر لإنشاء تسوية ف هاد التاريخ" style="background:'+cellBg+';border:'+(isToday?'2px solid var(--accent)':'1px solid var(--border)')+';border-radius:6px;padding:5px 6px;min-height:'+(its.length?(40+its.length*16):54)+'px;cursor:pointer;transition:transform .1s;position:relative" onmouseover="this.style.transform=\'scale(1.03)\';this.style.zIndex=\'10\';this.style.position=\'relative\';const p=this.querySelector(\'.cal-plus\');if(p)p.style.opacity=\'1\'" onmouseout="this.style.transform=\'\';this.style.zIndex=\'\';const p=this.querySelector(\'.cal-plus\');if(p)p.style.opacity=\'0\'">'
+          + '<div style="font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--accent)':'var(--text2)')+';font-size:11px;margin-bottom:'+(its.length?'3':'0')+'px;display:flex;justify-content:space-between;align-items:center">'
+            + '<span>'+day+'</span>'
+            + '<span class="cal-plus" style="opacity:0;transition:opacity .15s;font-size:13px;color:var(--accent);font-weight:800" title="إنشاء تسوية">＋</span>'
+          + '</div>'
+          + (its.length ? '<div onclick="'+listHandler+'" style="cursor:pointer">'+fournisseurs_list+totalBlock+'</div>' : '')
         + '</div>';
       }
       html += '</div></div>';

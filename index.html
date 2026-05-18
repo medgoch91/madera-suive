@@ -10880,11 +10880,33 @@ function doPrint(){
 
 // Filter state for the print history table (persists across re-renders)
 var phFilter = (typeof phFilter !== 'undefined') ? phFilter : {q:'', from:'', to:'', status:'', limit:25};
+// Track which filter input is focused so we can restore after re-render
+// (innerHTML rebuild on every keystroke would otherwise drop focus after
+// the 1st char — user report 2026-05-18: 'knktab hrf lwl saf mkykhlinich
+// nkml ktba'). We save active id + selection bounds and restore on rerender.
+var _phFocus = null;
 function setPhFilter(key, val){
+  try{
+    const el = document.activeElement;
+    if(el && el.id && el.id.startsWith('ph-')){
+      _phFocus = {id: el.id, ss: el.selectionStart, se: el.selectionEnd};
+    } else { _phFocus = null; }
+  }catch(e){ _phFocus = null; }
   phFilter[key] = (key==='limit') ? (Number(val)||25) : (val||'');
   renderPrintHistory();
 }
-function clearPhFilter(){ phFilter = {q:'',from:'',to:'',status:'',limit:25}; renderPrintHistory(); }
+function clearPhFilter(){ _phFocus = null; phFilter = {q:'',from:'',to:'',status:'',limit:25}; renderPrintHistory(); }
+function _phRestoreFocus(){
+  if(!_phFocus) return;
+  const el = document.getElementById(_phFocus.id);
+  if(!el) return;
+  try{
+    el.focus();
+    if(el.setSelectionRange && _phFocus.ss!=null){
+      el.setSelectionRange(_phFocus.ss, _phFocus.se!=null ? _phFocus.se : _phFocus.ss);
+    }
+  }catch(e){}
+}
 
 function renderPrintHistory(){
   const wrap=document.getElementById('pc-history-wrap');if(!wrap)return;
@@ -10903,7 +10925,7 @@ function renderPrintHistory(){
 
   const _filterBar = all.length ? `
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;margin-bottom:10px">
-      <input type="text" placeholder="🔍 بحث (اسم/مبلغ/رقم)" value="${(phFilter.q||'').replace(/"/g,'&quot;')}" oninput="setPhFilter('q',this.value)" style="flex:1;min-width:160px;padding:6px 10px;font-size:12px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
+      <input id="ph-search" type="text" placeholder="🔍 بحث (اسم/مبلغ/رقم)" value="${(phFilter.q||'').replace(/"/g,'&quot;')}" oninput="setPhFilter('q',this.value)" style="flex:1;min-width:160px;padding:6px 10px;font-size:12px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)">من <input type="date" value="${phFilter.from||''}" onchange="setPhFilter('from',this.value)" style="padding:5px 7px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;direction:ltr"></label>
       <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text2)">إلى <input type="date" value="${phFilter.to||''}" onchange="setPhFilter('to',this.value)" style="padding:5px 7px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;direction:ltr"></label>
       <select onchange="setPhFilter('status',this.value)" style="padding:6px 8px;font-size:11px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif">
@@ -10926,7 +10948,7 @@ function renderPrintHistory(){
     </div>` : '';
 
   if(!all.length){wrap.innerHTML='<div style="text-align:center;color:var(--text3);padding:20px;font-size:13px">لا توجد سجلات بعد</div>';return;}
-  if(!_filtered.length){wrap.innerHTML = _filterBar + '<div style="text-align:center;color:var(--text3);padding:30px;font-size:13px">🔍 ما كاينش نتائج لهاد الفلتر</div>';return;}
+  if(!_filtered.length){wrap.innerHTML = _filterBar + '<div style="text-align:center;color:var(--text3);padding:30px;font-size:13px">🔍 ما كاينش نتائج لهاد الفلتر</div>';_phRestoreFocus();return;}
   const _slice = _filtered.slice(0, phFilter.limit||25);
   // Override the slice + index + status color via wrapper variables.
   // Below table uses printHistory.slice(0,15) — we replace with _slice via runtime.
@@ -10939,6 +10961,7 @@ function renderPrintHistory(){
     <td><select onchange="updatePrintStatus(${i},this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:3px 8px;font-size:11px;font-family:'Cairo',sans-serif"><option ${h.status==='غير مدفوع'?'selected':''}>غير مدفوع</option><option ${h.status==='مدفوع'?'selected':''}>مدفوع</option><option ${h.status==='مرفوض'?'selected':''}>مرفوض</option></select></td>
     <td style="display:flex;gap:6px"><button class="btn-ghost" onclick="reloadPrint(${i})" title="إعادة">🖨️</button><button class="btn-ghost" onclick="deletePrint(${i})" style="color:var(--red)">🗑️</button></td>
   </tr>`;}).join('')}</tbody></table>${_filtered.length > _slice.length ? `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text3)">... و ${_filtered.length - _slice.length} سجل آخر (زيد limit)</div>` : ''}`;
+  _phRestoreFocus();
 }
 
 function updatePrintStatus(i,s){printHistory[i].status=s;localStorage.setItem('print_history',JSON.stringify(printHistory));renderPrintHistory();}

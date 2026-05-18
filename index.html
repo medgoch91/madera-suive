@@ -8001,6 +8001,25 @@ function applyPrintOffsetToPreview(){
     el.style.transform = `translate(${ox}mm, ${oy}mm)`;
   });
 }
+// Resolve auto-default échéance delay based on the current pc-ordre value
+// (fournisseur name). Looks up fournisseurs[].paymentTermsDays — falls back
+// to 60 days if no fournisseur match or no payment terms configured. This
+// is what the auto-fill safety net uses in doPrint / downloadChequePDF /
+// downloadChequePNG / updatePrintPreview so per-supplier delays (GADIMAT 120,
+// etc.) are honored automatically when generating the cheque/effet.
+function _chequeAutoDays(){
+  try{
+    const nom = (document.getElementById('pc-ordre')||{value:''}).value.trim();
+    if(!nom || typeof fournisseurs==='undefined' || !fournisseurs) return 60;
+    const four = fournisseurs.find(f => (f.nom||'').toLowerCase() === nom.toLowerCase());
+    if(four && four.paymentTermsDays!=null){
+      const d = Number(four.paymentTermsDays);
+      if(Number.isFinite(d) && d > 0) return d;
+    }
+  }catch(e){}
+  return 60;
+}
+
 function setPrintMode(m){
   printMode = (m==='effet')?'effet':'cheque';
   // Swap to the right calibration set so D-pad / preview reflect this mode's
@@ -9027,7 +9046,7 @@ function updatePrintPreview(){
   if(printMode==='effet' && !ech && date){
     try{
       const _d = new Date(date+'T12:00:00Z');
-      _d.setUTCDate(_d.getUTCDate()+60);
+      _d.setUTCDate(_d.getUTCDate()+_chequeAutoDays());
       ech = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
       const inp = document.getElementById('pc-echeance');
       if(inp && !inp.value) inp.value = ech;
@@ -9183,7 +9202,7 @@ async function downloadChequePNG(){
         const baseISO = dateVal || new Date().toISOString().slice(0,10);
         try{
           const _d = new Date(baseISO+'T12:00:00Z');
-          _d.setUTCDate(_d.getUTCDate()+60);
+          _d.setUTCDate(_d.getUTCDate()+_chequeAutoDays());  // payment_terms_days from fournisseur, fallback 60
           echISO = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
           if(echInp) echInp.value = echISO;
         }catch(e){}
@@ -9264,7 +9283,7 @@ async function downloadChequePDF(){
         const baseISO = dateVal || new Date().toISOString().slice(0,10);
         try{
           const _d = new Date(baseISO+'T12:00:00Z');
-          _d.setUTCDate(_d.getUTCDate()+60);
+          _d.setUTCDate(_d.getUTCDate()+_chequeAutoDays());  // payment_terms_days from fournisseur, fallback 60
           echISO = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
           if(echInp) echInp.value = echISO;
         }catch(e){}
@@ -9401,7 +9420,7 @@ function doPrint(){
       const baseISO = date || new Date().toISOString().slice(0,10);
       try{
         const _d = new Date(baseISO+'T12:00:00Z');
-        _d.setUTCDate(_d.getUTCDate()+60);
+        _d.setUTCDate(_d.getUTCDate()+_chequeAutoDays());
         echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
       }catch(e){}
     }

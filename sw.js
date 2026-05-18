@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v236-csv-semicolon-multi-column';
+const CACHE = 'suivi-v237-bons-filter-paid-vs-pending';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

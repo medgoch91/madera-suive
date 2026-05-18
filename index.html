@@ -5048,9 +5048,23 @@ function _renderBonsTabsHTML(active){
 function renderBons(){
   const search=(document.getElementById('bon-search')||{value:''}).value.toLowerCase();
   let filtered=filterByDate(bons,'bons');
+  // Resolve cheque status for a given bon (for filter split between "linked-pending" and "paid")
+  const _bonChequeStatus = (b) => {
+    if(!b.chequeId) return 'free';
+    const c = (cheques||[]).find(x => x.id===b.chequeId);
+    if(!c) return 'linked';
+    return (c.status==='مدفوع' || c.status==='Payé') ? 'paid' : 'linked';
+  };
+  filtered=filtered.filter(b=>{
+    const st = _bonChequeStatus(b);
+    if(bonFilter==='باقي' && st !== 'free') return false;
+    if(bonFilter==='مربوط' && st === 'free') return false;       // linked OR paid
+    if(bonFilter==='معلق' && st !== 'linked') return false;
+    if(bonFilter==='مدفوع' && st !== 'paid') return false;
+    return true;
+  });
   filtered=filtered.filter(b=>
-    (!bonFilter||(bonFilter==='باقي'&&!b.chequeId)||(bonFilter==='مربوط'&&b.chequeId))
-    &&(!bonFourFilter||b.fournisseur===bonFourFilter)
+    (!bonFourFilter||b.fournisseur===bonFourFilter)
     &&(chantierFilter==null || Number(b.chantierId||0)===Number(chantierFilter))
     &&(!search
        || b.num.toLowerCase().includes(search)
@@ -5116,9 +5130,28 @@ function renderBons(){
       </select>
       <button onclick="exportBonsMonthPDF()" style="padding:7px 12px;background:linear-gradient(135deg,#9333ea,#06b6d4);color:#fff;border:none;border-radius:8px;font-family:Cairo,sans-serif;font-weight:700;font-size:12px;cursor:pointer" title="تصدير PDF لكل البونات المعروضة">📄 PDF شهري</button>
       <div class="filter-pills">
-        <button class="pill ${!bonFilter?'active':''}" onclick="bonFilter='';renderBons()">الكل (${hasDF?filtered.length:bons.length})</button>
-        <button class="pill ${bonFilter==='باقي'?'active':''}" onclick="bonFilter='باقي';renderBons()">باقي (${filtered.filter(b=>!b.chequeId).length})</button>
-        <button class="pill ${bonFilter==='مربوط'?'active':''}" onclick="bonFilter='مربوط';renderBons()">مربوط (${filtered.filter(b=>b.chequeId).length})</button>
+        ${(function(){
+          // Counts must be against ALL bons matching other filters (date/four/chantier/search) — NOT against the bonFilter-filtered set
+          const _base = fBase.filter(b=>
+            (!bonFourFilter||b.fournisseur===bonFourFilter)
+            && (chantierFilter==null || Number(b.chantierId||0)===Number(chantierFilter))
+            && (!search
+              || b.num.toLowerCase().includes(search)
+              || (b.fournisseur||'').toLowerCase().includes(search)
+              || (b.note||'').toLowerCase().includes(search)
+              || (Array.isArray(b.lignes)?b.lignes:[]).some(function(l){
+                  return (bonGetLineName(l)||'').toLowerCase().includes(search)
+                      || (l && l.ref && String(l.ref).toLowerCase().includes(search));
+                }))
+          );
+          const stats = {all:_base.length, free:0, linked:0, paid:0};
+          _base.forEach(b => { const s=_bonChequeStatus(b); if(s==='free') stats.free++; else if(s==='linked') stats.linked++; else if(s==='paid') stats.paid++; });
+          return `<button class="pill ${!bonFilter?'active':''}" onclick="bonFilter='';renderBons()">📋 الكل (${stats.all})</button>
+          <button class="pill ${bonFilter==='باقي'?'active':''}" onclick="bonFilter='باقي';renderBons()" style="${bonFilter==='باقي'?'background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.5);color:#ef4444':''}">⚠️ بلا تسوية (${stats.free})</button>
+          <button class="pill ${bonFilter==='معلق'?'active':''}" onclick="bonFilter='معلق';renderBons()" style="${bonFilter==='معلق'?'background:rgba(245,158,11,.15);border-color:rgba(245,158,11,.5);color:#f59e0b':''}">⏰ تسوية معلقة (${stats.linked})</button>
+          <button class="pill ${bonFilter==='مدفوع'?'active':''}" onclick="bonFilter='مدفوع';renderBons()" style="${bonFilter==='مدفوع'?'background:rgba(16,185,129,.15);border-color:rgba(16,185,129,.5);color:#10b981':''}">✅ مدفوع (${stats.paid})</button>
+          <button class="pill ${bonFilter==='مربوط'?'active':''}" onclick="bonFilter='مربوط';renderBons()" title="معلق + مدفوع">🔗 مربوط كاع (${stats.linked+stats.paid})</button>`;
+        })()}
         ${bonFourFilter?`<button class="pill" style="background:rgba(232,64,64,0.08);border-color:rgba(232,64,64,0.3);color:var(--red)" onclick="setBonFourFilter('')">✕ ${escB(bonFourFilter)}</button>`:''}
       </div>
       ${(chantiers||[]).length?`<div class="filter-pills" style="flex-basis:100%;margin-top:6px">

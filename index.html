@@ -1503,6 +1503,7 @@ input[type=date],input[type=month]{direction:ltr;text-align:center;}
                   <input class="field-inp" id="c-num" placeholder="CHQ-010" style="flex:1">
                   <button type="button" onclick="suggestNextChequeNum()" title="اقتراح الرقم التالي" style="background:linear-gradient(135deg,var(--accent),#06b6d4);color:#fff;border:0;padding:0 12px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">✨</button>
                 </div>
+                <div id="c-num-hint" style="font-size:11px;color:var(--text3);margin-top:5px;padding:5px 8px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:6px;display:none"></div>
               </div>
               <div><label class="field-lbl">تاريخ الإصدار *</label><input class="field-inp" id="c-date" type="date"></div>
               <div id="c-echeance-wrap"><label class="field-lbl">الاستحقاق *</label><input class="field-inp" id="c-echeance" type="date" oninput="suggestEcheance()"><div id="c-echeance-hint" style="display:none;font-size:11px;color:var(--text2);margin-top:4px;padding:5px 8px;background:rgba(147,51,234,0.06);border:1px solid rgba(147,51,234,0.18);border-radius:6px"></div></div>
@@ -2877,6 +2878,20 @@ function suggestNextChequeNum(silent){
   }
   const next = String(maxNum+1).padStart(width,'0');
   inp.value = prefix + next;
+  // Update the inline hint so the user can see at a glance what we suggested
+  // and which prior number it followed — and that they can edit freely.
+  const hint = document.getElementById('c-num-hint');
+  if(hint){
+    if(maxNum > 0){
+      const last = prefix + String(maxNum).padStart(width,'0');
+      const typeLbl = type==='effet'?'إيفي':(type==='espece'?'إيصال':'شيك');
+      hint.innerHTML = '✨ آخر '+typeLbl+': <b>'+last+'</b> · الجديد: <b>'+inp.value+'</b> · يمكن تبدلو يدوياً';
+      hint.style.display = 'block';
+    } else {
+      hint.innerHTML = '✨ أول رقم · يمكن تبدلو يدوياً';
+      hint.style.display = 'block';
+    }
+  }
   if(!silent){ inp.focus(); try{ toast('✨ رقم مقترح: '+inp.value,'info'); }catch(e){} }
 }
 

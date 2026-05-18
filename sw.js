@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v216-cheque-pdf-exact-size-plus-nudge';
+const CACHE = 'suivi-v217-echeance-autofill-in-pdf-png-export';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

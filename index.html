@@ -9122,6 +9122,21 @@ async function downloadChequePNG(){
     const wrap = document.getElementById('pc-cheque-wrap');
     if(!wrap){ try{ toast('⚠️ المعاينة غير متوفرة','warning'); }catch(e){} return; }
     if(typeof html2canvas === 'undefined'){ try{ toast('⚠️ html2canvas غير محمل','error'); }catch(e){} return; }
+    // Effet safety net: auto-default échéance from date+60 if empty.
+    if(printMode==='effet'){
+      const dateVal = (document.getElementById('pc-date')||{value:''}).value;
+      const echInp = document.getElementById('pc-echeance');
+      if(echInp && !echInp.value){
+        const baseISO = dateVal || new Date().toISOString().slice(0,10);
+        try{
+          const _d = new Date(baseISO+'T12:00:00Z');
+          _d.setUTCDate(_d.getUTCDate()+60);
+          echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        }catch(e){}
+      }
+      try{ if(typeof updatePrintPreview==='function') updatePrintPreview(); }catch(e){}
+      await new Promise(r => setTimeout(r, 80));
+    }
     try{ if(typeof showLoader==='function') showLoader('📸 جاري التصوير...'); }catch(e){}
     // 176mm × 80mm at 300dpi (1mm ≈ 11.811 px). Scale factor =
     // 11.811 × (CSS-px per mm) ≈ 11.811 / (96/25.4) = 3.125 → use 4 for
@@ -9175,6 +9190,25 @@ async function downloadChequePDF(){
   try{
     try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF بالمقاس الحقيقي...'); }catch(e){}
     const isEff = printMode==='effet';
+    // Effet safety net: auto-default échéance from date+60 if empty.
+    // Mirror of doPrint's logic so PDF path also gets the date d'échéance
+    // when user hasn't typed one in the input.
+    if(isEff){
+      const dateVal = (document.getElementById('pc-date')||{value:''}).value;
+      const echInp = document.getElementById('pc-echeance');
+      if(echInp && !echInp.value){
+        const baseISO = dateVal || new Date().toISOString().slice(0,10);
+        try{
+          const _d = new Date(baseISO+'T12:00:00Z');
+          _d.setUTCDate(_d.getUTCDate()+60);
+          echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+        }catch(e){}
+      }
+      // Force a preview refresh so pf-echeance picks up the value
+      try{ if(typeof updatePrintPreview==='function') updatePrintPreview(); }catch(e){}
+      // Give the DOM one tick to settle before html2canvas captures
+      await new Promise(r => setTimeout(r, 80));
+    }
     const pW = isEff ? 200 : 176;
     const pH = isEff ? 130 : 80;
     // Render preview wrap → high-res canvas (4x for crisp 300dpi result)

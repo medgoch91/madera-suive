@@ -9188,11 +9188,9 @@ async function downloadChequePDF(){
     return;
   }
   try{
-    try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF بالمقاس الحقيقي...'); }catch(e){}
+    try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF...'); }catch(e){}
     const isEff = printMode==='effet';
     // Effet safety net: auto-default échéance from date+60 if empty.
-    // Mirror of doPrint's logic so PDF path also gets the date d'échéance
-    // when user hasn't typed one in the input.
     if(isEff){
       const dateVal = (document.getElementById('pc-date')||{value:''}).value;
       const echInp = document.getElementById('pc-echeance');
@@ -9204,31 +9202,52 @@ async function downloadChequePDF(){
           echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
         }catch(e){}
       }
-      // Force a preview refresh so pf-echeance picks up the value
       try{ if(typeof updatePrintPreview==='function') updatePrintPreview(); }catch(e){}
-      // Give the DOM one tick to settle before html2canvas captures
       await new Promise(r => setTimeout(r, 80));
     }
-    const pW = isEff ? 200 : 176;
-    const pH = isEff ? 130 : 80;
-    // Render preview wrap → high-res canvas (4x for crisp 300dpi result)
+    const cW = isEff ? 200 : 176;
+    const cH = isEff ? 130 : 80;
+    // Strategy decided per 2026-05-18 research (chequeprint.cloud consensus
+    // + macOS AirPrint regression diagnosis): page = A4 portrait, content
+    // at top-left at its real physical size (200×130 or 176×80mm). User
+    // feeds the physical cheque paper aligned to the top-left of the A4
+    // path, prints with "Actual size 100%". This sidesteps Chrome and
+    // macOS-AirPrint's broken custom-paper-size handling — A4 is the one
+    // size every printer driver agrees on.
+    // Apply per-printer offset (X/Y in mm) shifts the image within A4.
+    const ox = getPrintOffsetX();
+    const oy = getPrintOffsetY();
     const canvas = await html2canvas(wrap, {
       backgroundColor: '#ffffff',
       scale: 4, useCORS: true, allowTaint: true, logging: false,
       width: wrap.offsetWidth, height: wrap.offsetHeight,
     });
     const imgData = canvas.toDataURL('image/jpeg', 0.95);
-    // jsPDF custom page size in MILLIMETRES — exactly matches real paper
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({orientation: pW>pH?'landscape':'portrait', unit: 'mm', format: [pW, pH]});
-    doc.addImage(imgData, 'JPEG', 0, 0, pW, pH, undefined, 'FAST');
+    const doc = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
+    // Position content at top-left of A4 with offset; clip via negative
+    // overflow if offset would push past page bounds (jsPDF tolerates this).
+    doc.addImage(imgData, 'JPEG', ox, oy, cW, cH, undefined, 'FAST');
+    // Add a faint dotted outline of the cheque area + a tiny crosshair at
+    // each corner so the user can see exactly where to align the physical
+    // paper on their printer's manual feed.
+    doc.setDrawColor(180,180,180);
+    doc.setLineWidth(0.1);
+    doc.setLineDashPattern([1,1],0);
+    doc.rect(ox, oy, cW, cH);
+    doc.setLineDashPattern([],0);
+    doc.setDrawColor(255,80,80);
+    doc.setLineWidth(0.3);
+    [[ox,oy],[ox+cW,oy],[ox,oy+cH],[ox+cW,oy+cH]].forEach(([x,y])=>{
+      doc.line(x-1.5,y,x+1.5,y); doc.line(x,y-1.5,x,y+1.5);
+    });
     const num = (document.getElementById('pc-num')||{value:''}).value || '';
     const ordre = (document.getElementById('pc-ordre')||{value:''}).value.trim() || (isEff?'effet':'cheque');
     const safeOrdre = ordre.replace(/[^A-Za-z0-9 _-]/g,'').slice(0,30).trim().replace(/\s+/g,'-') || (isEff?'effet':'cheque');
     const filename = (isEff?'EFFET':'CHEQUE')+'-'+safeOrdre+(num?'-'+num:'')+'.pdf';
     doc.save(filename);
     try{ hideLoader(); }catch(e){}
-    try{ toast(`✅ تم تنزيل PDF (${pW}×${pH}mm) — افتحو ف Aperçu/Adobe و اطبعو ب "Taille réelle / 100%"`,'success'); }catch(e){}
+    try{ toast(`✅ تم تنزيل PDF A4 — افتحو ف Aperçu/Adobe، اطبعو ب "Taille réelle 100%" على A4 عادي، و حط ورقة ${isEff?'الإيفي':'الشيك'} f l-zaouia top-left`,'success'); }catch(e){}
   }catch(e){
     try{ hideLoader(); }catch(_){}
     console.error('downloadChequePDF', e);

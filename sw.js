@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v245-remove-cheque-calibration-card';
+const CACHE = 'suivi-v246-cheque-hide-echeance-field';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

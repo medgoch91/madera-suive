@@ -9961,9 +9961,9 @@ function renderPrintCheque(){
           <div><label class="field-lbl">المبلغ (DH) *</label><input class="field-inp" id="pc-montant" type="number" placeholder="0.00" step="0.01" oninput="updatePrintPreview()"></div>
           <div><label class="field-lbl">المدينة</label><input class="field-inp" id="pc-ville" placeholder="Agadir" value="Agadir" oninput="updatePrintPreview()"></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div><label class="field-lbl">تاريخ الشيك *</label><input class="field-inp" id="pc-date" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
-          <div><label class="field-lbl">الاستحقاق</label><input class="field-inp" id="pc-echeance" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
+        <div style="display:grid;grid-template-columns:${isEffet?'1fr 1fr':'1fr'};gap:10px">
+          <div><label class="field-lbl">${isEffet?'تاريخ الإنشاء *':'تاريخ الشيك *'}</label><input class="field-inp" id="pc-date" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>
+          ${isEffet?'<div><label class="field-lbl">الاستحقاق</label><input class="field-inp" id="pc-echeance" type="date" oninput="updatePrintPreview()" style="direction:ltr"></div>':'<input type="hidden" id="pc-echeance">'}
         </div>
         <div style="background:rgba(79,142,247,0.08);border:1px solid rgba(79,142,247,0.2);border-radius:8px;padding:10px;text-align:center">
           <div style="font-size:10px;color:var(--text2);margin-bottom:3px;font-weight:600;letter-spacing:0.5px">MONTANT EN TOUTES LETTRES</div>

@@ -9980,66 +9980,6 @@ function renderPrintCheque(){
       </div>
     </div>
 
-    <!-- RIGHT: Calibration -->
-    <div class="pc-card">
-      <div class="pc-card-head">
-        <div class="pc-card-title">⚙️ معايرة المواضع</div>
-        <div style="display:flex;gap:6px">
-          <button onclick="resetChqCfg()" title="استرجاع الافتراضي" class="btn-ghost" style="font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:6px;color:var(--text2)">↺ افتراضي</button>
-        </div>
-      </div>
-
-      <!-- Printer offset (one-time calibration per printer) — industry pattern -->
-      <div style="background:linear-gradient(135deg,rgba(245,158,11,.08),rgba(232,64,64,.04));border:1px solid rgba(245,158,11,.25);border-radius:8px;padding:14px;margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <div style="font-size:13px;font-weight:700;color:#f59e0b">🎯 معايرة الطابعة (مرة واحدة)</div>
-          <button onclick="printAlignmentGrid()" title="طبع شبكة على A4 ل المعايرة" class="btn" style="background:#f59e0b;color:#fff;border:0;padding:6px 12px;font-size:11px;font-weight:700;border-radius:6px">🖨️ طبع شبكة اختبار</button>
-        </div>
-        <div style="font-size:11px;color:var(--text2);line-height:1.6;margin-bottom:10px">
-          1. اطبع شبكة الاختبار على A4 عادي · 2. حطها فوق ${isEffet?'ورقة الإيفي':'الشيك'} الحقيقية و عاينها فالضو · 3. اقرأ بكم ملم اشتفلت اليمين/الشمال و فوق/تحت · 4. زبط الأرقام تحت
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">↔️ إزاحة X (مم) — موجب = يمين</div>
-            <input id="po-x" type="number" step="0.5" value="${getPrintOffsetX()}" onchange="setPrintOffset('x',this.value)" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif"></label>
-          <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">↕️ إزاحة Y (مم) — موجب = تحت</div>
-            <input id="po-y" type="number" step="0.5" value="${getPrintOffsetY()}" onchange="setPrintOffset('y',this.value)" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:'Cairo',sans-serif"></label>
-        </div>
-
-        <!-- 4-direction nudge buttons (post-print correction).
-             direction:ltr on the d-pad so RTL doesn't flip columns visually —
-             the user expects ← to be on the LEFT and → to be on the RIGHT,
-             regardless of UI language. Was a recurring source of confusion. -->
-        <div style="margin-top:12px;padding:10px;background:rgba(245,158,11,.04);border:1px dashed rgba(245,158,11,.3);border-radius:6px">
-          <div style="font-size:11px;color:var(--text2);margin-bottom:8px;text-align:center;font-weight:700">⚡ بعد الطبع — صحح بسرعة</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;max-width:160px;margin:0 auto;direction:ltr">
-            <div></div>
-            <button onclick="nudgePrintOffset('y',-1)" title="L-text yji shoyya fou9 (-1mm)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">↑</button>
-            <div></div>
-            <button onclick="nudgePrintOffset('x',-1)" title="L-text yji shoyya l-shma3 (-1mm X)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">←</button>
-            <div style="text-align:center;padding-top:8px;font-size:10px;color:var(--text3)">1mm</div>
-            <button onclick="nudgePrintOffset('x',1)" title="L-text yji shoyya l-yamine (+1mm X)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">→</button>
-            <div></div>
-            <button onclick="nudgePrintOffset('y',1)" title="L-text yji shoyya tht (+1mm Y)" style="padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--accent);border-radius:5px;cursor:pointer;font-size:14px;font-weight:700">↓</button>
-            <div></div>
-          </div>
-          <div style="font-size:10px;color:var(--text3);text-align:center;margin-top:6px">طبع → شوف الإزاحة → كليك ⬆⬇⬅➡ — يخزن تلقائي</div>
-          <!-- Big-step quick shift buttons for users with large offsets -->
-          <div style="display:flex;gap:4px;justify-content:center;margin-top:8px;direction:ltr">
-            <button onclick="nudgePrintOffset('x',-5)" title="-5mm X (left)" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">⏪ -5</button>
-            <button onclick="nudgePrintOffset('x',-10)" title="-10mm X" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">⏪ -10</button>
-            <button onclick="setPrintOffset('x',0);setPrintOffset('y',0);try{toast('↺ Reset','info');renderPrintCheque&&renderPrintCheque();}catch(e){}" title="Reset" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">↺ 0</button>
-            <button onclick="nudgePrintOffset('x',10)" title="+10mm X" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">+10 ⏩</button>
-            <button onclick="nudgePrintOffset('x',5)" title="+5mm X (right)" style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);border-radius:5px;cursor:pointer;font-size:11px;font-weight:700">+5 ⏩</button>
-          </div>
-          <div id="po-current" style="text-align:center;margin-top:8px;font-size:11px;font-weight:700;color:var(--accent)">X = ${getPrintOffsetX()} mm · Y = ${getPrintOffsetY()} mm</div>
-        </div>
-
-        <div style="font-size:10px;color:var(--text3);margin-top:8px">💡 هاد القيم خاصة بهاد الطابعة فقط — مكاتأثرش على تصميم الحقول</div>
-      </div>
-
-      <div style="font-size:12px;color:var(--text3);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)">📐 <b>تصميم الحقول</b> (اسحب الحقول فالمعاينة، أو زبط بالنوادي تحت — مرة واحدة لكل بنك)</div>
-      <div id="pc-cfg-panel-mount">${renderChqCfgPanel()}</div>
-    </div>
   </div>
 
   <div class="pc-card">

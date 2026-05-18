@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v230-linked-articles-bypass-family-filter';
+const CACHE = 'suivi-v231-echeancier-pro-redesign-kpi-cards-heatmap';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

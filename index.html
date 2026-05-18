@@ -6889,6 +6889,36 @@ async function saveEditCheque(id){
 // Shows pending cheques + effets grouped by due-date window (past-due / 7j / 30j / 90j / later)
 let echHorizon = 90; // days into the future to show
 function setEchHorizon(d){ echHorizon = Number(d)||90; renderEcheancier(); }
+// Open a month drilldown modal showing every cheque/effet due that month
+function echOpenMonth(ym){
+  const items = (cheques||[]).filter(c => {
+    if((c.status||'')!=='معلق') return false;
+    if((c.type||'cheque')==='espece') return false;
+    if(!c.echeance) return false;
+    return (c.echeance||'').startsWith(ym+'-');
+  }).sort((a,b)=>(a.echeance||'').localeCompare(b.echeance||''));
+  if(!items.length){ try{toast('لا تسويات هاد الشهر','info');}catch(e){} return; }
+  const total = items.reduce((s,c)=>s+(Number(c.montant)||0), 0);
+  const html = `<div style="padding:22px;max-width:760px;max-height:85vh;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:14px">📅 ${_monthLabel?_monthLabel(ym):ym} — ${items.length} تسوية · ${fmtK(total)} DH</div>
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th>الاستحقاق</th><th>النوع</th><th>الرقم</th><th>الفورنيسور</th><th>المبلغ</th><th>إجراء</th></tr></thead>
+      <tbody>${items.map(c=>`<tr>
+        <td>${fmtDate(c.echeance)}</td>
+        <td>${c.type==='effet'?'📜 ورقة':'💳 شيك'}</td>
+        <td style="font-weight:700">${escB(c.num||'—')}</td>
+        <td>${escB(c.fournisseur||'—')}</td>
+        <td style="color:var(--accent);font-weight:700">⁦${fmtN(Number(c.montant)||0)}⁩</td>
+        <td><button class="btn-ghost" onclick="document.getElementById('modal-main').classList.remove('open');showPage('cheques');setTimeout(function(){try{scrollToRow('ck-row-${c.id}');}catch(e){}},200)" style="font-size:11px">عرض</button></td>
+      </tr>`).join('')}</tbody>
+      <tfoot><tr style="border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="text-align:left">المجموع:</td><td style="color:var(--accent)">⁦${fmtN(total)}⁩</td><td></td></tr></tfoot>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إغلاق</button></div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
 function renderEcheancier(){
   const wrap = document.getElementById('page-echeancier');
   if(!wrap) return;
@@ -6905,6 +6935,10 @@ function renderEcheancier(){
     const diff = Math.round((d - today)/86400000);
     return {c, d, diff};
   }).sort((a,b)=>a.d-b.d);
+  // ── New design: pro KPI strip + 12-month cards + daily heatmap ──
+  // Replaces the previous "monthly bars + buckets" layout per 2026-05-18
+  // research (Pennylane/Agicap/Float/Sage Intacct pattern). Buckets section
+  // is kept underneath for detail drilldown.
   // Buckets
   const buckets = [
     {key:'overdue', lbl:'متأخر', icon:'🔴', col:'#ef4444', items:[]},
@@ -6937,33 +6971,146 @@ function renderEcheancier(){
   const fmtDay = (iso)=>{ try{const d=new Date(iso);return d.toLocaleDateString(CURRENT_LANG==='fr'?'fr-FR':'ar-MA',{day:'2-digit',month:'short'});}catch(e){return iso;} };
   const fmtMonth = (yyyyMM)=>{ try{const [y,m]=yyyyMM.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString(CURRENT_LANG==='fr'?'fr-FR':'ar-MA',{month:'long',year:'numeric'});}catch(e){return yyyyMM;} };
   const typeBadge = (t)=>{ t=t||'cheque'; return t==='effet'?'<span style="background:rgba(139,92,246,0.15);color:#a78bfa;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">📜 ورقة</span>':'<span style="background:rgba(6,182,212,0.15);color:#06b6d4;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">💳 شيك</span>'; };
-  let html = ''
-    +'<div class="card" style="margin-bottom:16px">'
-      +'<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px">'
-        +'<div><div class="card-title" style="margin:0">📅 الجدول الزمني</div>'
-          +'<div style="font-size:12px;color:var(--text2);margin-top:4px">استحقاقات الشيكات والأوراق المعلقة</div></div>'
-        +'<div class="filter-pills" style="gap:6px;flex-wrap:wrap">'
-          +['30','60','90','180'].map(d=>'<button class="pill '+(Number(d)===echHorizon?'active':'')+'" onclick="setEchHorizon('+d+')">'+d+' ي</button>').join('')
-        +'</div>'
-      +'</div>'
-      +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">'
-        +'<div style="background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius-sm);padding:12px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">متأخر</div><div style="font-size:18px;font-weight:800;color:#ef4444">'+fmt(overdueTotal)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+buckets[0].items.length+' تسوية</div></div>'
-        +'<div style="background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:var(--radius-sm);padding:12px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">خلال '+echHorizon+' يوم</div><div style="font-size:18px;font-weight:800;color:#f59e0b">'+fmt(totalWindow)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.filter(i=>i.diff<=echHorizon).length+' تسوية</div></div>'
-        +'<div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);border-radius:var(--radius-sm);padding:12px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">المجموع الكلي</div><div style="font-size:18px;font-weight:800;color:#10b981">'+fmt(totalAll)+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.length+' تسوية معلقة</div></div>'
-      +'</div>'
-    +'</div>';
-  // Monthly timeline bars
-  if(monthKeys.length){
-    const maxTotal = Math.max(...monthKeys.map(k=>months[k].total));
-    html += '<div class="card" style="margin-bottom:16px"><div class="card-title" style="margin-bottom:12px">📊 توزيع شهري</div>'
-      +'<div style="display:flex;flex-direction:column;gap:8px">'
-      + monthKeys.map(k=>{
-          const m = months[k];
+  // ── Compute by-month breakdown with TYPE split + top fournisseur ──
+  const monthsX = {};
+  items.forEach(it=>{
+    const k = (it.c.echeance||'').slice(0,7);
+    if(!monthsX[k]) monthsX[k] = {total:0, count:0, byType:{cheque:0,effet:0,virement:0}, byTypeCount:{cheque:0,effet:0,virement:0}, byFour:{}, items:[]};
+    const m = monthsX[k];
+    const t = it.c.type || 'cheque';
+    const v = Number(it.c.montant)||0;
+    m.total += v;
+    m.count += 1;
+    m.byType[t] = (m.byType[t]||0) + v;
+    m.byTypeCount[t] = (m.byTypeCount[t]||0) + 1;
+    const f = it.c.fournisseur || '—';
+    m.byFour[f] = (m.byFour[f]||0) + v;
+    m.items.push(it);
+  });
+  const monthKeysX = Object.keys(monthsX).sort();
+  const due30 = items.filter(i=>i.diff>=0 && i.diff<=30).reduce((s,i)=>s+(Number(i.c.montant)||0),0);
+  const due60 = items.filter(i=>i.diff>=0 && i.diff<=60).reduce((s,i)=>s+(Number(i.c.montant)||0),0);
+  const due90 = items.filter(i=>i.diff>=0 && i.diff<=90).reduce((s,i)=>s+(Number(i.c.montant)||0),0);
+  const overdueCount = buckets[0].items.length;
+  const four30 = {};
+  items.filter(i=>i.diff>=0 && i.diff<=30).forEach(i=>{ const f=i.c.fournisseur||'—'; four30[f]=(four30[f]||0)+(Number(i.c.montant)||0); });
+  const topFour30 = Object.entries(four30).sort((a,b)=>b[1]-a[1])[0] || null;
+
+  // ── HERO KPI STRIP ──
+  let html = '<div class="card" style="margin-bottom:14px">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
+      + '<div><div class="card-title" style="margin:0">📅 الجدول الزمني — نظرة شاملة</div>'
+        + '<div style="font-size:12px;color:var(--text2);margin-top:4px">استحقاقات الشيكات والأوراق المعلقة على 12 شهر</div></div>'
+      + '<div class="filter-pills" style="gap:6px;flex-wrap:wrap">'
+        + ['30','60','90','180','365'].map(d=>'<button class="pill '+(Number(d)===echHorizon?'active':'')+'" onclick="setEchHorizon('+d+')">'+d+' ي</button>').join('')
+      + '</div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px">'
+      + '<div style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">🔴 متأخر</div>'
+        + '<div style="font-size:20px;font-weight:800;color:#ef4444;margin-top:4px;letter-spacing:-.3px">'+fmtK(overdueTotal)+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+overdueCount+' تسوية · DH</div></div>'
+      + '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">⏰ خلال 30 يوم</div>'
+        + '<div style="font-size:20px;font-weight:800;color:#f59e0b;margin-top:4px;letter-spacing:-.3px">'+fmtK(due30)+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.filter(i=>i.diff>=0&&i.diff<=30).length+' تسوية</div></div>'
+      + '<div style="background:rgba(234,179,8,.08);border:1px solid rgba(234,179,8,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">📆 خلال 60 يوم</div>'
+        + '<div style="font-size:20px;font-weight:800;color:#eab308;margin-top:4px;letter-spacing:-.3px">'+fmtK(due60)+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.filter(i=>i.diff>=0&&i.diff<=60).length+' تسوية</div></div>'
+      + '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">🗓️ خلال 90 يوم</div>'
+        + '<div style="font-size:20px;font-weight:800;color:#10b981;margin-top:4px;letter-spacing:-.3px">'+fmtK(due90)+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.filter(i=>i.diff>=0&&i.diff<=90).length+' تسوية</div></div>'
+      + '<div style="background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">📋 المجموع</div>'
+        + '<div style="font-size:20px;font-weight:800;color:var(--accent);margin-top:4px;letter-spacing:-.3px">'+fmtK(totalAll)+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+items.length+' تسوية معلقة</div></div>'
+      + (topFour30 ? '<div style="background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.3);border-radius:10px;padding:14px">'
+        + '<div style="font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.5px">🏆 أكبر فورنيسور 30ي</div>'
+        + '<div style="font-size:14px;font-weight:800;color:#06b6d4;margin-top:4px">'+escB(topFour30[0])+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+fmtK(topFour30[1])+' DH</div></div>' : '')
+    + '</div></div>';
+
+  // ── 12 MONTHLY CARDS (3-col grid responsive) — Pennylane/Agicap style ──
+  if(monthKeysX.length){
+    const maxTotal = Math.max.apply(null, monthKeysX.map(k=>monthsX[k].total));
+    html += '<div class="card" style="margin-bottom:14px"><div class="card-title" style="margin-bottom:14px">📊 توزيع شهري — كل شهر فيه أش</div>'
+      + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">'
+      + monthKeysX.slice(0,12).map(k=>{
+          const m = monthsX[k];
           const pct = maxTotal>0 ? Math.round(m.total/maxTotal*100) : 0;
-          return '<div style="display:flex;align-items:center;gap:10px"><div style="width:110px;font-size:12px;color:var(--text2)">'+fmtMonth(k)+'</div>'
-            +'<div style="flex:1;background:var(--bg3);border-radius:6px;height:24px;position:relative;overflow:hidden"><div style="position:absolute;inset:0 auto 0 0;width:'+pct+'%;background:linear-gradient(90deg,#06b6d4,#10b981);border-radius:6px"></div><div style="position:absolute;inset:0;display:flex;align-items:center;padding:0 10px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.5)">'+fmt(m.total)+' · '+m.count+'</div></div></div>';
+          const topFour = Object.entries(m.byFour).sort((a,b)=>b[1]-a[1])[0] || null;
+          // Status: critique if month contains overdue or due within 7 days
+          const isThisMonth = (k === (new Date().toISOString().slice(0,7)));
+          const hasUrgent = m.items.some(i=>i.diff<=7);
+          const statusPill = isThisMonth
+            ? '<span style="background:rgba(245,158,11,.18);color:#f59e0b;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700">⚡ هاد الشهر</span>'
+            : (hasUrgent ? '<span style="background:rgba(239,68,68,.15);color:#ef4444;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700">🔴 حرج</span>'
+              : '<span style="background:rgba(16,185,129,.15);color:#10b981;padding:3px 10px;border-radius:6px;font-size:10px;font-weight:700">✓ منظم</span>');
+          // Type breakdown stacked bar
+          const ttC = m.byType.cheque||0, ttE = m.byType.effet||0, ttV = m.byType.virement||0;
+          const tt = ttC+ttE+ttV;
+          const pctC = tt>0 ? (ttC/tt*100) : 0;
+          const pctE = tt>0 ? (ttE/tt*100) : 0;
+          const pctV = tt>0 ? (ttV/tt*100) : 0;
+          return '<div onclick="echOpenMonth(\''+k+'\')" style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;cursor:pointer;transition:all .15s" onmouseover="this.style.borderColor=\'var(--accent)\';this.style.transform=\'translateY(-2px)\';this.style.boxShadow=\'0 8px 20px rgba(124,92,252,.15)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.transform=\'\';this.style.boxShadow=\'\'">'
+            + '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">'
+              + '<div><div style="font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.5px;text-transform:uppercase">'+escB(fmtMonth(k))+'</div>'
+              + '<div style="font-size:22px;font-weight:800;color:var(--text);margin-top:2px;letter-spacing:-.3px">'+fmtK(m.total)+' <span style="font-size:11px;color:var(--text3);font-weight:600">DH</span></div></div>'
+              + statusPill
+            + '</div>'
+            + (pct>0 ? '<div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--bg3);margin-bottom:10px">'
+              + (pctC>0?'<div title="شيكات" style="width:'+pctC+'%;background:#06b6d4"></div>':'')
+              + (pctE>0?'<div title="أوراق" style="width:'+pctE+'%;background:#a78bfa"></div>':'')
+              + (pctV>0?'<div title="تحويلات" style="width:'+pctV+'%;background:#10b981"></div>':'')
+              + '</div>' : '')
+            + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px;margin-bottom:10px">'
+              + (m.byTypeCount.cheque>0 ? '<div><span style="color:#06b6d4">💳</span> <b>'+m.byTypeCount.cheque+'</b> <span style="color:var(--text3)">شيك</span></div>' : '<div></div>')
+              + (m.byTypeCount.effet>0 ? '<div><span style="color:#a78bfa">📜</span> <b>'+m.byTypeCount.effet+'</b> <span style="color:var(--text3)">ورقة</span></div>' : '<div></div>')
+              + (m.byTypeCount.virement>0 ? '<div><span style="color:#10b981">💸</span> <b>'+m.byTypeCount.virement+'</b> <span style="color:var(--text3)">تحويل</span></div>' : '<div></div>')
+            + '</div>'
+            + (topFour ? '<div style="font-size:11px;color:var(--text2);padding:8px 10px;background:var(--bg3);border-radius:6px"><span style="color:var(--text3)">🏆 أكبر:</span> <b>'+escB(topFour[0].slice(0,20))+'</b> <span style="color:var(--accent);font-weight:700">·'+fmtK(topFour[1])+'</span></div>' : '')
+            + '</div>';
         }).join('')
-      +'</div></div>';
+      + '</div></div>';
+  }
+
+  // ── DAILY HEATMAP — CashFlowTool / GitHub-contributions style ──
+  // Visualize next 90 days as 31×3 grid; each cell colored by total due that day.
+  const heatmapDays = 90;
+  const daysMap = {};
+  items.filter(i=>i.diff>=0 && i.diff<=heatmapDays).forEach(i=>{
+    const k = (i.c.echeance||'').slice(0,10);
+    daysMap[k] = (daysMap[k]||0) + (Number(i.c.montant)||0);
+  });
+  const dayVals = Object.values(daysMap);
+  const maxDay = dayVals.length ? Math.max.apply(null, dayVals) : 0;
+  if(maxDay > 0){
+    const heatCol = v => {
+      if(!v) return 'var(--bg3)';
+      const intensity = Math.min(1, v/maxDay);
+      const r = Math.round(239 * intensity + 226*(1-intensity));
+      const g = Math.round(68 * intensity + 232*(1-intensity));
+      const b = Math.round(68 * intensity + 240*(1-intensity));
+      return 'rgb('+r+','+g+','+b+')';
+    };
+    const cells = [];
+    for(let i=0; i<heatmapDays; i++){
+      const d = new Date(today);
+      d.setDate(d.getDate()+i);
+      const iso = d.toISOString().slice(0,10);
+      const v = daysMap[iso]||0;
+      const dayLbl = d.toLocaleDateString('fr-FR',{day:'2-digit',month:'2-digit'});
+      cells.push('<div title="'+dayLbl+': '+(v?fmtK(v)+' DH':'no')+'" style="width:14px;height:14px;border-radius:3px;background:'+heatCol(v)+';transition:transform .1s" onmouseover="this.style.transform=\'scale(1.4)\'" onmouseout="this.style.transform=\'\'"></div>');
+    }
+    html += '<div class="card" style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      + '<div><div class="card-title" style="margin:0">🔥 خريطة الكثافة — 90 يوم</div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:2px">كل مربع = يوم · الأحمر = أداء كثير</div></div>'
+      + '<div style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:6px">قليل <div style="width:12px;height:12px;background:var(--bg3);border-radius:2px"></div><div style="width:12px;height:12px;background:rgb(243,142,142);border-radius:2px"></div><div style="width:12px;height:12px;background:rgb(239,68,68);border-radius:2px"></div> كثير</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:repeat('+heatmapDays+',14px);gap:3px;overflow-x:auto;padding-bottom:6px">'+cells.join('')+'</div>'
+      + '</div>';
   }
   // Buckets
   html += '<div style="display:flex;flex-direction:column;gap:14px">';

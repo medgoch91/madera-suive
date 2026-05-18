@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v231-echeancier-pro-redesign-kpi-cards-heatmap';
+const CACHE = 'suivi-v232-echeancier-full-feature-set';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

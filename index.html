@@ -6888,7 +6888,18 @@ async function saveEditCheque(id){
 // ===== ÉCHÉANCIER (calendrier des paiements) =====
 // Shows pending cheques + effets grouped by due-date window (past-due / 7j / 30j / 90j / later)
 let echHorizon = 90; // days into the future to show
+let echViewMode = 'cards'; // 'cards' | 'calendar'
+let echFilterFour = '';
+let echFilterType = '';  // '' | 'cheque' | 'effet' | 'virement'
+let echFilterMin = 0;
+let echStartingBalance = 0; // for cash-flow forecast — user-set
 function setEchHorizon(d){ echHorizon = Number(d)||90; renderEcheancier(); }
+function setEchView(v){ echViewMode = v; renderEcheancier(); }
+function setEchFilterFour(v){ echFilterFour = (v||'').trim().toLowerCase(); renderEcheancier(); }
+function setEchFilterType(v){ echFilterType = v||''; renderEcheancier(); }
+function setEchFilterMin(v){ echFilterMin = Number(v)||0; renderEcheancier(); }
+function setEchStartingBalance(v){ echStartingBalance = Number(v)||0; try{ localStorage.setItem('ech_starting_balance', String(echStartingBalance)); }catch(e){} renderEcheancier(); }
+try{ echStartingBalance = Number(localStorage.getItem('ech_starting_balance'))||0; }catch(e){}
 // Open a month drilldown modal showing every cheque/effet due that month
 function echOpenMonth(ym){
   const items = (cheques||[]).filter(c => {
@@ -6919,16 +6930,126 @@ function echOpenMonth(ym){
   document.getElementById('modal-main').classList.add('open');
 }
 
+// Open a day drilldown (used by calendar view) — list cheques due that day
+function echOpenDay(ymd){
+  const items = (cheques||[]).filter(c => {
+    if((c.status||'')!=='معلق') return false;
+    if((c.type||'cheque')==='espece') return false;
+    return (c.echeance||'')===ymd;
+  });
+  if(!items.length) return;
+  const total = items.reduce((s,c)=>s+(Number(c.montant)||0), 0);
+  const html = `<div style="padding:20px;max-width:640px">
+    <div class="card-title" style="margin-bottom:14px">📅 ${fmtDate(ymd)} — ${items.length} تسوية · ${fmtN(total)} DH</div>
+    <table class="data-table" style="font-size:12px">
+      <thead><tr><th>النوع</th><th>الرقم</th><th>الفورنيسور</th><th>المبلغ</th></tr></thead>
+      <tbody>${items.map(c=>`<tr>
+        <td>${c.type==='effet'?'📜':'💳'}</td>
+        <td style="font-weight:700">${escB(c.num||'—')}</td>
+        <td>${escB(c.fournisseur||'—')}</td>
+        <td style="color:var(--accent);font-weight:700">⁦${fmtN(Number(c.montant)||0)}⁩</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px"><button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إغلاق</button></div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+// Print clean A4 ledger of pending échéances (respects current filters)
+function printEcheancier(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const items = (cheques||[]).filter(c=>{
+    if((c.status||'')!=='معلق') return false;
+    if((c.type||'cheque')==='espece') return false;
+    if(!c.echeance) return false;
+    if(echFilterFour && !(c.fournisseur||'').toLowerCase().includes(echFilterFour)) return false;
+    if(echFilterType && (c.type||'cheque')!==echFilterType) return false;
+    if(echFilterMin && (Number(c.montant)||0) < echFilterMin) return false;
+    return true;
+  }).sort((a,b)=>(a.echeance||'').localeCompare(b.echeance||''));
+  if(!items.length){ try{ toast('⚠️ لا تسويات','warning'); }catch(e){} return; }
+  const totalAll = items.reduce((s,c)=>s+(Number(c.montant)||0),0);
+  const soc = (typeof factSociete!=='undefined' && factSociete) ? factSociete : {nom:'MADERA DECO'};
+  const html = `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>الجدول الزمني</title>
+<style>
+@page{size:A4 portrait;margin:12mm}
+*{box-sizing:border-box;font-family:'Cairo',Arial,sans-serif}
+body{margin:0;color:#0f172a;font-size:10pt;line-height:1.5}
+.header{display:flex;justify-content:space-between;align-items:start;border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px}
+h1{font-size:18pt;margin:0 0 2px}
+.h-info{font-size:9pt;color:#475569}
+.period{background:#fef3c7;border-right:4px solid #f59e0b;padding:8px 14px;margin:10px 0 14px;font-weight:700;font-size:11pt;display:flex;justify-content:space-between}
+table{width:100%;border-collapse:collapse;font-size:9.5pt}
+th{background:#f1f5f9;text-align:right;padding:7px 8px;border:1px solid #cbd5e1;font-weight:700;font-size:9pt}
+td{padding:6px 8px;border:1px solid #e2e8f0}
+.num{font-weight:700;direction:ltr;text-align:left}
+.amt{direction:ltr;text-align:left;font-weight:700}
+.tot{background:#0f172a;color:#fff;font-weight:800}
+.tot td{border-color:#0f172a}
+.urgent{background:rgba(239,68,68,.06)}
+.actions{position:fixed;top:5mm;right:5mm;display:flex;gap:6px;z-index:999}
+.actions button{padding:6px 14px;font:700 11px Cairo,sans-serif;border:0;border-radius:5px;cursor:pointer}
+@media print{.actions{display:none}}
+</style></head><body>
+<div class="actions">
+  <button onclick="window.print()" style="background:#7c5cfc;color:#fff">🖨️ طبع</button>
+  <button onclick="window.close()" style="background:#475569;color:#fff">✖</button>
+</div>
+<div class="header">
+  <div><h1>${escB(soc.nom||'MADERA DECO')}</h1>
+    <div class="h-info">${soc.ice?'ICE: '+escB(soc.ice)+' · ':''}${soc.if?'IF: '+escB(soc.if):''}</div>
+  </div>
+  <div style="text-align:left">
+    <h1 style="margin:0;font-size:14pt">📅 الجدول الزمني</h1>
+    <div class="h-info">${fmtDate(new Date().toISOString().slice(0,10))}</div>
+  </div>
+</div>
+<div class="period">
+  <span>${items.length} تسوية معلقة</span>
+  <span>المجموع: <span class="amt" style="color:#7c5cfc">${fmtN(totalAll)} DH</span></span>
+</div>
+<table>
+  <thead><tr><th>#</th><th>الاستحقاق</th><th>النوع</th><th>رقم</th><th>الفورنيسور</th><th>المبلغ</th></tr></thead>
+  <tbody>${items.map((c,i)=>{
+    const dueDate = new Date(c.echeance); dueDate.setHours(0,0,0,0);
+    const diff = Math.round((dueDate - today)/86400000);
+    const urgent = diff <= 7;
+    return `<tr${urgent?' class="urgent"':''}>
+      <td>${i+1}</td>
+      <td class="num">${fmtDate(c.echeance)}</td>
+      <td>${c.type==='effet'?'📜 ورقة':'💳 شيك'}</td>
+      <td class="num">${escB(c.num||'—')}</td>
+      <td>${escB(c.fournisseur||'—')}</td>
+      <td class="amt">${fmtN(Number(c.montant)||0)}</td>
+    </tr>`;
+  }).join('')}</tbody>
+  <tfoot><tr class="tot">
+    <td colspan="5" style="text-align:right">المجموع (${items.length} تسوية):</td>
+    <td class="amt">${fmtN(totalAll)}</td>
+  </tr></tfoot>
+</table>
+</body></html>`;
+  const w = window.open('', '_blank', 'width=1100,height=900');
+  if(!w){ try{ toast('⚠️ Popup blocked','warning'); }catch(e){} return; }
+  w.document.open(); w.document.write(html); w.document.close();
+  setTimeout(()=>{ try{w.focus();}catch(e){} }, 200);
+}
+
 function renderEcheancier(){
   const wrap = document.getElementById('page-echeancier');
   if(!wrap) return;
   const today = new Date(); today.setHours(0,0,0,0);
   const horizonEnd = new Date(today); horizonEnd.setDate(horizonEnd.getDate()+echHorizon);
   // Only pending records with an échéance (cheque+effet; espèce has no échéance)
+  // Filters: by fournisseur substring, by type, by minimum amount.
   const items = (cheques||[]).filter(c=>{
     if((c.status||'')!=='معلق') return false;
     if((c.type||'cheque')==='espece') return false;
     if(!c.echeance) return false;
+    if(echFilterFour && !(c.fournisseur||'').toLowerCase().includes(echFilterFour)) return false;
+    if(echFilterType && (c.type||'cheque')!==echFilterType) return false;
+    if(echFilterMin && (Number(c.montant)||0) < echFilterMin) return false;
     return true;
   }).map(c=>{
     const d = new Date(c.echeance); d.setHours(0,0,0,0);
@@ -6996,8 +7117,48 @@ function renderEcheancier(){
   items.filter(i=>i.diff>=0 && i.diff<=30).forEach(i=>{ const f=i.c.fournisseur||'—'; four30[f]=(four30[f]||0)+(Number(i.c.montant)||0); });
   const topFour30 = Object.entries(four30).sort((a,b)=>b[1]-a[1])[0] || null;
 
+  // ── Critical alerts banner ──
+  let html = '';
+  const urgentItems = items.filter(i=>i.diff<=7);
+  const weekTotal = urgentItems.reduce((s,i)=>s+(Number(i.c.montant)||0),0);
+  if(overdueCount > 0 || urgentItems.length > 0){
+    html += '<div style="background:linear-gradient(90deg,rgba(239,68,68,.10),rgba(245,158,11,.08));border:1px solid rgba(239,68,68,.35);border-radius:12px;padding:14px 18px;margin-bottom:14px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">'
+      + '<div style="font-size:30px;line-height:1">🚨</div>'
+      + '<div style="flex:1;min-width:200px">'
+        + '<div style="font-size:14px;font-weight:800;color:var(--text)">تنبيهات هامة</div>'
+        + '<div style="font-size:12px;color:var(--text2);margin-top:4px">'
+          + (overdueCount?'<b style="color:#ef4444">'+overdueCount+' تسوية متأخرة</b> · '+fmtK(overdueTotal)+' DH':'')
+          + (overdueCount && urgentItems.length?' &nbsp;·&nbsp; ':'')
+          + (urgentItems.length?'<b style="color:#f59e0b">'+urgentItems.length+' خلال 7 أيام</b> · '+fmtK(weekTotal)+' DH':'')
+        + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px">'
+        + '<button class="btn-ghost" style="padding:6px 14px;background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.4);border-radius:6px;font-size:11px;font-weight:700;cursor:pointer" onclick="window.scrollTo(0,document.body.scrollHeight)">عرض التفاصيل ↓</button>'
+      + '</div>'
+    + '</div>';
+  }
+
+  // ── Filter bar + view toggle + print ──
+  html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:10px">'
+    + '<input type="text" placeholder="🔍 بحث بفورنيسور..." value="'+escB(echFilterFour)+'" oninput="setEchFilterFour(this.value)" style="flex:1;min-width:160px;padding:7px 12px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif;font-size:12px">'
+    + '<select onchange="setEchFilterType(this.value)" style="padding:7px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px;font-family:Cairo,sans-serif">'
+      + '<option value="">كل الأنواع</option>'
+      + '<option value="cheque"'+(echFilterType==='cheque'?' selected':'')+'>💳 شيك</option>'
+      + '<option value="effet"'+(echFilterType==='effet'?' selected':'')+'>📜 ورقة</option>'
+      + '<option value="virement"'+(echFilterType==='virement'?' selected':'')+'>💸 تحويل</option>'
+    + '</select>'
+    + '<input type="number" placeholder="≥ المبلغ" value="'+(echFilterMin||'')+'" onchange="setEchFilterMin(this.value)" style="width:110px;padding:7px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px">'
+    + (echFilterFour||echFilterType||echFilterMin?'<button class="btn-ghost" onclick="setEchFilterFour(\'\');setEchFilterType(\'\');setEchFilterMin(0);document.querySelector(\'input[placeholder*=بحث]\').value=\'\'" style="padding:6px 10px;color:var(--text3);font-size:11px">✖ مسح</button>':'')
+    + '<span style="flex:1"></span>'
+    + '<div style="display:flex;gap:4px;background:var(--bg3);border-radius:6px;padding:3px">'
+      + '<button onclick="setEchView(\'cards\')" style="padding:5px 10px;background:'+(echViewMode==='cards'?'var(--accent)':'transparent')+';color:'+(echViewMode==='cards'?'#fff':'var(--text2)')+';border:0;border-radius:4px;cursor:pointer;font-size:11px;font-family:Cairo,sans-serif">📊 بطاقات</button>'
+      + '<button onclick="setEchView(\'calendar\')" style="padding:5px 10px;background:'+(echViewMode==='calendar'?'var(--accent)':'transparent')+';color:'+(echViewMode==='calendar'?'#fff':'var(--text2)')+';border:0;border-radius:4px;cursor:pointer;font-size:11px;font-family:Cairo,sans-serif">📆 تقويم</button>'
+    + '</div>'
+    + '<button class="btn-ghost" style="padding:6px 12px;background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.4);border-radius:6px;font-size:11px;font-weight:700" onclick="printEcheancier()">🖨️ طبع</button>'
+  + '</div>';
+
   // ── HERO KPI STRIP ──
-  let html = '<div class="card" style="margin-bottom:14px">'
+  html += '<div class="card" style="margin-bottom:14px">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px">'
       + '<div><div class="card-title" style="margin:0">📅 الجدول الزمني — نظرة شاملة</div>'
         + '<div style="font-size:12px;color:var(--text2);margin-top:4px">استحقاقات الشيكات والأوراق المعلقة على 12 شهر</div></div>'
@@ -7032,8 +7193,45 @@ function renderEcheancier(){
         + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+fmtK(topFour30[1])+' DH</div></div>' : '')
     + '</div></div>';
 
+  // ── CALENDAR VIEW (alternative to cards) — full month grid with cheques ──
+  if(echViewMode === 'calendar' && items.length){
+    const fmtCalMonth = (yyyyMM) => { try{const [y,m]=yyyyMM.split('-');return new Date(Number(y),Number(m)-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});}catch(e){return yyyyMM;} };
+    html += '<div class="card" style="margin-bottom:14px"><div class="card-title" style="margin-bottom:14px">📆 عرض التقويم</div>';
+    monthKeysX.slice(0,6).forEach(k => {
+      const [yy,mm] = k.split('-').map(Number);
+      const firstDay = new Date(yy, mm-1, 1);
+      const startDow = firstDay.getDay(); // 0=Sun
+      const daysInMonth = new Date(yy, mm, 0).getDate();
+      const dayItems = {};
+      monthsX[k].items.forEach(it => {
+        const d = (it.c.echeance||'').slice(0,10);
+        const dayNum = Number(d.slice(8,10));
+        if(!dayItems[dayNum]) dayItems[dayNum] = [];
+        dayItems[dayNum].push(it);
+      });
+      html += '<div style="margin-bottom:18px"><div style="font-weight:800;color:var(--text);margin-bottom:8px;font-size:13px">'+escB(fmtCalMonth(k))+' · <span style="color:var(--accent);font-weight:700">'+fmtK(monthsX[k].total)+' DH</span> · <span style="color:var(--text3);font-weight:600">'+monthsX[k].count+' تسوية</span></div>';
+      html += '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;font-size:11px">';
+      ['أحد','إثن','ثلا','أرب','خمي','جمع','سبت'].forEach(d => {
+        html += '<div style="text-align:center;font-weight:700;color:var(--text3);padding:4px 0;font-size:10px">'+d+'</div>';
+      });
+      for(let i=0; i<startDow; i++) html += '<div></div>';
+      for(let day=1; day<=daysInMonth; day++){
+        const its = dayItems[day] || [];
+        const tot = its.reduce((s,i)=>s+(Number(i.c.montant)||0),0);
+        const isToday = (yy===today.getFullYear() && mm-1===today.getMonth() && day===today.getDate());
+        const cellBg = its.length ? 'rgba(239,68,68,'+Math.min(0.35, 0.10+its.length*0.08)+')' : 'var(--bg3)';
+        html += '<div onclick="echOpenDay(\''+k+'-'+String(day).padStart(2,'0')+'\')" style="background:'+cellBg+';border:'+(isToday?'2px solid var(--accent)':'1px solid var(--border)')+';border-radius:6px;padding:6px;min-height:54px;cursor:'+(its.length?'pointer':'default')+';transition:transform .1s" '+(its.length?'onmouseover="this.style.transform=\'scale(1.05)\'" onmouseout="this.style.transform=\'\'"':'')+'>'
+          + '<div style="font-weight:'+(isToday?'800':'600')+';color:'+(isToday?'var(--accent)':'var(--text2)')+';font-size:11px">'+day+'</div>'
+          + (its.length ? '<div style="font-size:9px;font-weight:700;color:#ef4444;margin-top:2px">'+its.length+' · '+fmtK(tot)+'</div>' : '')
+        + '</div>';
+      }
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+
   // ── 12 MONTHLY CARDS (3-col grid responsive) — Pennylane/Agicap style ──
-  if(monthKeysX.length){
+  if(echViewMode === 'cards' && monthKeysX.length){
     const maxTotal = Math.max.apply(null, monthKeysX.map(k=>monthsX[k].total));
     html += '<div class="card" style="margin-bottom:14px"><div class="card-title" style="margin-bottom:14px">📊 توزيع شهري — كل شهر فيه أش</div>'
       + '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">'
@@ -7111,6 +7309,72 @@ function renderEcheancier(){
       + '</div>'
       + '<div style="display:grid;grid-template-columns:repeat('+heatmapDays+',14px);gap:3px;overflow-x:auto;padding-bottom:6px">'+cells.join('')+'</div>'
       + '</div>';
+  }
+
+  // ── Cumulative cash-flow line chart + balance forecast ──
+  if(monthKeysX.length){
+    const w = 600, h = 180, padL = 50, padR = 20, padT = 20, padB = 30;
+    const ptsCum = [];
+    let cum = 0;
+    monthKeysX.slice(0,12).forEach(k => { cum += monthsX[k].total; ptsCum.push({k, cum, monthTotal: monthsX[k].total}); });
+    const ptsBal = ptsCum.map(p => ({k:p.k, val: echStartingBalance - p.cum}));
+    const maxCum = Math.max.apply(null, ptsCum.map(p=>p.cum));
+    const minBal = Math.min.apply(null, ptsBal.map(p=>p.val));
+    const maxBal = Math.max(echStartingBalance, 0);
+    const yMaxAll = Math.max(maxCum, maxBal);
+    const yMinAll = Math.min(0, minBal);
+    const yRange = yMaxAll - yMinAll || 1;
+    const sx = i => padL + (i*(w-padL-padR))/(Math.max(ptsCum.length-1,1));
+    const sy = v => padT + (h-padT-padB) - ((v - yMinAll)/yRange) * (h-padT-padB);
+    const linePath = (arr, key) => arr.map((p,i) => (i===0?'M':'L')+sx(i)+','+sy(p[key])).join(' ');
+    const cumPath = linePath(ptsCum, 'cum');
+    const balPath = linePath(ptsBal, 'val');
+    const xLabels = ptsCum.map((p,i) => {
+      const [y,m] = p.k.split('-');
+      return '<text x="'+sx(i)+'" y="'+(h-8)+'" font-size="9" fill="#94a3b8" text-anchor="middle">'+m+'</text>';
+    }).join('');
+    html += '<div class="card" style="margin-bottom:14px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:10px">'
+        + '<div><div class="card-title" style="margin:0">📈 تطور تراكمي + رصيد متوقع</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">المجموع التراكمي د الدفعات الجاية + الرصيد المتبقي ايلا بداتي ب الرصيد المدخل</div></div>'
+        + '<label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:6px">رصيد البداية: <input type="number" value="'+echStartingBalance+'" onchange="setEchStartingBalance(this.value)" placeholder="0" style="width:120px;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-size:12px;direction:ltr;font-family:Cairo,sans-serif"> DH</label>'
+      + '</div>'
+      + '<svg viewBox="0 0 '+w+' '+h+'" style="width:100%;height:auto;font-family:Cairo,sans-serif">'
+        + '<line x1="'+padL+'" y1="'+sy(0)+'" x2="'+(w-padR)+'" y2="'+sy(0)+'" stroke="#cbd5e1" stroke-width="0.5"/>'
+        + '<path d="'+cumPath+'" stroke="#ef4444" stroke-width="2" fill="none"/>'
+        + (echStartingBalance>0?'<path d="'+balPath+'" stroke="#10b981" stroke-width="2" fill="none" stroke-dasharray="4 3"/>':'')
+        + ptsCum.map((p,i) => '<circle cx="'+sx(i)+'" cy="'+sy(p.cum)+'" r="3" fill="#ef4444"><title>'+p.k+': cumul '+fmtN(p.cum)+'</title></circle>').join('')
+        + (echStartingBalance>0?ptsBal.map((p,i) => '<circle cx="'+sx(i)+'" cy="'+sy(p.val)+'" r="3" fill="'+(p.val<0?'#ef4444':'#10b981')+'"><title>'+p.k+': رصيد '+fmtN(p.val)+'</title></circle>').join(''):'')
+        + xLabels
+        + '<text x="'+padL+'" y="14" font-size="10" fill="#ef4444" font-weight="700">━ تراكمي</text>'
+        + (echStartingBalance>0?'<text x="'+(padL+90)+'" y="14" font-size="10" fill="#10b981" font-weight="700">┅ رصيد متوقع</text>':'')
+      + '</svg>'
+      + (echStartingBalance>0 && minBal<0 ? '<div style="margin-top:10px;padding:10px 14px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3);border-radius:8px;font-size:12px;color:#ef4444"><b>⚠️ تحذير</b> · الرصيد ساي ينقص <b>'+fmtN(Math.abs(minBal))+' DH</b> فالأشهر الجاية. خاص تخطط الكاش.</div>' : '')
+    + '</div>';
+  }
+
+  // ── Year-over-year comparison ──
+  const thisMonth = today.toISOString().slice(0,7);
+  const sameLastYear = (new Date(today.getFullYear()-1, today.getMonth(), 1)).toISOString().slice(0,7);
+  const curMonthData = monthsX[thisMonth];
+  const lastYearItems = (cheques||[]).filter(c => (c.echeance||'').startsWith(sameLastYear+'-') && c.type !== 'espece');
+  const lastYearTotal = lastYearItems.reduce((s,c)=>s+(Number(c.montant)||0),0);
+  if(curMonthData || lastYearTotal>0){
+    const curT = curMonthData?curMonthData.total:0;
+    const delta = lastYearTotal>0 ? Math.round(((curT-lastYearTotal)/lastYearTotal)*100) : 0;
+    const maxYY = Math.max(curT, lastYearTotal) || 1;
+    html += '<div class="card" style="margin-bottom:14px">'
+      + '<div class="card-title" style="margin-bottom:14px">📊 مقارنة سنوية — '+_monthLabel(thisMonth)+' vs '+_monthLabel(sameLastYear)+'</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">'
+        + '<div style="text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:700">'+_monthLabel(thisMonth)+'</div>'
+        + '<div style="font-size:22px;font-weight:800;color:var(--accent);margin:6px 0">'+fmtK(curT)+' DH</div>'
+        + '<div style="background:var(--bg3);height:80px;border-radius:6px;position:relative;overflow:hidden"><div style="position:absolute;bottom:0;left:0;right:0;height:'+(curT/maxYY*100)+'%;background:linear-gradient(0deg,#7c5cfc,#06b6d4);border-radius:6px"></div></div></div>'
+        + '<div style="text-align:center"><div style="font-size:11px;color:var(--text3);font-weight:700">'+_monthLabel(sameLastYear)+'</div>'
+        + '<div style="font-size:22px;font-weight:800;color:var(--text2);margin:6px 0">'+fmtK(lastYearTotal)+' DH</div>'
+        + '<div style="background:var(--bg3);height:80px;border-radius:6px;position:relative;overflow:hidden"><div style="position:absolute;bottom:0;left:0;right:0;height:'+(lastYearTotal/maxYY*100)+'%;background:linear-gradient(0deg,#64748b,#94a3b8);border-radius:6px;opacity:.6"></div></div></div>'
+      + '</div>'
+      + (lastYearTotal>0 ? '<div style="text-align:center;margin-top:12px;font-size:13px;font-weight:700;color:'+(delta>0?'#ef4444':'#10b981')+'">'+(delta>0?'📈 +':'📉 ')+delta+'% vs العام اللي فات</div>' : '')
+    + '</div>';
   }
   // Buckets
   html += '<div style="display:flex;flex-direction:column;gap:14px">';

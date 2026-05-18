@@ -9798,7 +9798,7 @@ function renderPrintCheque(){
     .pc-print-howto b{color:#4f8ef7}
     /* Trailing horizontal line after montant en lettres in the preview,
        matches the .f.fill::after CSS in print HTML — clean pen-stroke. */
-    .pc-fill::after{content:'';display:inline-block;width:55%;border-bottom:1.2px solid #000;vertical-align:0.18em;margin-left:3px;}
+    .pc-fill::after{content:'';display:inline-block;width:18%;border-bottom:1.2px solid #000;vertical-align:0.18em;margin-left:2px;}
   </style>
   <div class="pc-hero">
     <div class="pc-hero-head">
@@ -10250,7 +10250,13 @@ function buildChequePrintHTML(d){
        forcing every saved config to migrate. */
     .mono,.serif{font-family:'Courier Prime','Courier New','Nimbus Mono PS','Consolas',monospace;font-weight:700;letter-spacing:0.02em;}
     /* Trailing horizontal line after montant en lettres — pen-stroke style */
-    .f.fill::after{content:'';display:inline-block;width:55%;border-bottom:0.4mm solid #000;vertical-align:0.18em;margin-left:1mm;}
+    /* Pen-stroke filler line AFTER montant en lettres: short tail (18%) that
+       starts immediately after the last word — matches the "draw a short
+       horizontal line to seal the end of the amount" banking convention.
+       User feedback 2026-05-18: "DAK LKHAT KHAS IKON MZDI M3A AKHRI HERF OU
+       IKON 9SIIR MACHI KBIR BZZZF" (line must hug the last letter, short
+       not long). Margin reduced from 1mm → 0.5mm to remove the visible gap. */
+    .f.fill::after{content:'';display:inline-block;width:18%;border-bottom:0.4mm solid #000;vertical-align:0.18em;margin-left:0.5mm;}
   </style></head><body><div class="w">
     <div class="f ${cl('montant')}" style="${fs('montant')}">${esc(fmtMontantCheque(montant))}</div>
     <div class="f wrap fill ${cl('lettres1')}" style="${fs('lettres1')}">${esc(l1.toUpperCase())}</div>

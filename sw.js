@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v238-cheque-montant-trailing-hash-fix';
+const CACHE = 'suivi-v239-cheque-filler-line-short-hugs-last-letter';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

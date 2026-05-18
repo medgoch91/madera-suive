@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v252-calendar-click-day-quick-new-tswiya';
+const CACHE = 'suivi-v253-cheque-fix-dropdown-clipping-zindex';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

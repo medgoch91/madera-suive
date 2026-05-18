@@ -10053,8 +10053,15 @@ function renderPrintCheque(){
     }
 
     /* ─── HERO HEADER (navy gradient + gold spotlight) ─── */
-    .pc3-hero{position:relative;background:linear-gradient(135deg,var(--pc-navy-1) 0%,var(--pc-navy-deep) 70%,var(--pc-navy-darker) 100%);color:#fff;padding:26px 28px 22px;border-radius:16px 16px 0 0;margin-bottom:0;overflow:hidden;border:1px solid var(--pc-gold-edge);border-bottom:0}
-    .pc3-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 200px at 10% 30%,var(--pc-gold-soft),transparent 60%);pointer-events:none}
+    /* overflow:visible + high z-index so the ⋮ dropdown can extend
+       below the hero AND render above the workspace card. The previous
+       z-index:-1 trick on ::after made the gradient invisible behind
+       the hero background. Fix: hero z-index:10 (above workspace),
+       ::after z-index:0 (behind content but above background),
+       content children naturally render above ::after. */
+    .pc3-hero{position:relative;z-index:10;background:linear-gradient(135deg,var(--pc-navy-1) 0%,var(--pc-navy-deep) 70%,var(--pc-navy-darker) 100%);color:#fff;padding:26px 28px 22px;border-radius:16px 16px 0 0;margin-bottom:0;overflow:visible;border:1px solid var(--pc-gold-edge);border-bottom:0}
+    .pc3-hero > *{position:relative;z-index:1}
+    .pc3-hero::after{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 600px 200px at 10% 30%,var(--pc-gold-soft),transparent 60%);pointer-events:none;border-radius:16px 16px 0 0;z-index:0}
     .pc3-hero-top{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;position:relative}
     .pc3-hero-title{display:flex;align-items:center;gap:14px}
     .pc3-hero-mark{width:44px;height:44px;border-radius:11px;background:linear-gradient(135deg,var(--pc-gold),var(--pc-gold-deep));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;box-shadow:0 4px 14px rgba(200,164,74,.4);font-family:'Inter','Cairo',sans-serif;letter-spacing:-.5px}
@@ -10076,7 +10083,7 @@ function renderPrintCheque(){
     .pc3-menu{position:relative}
     .pc3-menu-btn{padding:11px 13px;font-size:18px;font-weight:800;background:rgba(255,255,255,.06);color:#fff;border:1px solid rgba(255,255,255,.18);border-radius:9px;cursor:pointer;line-height:1;transition:all .12s}
     .pc3-menu-btn:hover{background:rgba(200,164,74,.18);border-color:var(--pc-gold-edge);color:var(--pc-gold)}
-    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--pc-gold-edge);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:30}
+    .pc3-menu-list{display:none;position:absolute;top:calc(100% + 8px);right:0;min-width:260px;background:var(--bg2);border:1px solid var(--pc-gold-edge);border-radius:12px;box-shadow:0 16px 50px rgba(0,0,0,.45);padding:6px;z-index:100}
     .pc3-menu.open .pc3-menu-list{display:block}
     .pc3-menu-item{display:flex;align-items:center;gap:11px;padding:10px 13px;border-radius:8px;cursor:pointer;color:var(--text);font-size:12.5px;font-weight:600;border:0;background:transparent;width:100%;font-family:'Cairo',sans-serif;text-align:start}
     .pc3-menu-item:hover{background:rgba(200,164,74,.10);color:var(--pc-gold)}

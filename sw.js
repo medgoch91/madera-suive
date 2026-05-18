@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v218-cheque-pdf-as-a4-with-corner-marks';
+const CACHE = 'suivi-v219-force-echeance-render-in-pdf-png';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {

@@ -9122,20 +9122,29 @@ async function downloadChequePNG(){
     const wrap = document.getElementById('pc-cheque-wrap');
     if(!wrap){ try{ toast('⚠️ المعاينة غير متوفرة','warning'); }catch(e){} return; }
     if(typeof html2canvas === 'undefined'){ try{ toast('⚠️ html2canvas غير محمل','error'); }catch(e){} return; }
-    // Effet safety net: auto-default échéance from date+60 if empty.
+    // Effet safety net: auto-default échéance + force pf-echeance render.
     if(printMode==='effet'){
       const dateVal = (document.getElementById('pc-date')||{value:''}).value;
       const echInp = document.getElementById('pc-echeance');
-      if(echInp && !echInp.value){
+      let echISO = echInp ? echInp.value : '';
+      if(!echISO){
         const baseISO = dateVal || new Date().toISOString().slice(0,10);
         try{
           const _d = new Date(baseISO+'T12:00:00Z');
           _d.setUTCDate(_d.getUTCDate()+60);
-          echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+          echISO = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+          if(echInp) echInp.value = echISO;
         }catch(e){}
       }
+      const pfEch = document.getElementById('pf-echeance');
+      if(pfEch && echISO){
+        pfEch.textContent = fmtDate(echISO);
+        pfEch.style.display = 'block';
+        pfEch.style.visibility = 'visible';
+      }
       try{ if(typeof updatePrintPreview==='function') updatePrintPreview(); }catch(e){}
-      await new Promise(r => setTimeout(r, 80));
+      void wrap.offsetHeight;
+      await new Promise(r => setTimeout(r, 150));
     }
     try{ if(typeof showLoader==='function') showLoader('📸 جاري التصوير...'); }catch(e){}
     // 176mm × 80mm at 300dpi (1mm ≈ 11.811 px). Scale factor =
@@ -9190,20 +9199,34 @@ async function downloadChequePDF(){
   try{
     try{ if(typeof showLoader==='function') showLoader('📄 جاري إنشاء PDF...'); }catch(e){}
     const isEff = printMode==='effet';
-    // Effet safety net: auto-default échéance from date+60 if empty.
+    // Effet safety net: auto-default échéance + FORCE pf-echeance to render.
+    // The earlier "auto-fill input + call updatePrintPreview" path wasn't
+    // making it through reliably (race / display-state quirks). Belt-and-
+    // suspenders: also write directly to the pf-echeance element.
     if(isEff){
       const dateVal = (document.getElementById('pc-date')||{value:''}).value;
       const echInp = document.getElementById('pc-echeance');
-      if(echInp && !echInp.value){
+      let echISO = echInp ? echInp.value : '';
+      if(!echISO){
         const baseISO = dateVal || new Date().toISOString().slice(0,10);
         try{
           const _d = new Date(baseISO+'T12:00:00Z');
           _d.setUTCDate(_d.getUTCDate()+60);
-          echInp.value = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+          echISO = _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0');
+          if(echInp) echInp.value = echISO;
         }catch(e){}
       }
+      // FORCE pf-echeance into the DOM regardless of state
+      const pfEch = document.getElementById('pf-echeance');
+      if(pfEch && echISO){
+        pfEch.textContent = fmtDate(echISO);
+        pfEch.style.display = 'block';
+        pfEch.style.visibility = 'visible';
+      }
       try{ if(typeof updatePrintPreview==='function') updatePrintPreview(); }catch(e){}
-      await new Promise(r => setTimeout(r, 80));
+      // Force browser repaint before capture
+      void wrap.offsetHeight;
+      await new Promise(r => setTimeout(r, 150));
     }
     const cW = isEff ? 200 : 176;
     const cH = isEff ? 130 : 80;

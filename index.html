@@ -21368,11 +21368,26 @@ function uiSyncHash(page){
     var want='#'+page;
     if(location.hash!==want){
       __routingSilent=true;
-      history.replaceState(null,'',want);
+      // pushState (not replaceState) — every internal navigation now adds a
+      // browser-history entry so back/forward buttons navigate within the
+      // app instead of exiting to the previous external site.
+      history.pushState({page:page},'',want);
       setTimeout(function(){__routingSilent=false;},0);
     }
   }catch(e){}
 }
+// popstate fires when user clicks back/forward. Sync the visible page to
+// match whatever's now in location.hash.
+window.addEventListener('popstate', function(e){
+  try{
+    var p = (location.hash||'').replace(/^#\/?/,'').split('?')[0];
+    if(!p || p===currentPage) return;
+    __routingSilent = true;
+    var navBtn = document.querySelector('.nav-btn[onclick*="showPage(\''+p+'\'"]') || null;
+    if(typeof showPage==='function') showPage(p, navBtn);
+    setTimeout(function(){__routingSilent=false;},0);
+  }catch(err){}
+});
 window.addEventListener('hashchange',function(){
   if(__routingSilent) return;
   var p=(location.hash||'').replace(/^#\/?/,'').split('?')[0];

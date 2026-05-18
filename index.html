@@ -6930,6 +6930,208 @@ function echOpenMonth(ym){
   document.getElementById('modal-main').classList.add('open');
 }
 
+// ── Postpone (تأجيل) a cheque/effet — opens a date picker + saves new echeance ──
+function echPostpone(chequeId){
+  const c = (cheques||[]).find(x => x.id===chequeId);
+  if(!c) return;
+  const cur = c.echeance || '';
+  const html = `<div style="padding:20px;max-width:420px">
+    <div class="card-title" style="margin-bottom:10px">🗓️ تأجيل التسوية</div>
+    <div style="font-size:12px;color:var(--text2);margin-bottom:14px">${escB(c.fournisseur||'—')} · ${escB(c.num||'')} · ${fmtN(c.montant||0)} DH</div>
+    <label><div style="font-size:11px;color:var(--text2);margin-bottom:4px">الاستحقاق الحالي</div>
+      <input type="date" value="${cur}" disabled style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);border-radius:6px;font-family:Cairo,sans-serif"></label>
+    <label style="display:block;margin-top:10px"><div style="font-size:11px;color:var(--text2);margin-bottom:4px">الاستحقاق الجديد</div>
+      <input id="postpone-date" type="date" value="${cur}" style="width:100%;padding:8px;background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:6px;font-family:Cairo,sans-serif"></label>
+    <div style="display:flex;gap:6px;margin-top:10px">
+      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+30);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 30 يوم</button>
+      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+60);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 60 يوم</button>
+      <button class="btn-ghost" onclick="(()=>{const d=document.getElementById('postpone-date');const v=new Date(d.value||new Date());v.setDate(v.getDate()+90);d.valueAsDate=v;})()" style="font-size:11px;padding:6px 10px;background:var(--bg3);color:var(--text2);border:1px solid var(--border);border-radius:5px;cursor:pointer">+ 90 يوم</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="btn btn-accent" style="flex:1" onclick="_echPostponeSave(${chequeId})">💾 حفظ</button>
+      <button class="btn" style="flex:1" onclick="document.getElementById('modal-main').classList.remove('open')">إلغاء</button>
+    </div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+async function _echPostponeSave(chequeId){
+  const newDate = (document.getElementById('postpone-date')||{}).value;
+  if(!newDate){ try{ toast('⚠️ اختر تاريخ','warning'); }catch(e){} return; }
+  try{
+    const r = await sbFetch('cheques','PATCH',{echeance: newDate},'id=eq.'+chequeId);
+    if(r && r.__sbError) throw new Error(r.msg);
+    const local = cheques.find(c => c.id===chequeId);
+    if(local) local.echeance = newDate;
+    try{ saveCacheLS&&saveCacheLS(); }catch(e){}
+    try{ toast('✅ تم تأجيل التسوية إلى '+fmtDate(newDate),'success'); }catch(e){}
+    document.getElementById('modal-main').classList.remove('open');
+    if(typeof renderEcheancier==='function') renderEcheancier();
+  }catch(e){ try{ toast('❌ '+(e.message||e),'error'); }catch(_){} }
+}
+
+// ── Per-fournisseur summary modal ──
+function echFourSummary(fourName){
+  const items = (cheques||[]).filter(c => {
+    if((c.fournisseur||'')!==fourName) return false;
+    if((c.type||'')==='espece') return false;
+    return true;
+  }).sort((a,b)=>(a.echeance||'').localeCompare(b.echeance||''));
+  const pending = items.filter(c => c.status==='معلق');
+  const paid = items.filter(c => c.status==='مدفوع');
+  const refused = items.filter(c => c.status==='مرفوض');
+  const totPending = pending.reduce((s,c)=>s+(Number(c.montant)||0),0);
+  const totPaid = paid.reduce((s,c)=>s+(Number(c.montant)||0),0);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const nextDue = pending.find(c => c.echeance && new Date(c.echeance) >= today);
+  // Avg delay: comparing paid_at vs echeance
+  let delaySum=0, delayCount=0;
+  paid.forEach(c => {
+    if(c.echeance && (c.paid_at||c.paidAt)){
+      const e = new Date(c.echeance); const p = new Date(c.paid_at||c.paidAt);
+      const d = Math.round((p - e)/86400000);
+      if(Math.abs(d) < 365){ delaySum += d; delayCount++; }
+    }
+  });
+  const avgDelay = delayCount ? Math.round(delaySum/delayCount) : null;
+  const html = `<div style="padding:22px;max-width:780px;max-height:85vh;overflow-y:auto">
+    <div class="card-title" style="margin-bottom:14px">🏢 ${escB(fourName)}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:18px">
+      <div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);padding:12px;border-radius:8px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700">⏰ معلقة</div>
+        <div style="font-size:18px;font-weight:800;color:#f59e0b;margin-top:3px">${fmtK(totPending)}</div>
+        <div style="font-size:11px;color:var(--text3)">${pending.length} تسوية · DH</div>
+      </div>
+      <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3);padding:12px;border-radius:8px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700">✅ مدفوعة</div>
+        <div style="font-size:18px;font-weight:800;color:#10b981;margin-top:3px">${fmtK(totPaid)}</div>
+        <div style="font-size:11px;color:var(--text3)">${paid.length} تسوية · DH</div>
+      </div>
+      <div style="background:rgba(124,92,252,.08);border:1px solid rgba(124,92,252,.3);padding:12px;border-radius:8px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700">📅 التالية</div>
+        <div style="font-size:14px;font-weight:800;color:var(--accent);margin-top:3px">${nextDue?fmtDate(nextDue.echeance):'—'}</div>
+        <div style="font-size:11px;color:var(--text3)">${nextDue?fmtN(nextDue.montant)+' DH':'لا تسوية مقبلة'}</div>
+      </div>
+      ${avgDelay!=null ? `<div style="background:${avgDelay>0?'rgba(239,68,68,.08)':'rgba(16,185,129,.08)'};border:1px solid ${avgDelay>0?'rgba(239,68,68,.3)':'rgba(16,185,129,.3)'};padding:12px;border-radius:8px">
+        <div style="font-size:10px;color:var(--text3);font-weight:700">⏱️ متوسط التأخير</div>
+        <div style="font-size:18px;font-weight:800;color:${avgDelay>0?'#ef4444':'#10b981'};margin-top:3px">${avgDelay>0?'+':''}${avgDelay} يوم</div>
+        <div style="font-size:11px;color:var(--text3)">على ${delayCount} تسوية</div>
+      </div>` : ''}
+    </div>
+
+    ${pending.length ? `<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:#f59e0b;margin-bottom:6px">⏰ التسويات المعلقة (${pending.length})</div>
+      <table class="data-table" style="font-size:11px">
+        <thead><tr><th>الاستحقاق</th><th>النوع</th><th>رقم</th><th>المبلغ</th><th>أيام</th><th>إجراء</th></tr></thead>
+        <tbody>${pending.map(c => {
+          const d = new Date(c.echeance); d.setHours(0,0,0,0);
+          const diff = Math.round((d - today)/86400000);
+          const col = diff<0?'#ef4444':(diff<=7?'#f59e0b':(diff<=30?'#eab308':'#10b981'));
+          return `<tr>
+            <td>${fmtDate(c.echeance)}</td>
+            <td>${c.type==='effet'?'📜':'💳'}</td>
+            <td style="font-weight:700">${escB(c.num||'—')}</td>
+            <td style="color:var(--accent);font-weight:700">⁦${fmtN(c.montant||0)}⁩</td>
+            <td style="color:${col};font-weight:700">${diff<0?'+'+Math.abs(diff)+' متأخر':diff+'ي'}</td>
+            <td><button class="btn-ghost" onclick="document.getElementById('modal-main').classList.remove('open');echPostpone(${c.id})" style="font-size:10px;padding:3px 8px">🗓️</button></td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table></div>` : ''}
+
+    ${paid.length ? `<details style="margin-bottom:10px"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:#10b981;margin-bottom:6px">✅ المدفوعة (${paid.length})</summary>
+      <table class="data-table" style="font-size:11px;margin-top:8px"><thead><tr><th>تاريخ الدفع</th><th>النوع</th><th>رقم</th><th>المبلغ</th></tr></thead>
+      <tbody>${paid.slice(0,30).map(c=>`<tr><td>${fmtDate(c.paid_at||c.paidAt||c.echeance)}</td><td>${c.type==='effet'?'📜':'💳'}</td><td>${escB(c.num||'—')}</td><td>⁦${fmtN(c.montant||0)}⁩</td></tr>`).join('')}</tbody></table>
+      ${paid.length>30?`<div style="font-size:10px;color:var(--text3);margin-top:6px">... +${paid.length-30} أخرى</div>`:''}
+    </details>` : ''}
+
+    <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn" onclick="document.getElementById('modal-main').classList.remove('open')">إغلاق</button></div>
+  </div>`;
+  document.getElementById('modal-main-c').innerHTML = html;
+  document.getElementById('modal-main').classList.add('open');
+}
+
+// ── Excel/CSV export of the entire échéancier ──
+function exportEcheancierCSV(){
+  const items = (cheques||[]).filter(c => {
+    if((c.status||'')!=='معلق') return false;
+    if((c.type||'')==='espece') return false;
+    if(!c.echeance) return false;
+    return true;
+  }).sort((a,b)=>(a.echeance||'').localeCompare(b.echeance||''));
+  if(!items.length){ try{ toast('⚠️ لا تسويات','warning'); }catch(e){} return; }
+  const rows = [
+    ['#','الاستحقاق','النوع','الرقم','الفورنيسور','المبلغ DH','الحالة','تاريخ الإصدار'],
+    ...items.map((c,i) => [
+      i+1,
+      c.echeance||'',
+      c.type==='effet'?'effet':'cheque',
+      c.num||'',
+      c.fournisseur||'',
+      (Number(c.montant)||0).toFixed(2),
+      c.status||'',
+      c.date||'',
+    ])
+  ];
+  const csv = rows.map(r => r.map(v => {
+    const s = String(v==null?'':v);
+    return /[,"\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s;
+  }).join(',')).join('\n');
+  const bom = '﻿';  // UTF-8 BOM for Excel Arabic
+  const blob = new Blob([bom+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'echeancier-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(()=>{ try{ a.remove(); URL.revokeObjectURL(url); }catch(e){} }, 1500);
+  try{ toast('✅ تم تنزيل CSV — افتحو ف Excel','success'); }catch(e){}
+}
+
+// ── Daily cash-flow projection chart (90 days, line) ──
+function _dailyForecastSVG(items, startBal){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const days = 90;
+  const balances = [];
+  let cum = 0;
+  for(let i=0; i<=days; i++){
+    const d = new Date(today);
+    d.setDate(today.getDate()+i);
+    const iso = d.toISOString().slice(0,10);
+    const todayItems = items.filter(it => (it.c.echeance||'')===iso);
+    cum += todayItems.reduce((s,it)=>s+(Number(it.c.montant)||0), 0);
+    balances.push({day:i, iso, bal: startBal - cum, cumOut: cum});
+  }
+  const w=720, h=200, padL=60, padR=20, padT=20, padB=30;
+  const minB = Math.min.apply(null, balances.map(b=>b.bal));
+  const maxB = Math.max.apply(null, balances.map(b=>b.bal));
+  const yMin = Math.min(0, minB);
+  const yMax = Math.max(0, maxB);
+  const yRange = yMax-yMin || 1;
+  const sx = i => padL + (i/(days)) * (w-padL-padR);
+  const sy = v => padT + (h-padT-padB) - ((v-yMin)/yRange) * (h-padT-padB);
+  const path = balances.map((b,i) => (i===0?'M':'L')+sx(i)+','+sy(b.bal)).join(' ');
+  const areaPath = path + ' L'+sx(days)+','+sy(0)+' L'+sx(0)+','+sy(0)+' Z';
+  const zeroY = sy(0);
+  // Month boundaries on X axis
+  const labels = [];
+  for(let i=0; i<=days; i+=7){
+    const d = new Date(today); d.setDate(today.getDate()+i);
+    labels.push(`<text x="${sx(i)}" y="${h-8}" font-size="9" fill="#94a3b8" text-anchor="middle">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}</text>`);
+  }
+  // Red zone (below 0)
+  return `<svg viewBox="0 0 ${w} ${h}" style="width:100%;height:auto">
+    ${minB<0?`<rect x="${padL}" y="${zeroY}" width="${w-padL-padR}" height="${h-padB-zeroY}" fill="rgba(239,68,68,.08)"/>`:''}
+    <line x1="${padL}" y1="${zeroY}" x2="${w-padR}" y2="${zeroY}" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="2 2"/>
+    <path d="${areaPath}" fill="${minB<0?'rgba(239,68,68,.10)':'rgba(16,185,129,.10)'}"/>
+    <path d="${path}" stroke="${minB<0?'#ef4444':'#10b981'}" stroke-width="2" fill="none"/>
+    ${balances.filter((b,i)=>i%14===0).map(b => `<circle cx="${sx(b.day)}" cy="${sy(b.bal)}" r="3" fill="${b.bal<0?'#ef4444':'#10b981'}"><title>${b.iso}: ${fmtN(b.bal)} DH</title></circle>`).join('')}
+    ${labels.join('')}
+    <text x="${padL-5}" y="${sy(yMax)+4}" font-size="9" fill="#94a3b8" text-anchor="end">${fmtK(yMax)}</text>
+    <text x="${padL-5}" y="${zeroY+4}" font-size="9" fill="#94a3b8" text-anchor="end">0</text>
+    ${yMin<0?`<text x="${padL-5}" y="${sy(yMin)+4}" font-size="9" fill="#ef4444" text-anchor="end">${fmtK(yMin)}</text>`:''}
+  </svg>`;
+}
+
 // Open a day drilldown (used by calendar view) — list cheques due that day
 function echOpenDay(ymd){
   const items = (cheques||[]).filter(c => {
@@ -7155,6 +7357,7 @@ function renderEcheancier(){
       + '<button onclick="setEchView(\'calendar\')" style="padding:5px 10px;background:'+(echViewMode==='calendar'?'var(--accent)':'transparent')+';color:'+(echViewMode==='calendar'?'#fff':'var(--text2)')+';border:0;border-radius:4px;cursor:pointer;font-size:11px;font-family:Cairo,sans-serif">📆 تقويم</button>'
     + '</div>'
     + '<button class="btn-ghost" style="padding:6px 12px;background:rgba(124,92,252,.12);color:var(--accent);border:1px solid rgba(124,92,252,.4);border-radius:6px;font-size:11px;font-weight:700" onclick="printEcheancier()">🖨️ طبع</button>'
+    + '<button class="btn-ghost" style="padding:6px 12px;background:rgba(16,185,129,.12);color:#10b981;border:1px solid rgba(16,185,129,.4);border-radius:6px;font-size:11px;font-weight:700" onclick="exportEcheancierCSV()">📊 Excel</button>'
   + '</div>';
 
   // ── HERO KPI STRIP ──
@@ -7361,6 +7564,75 @@ function renderEcheancier(){
     + '</div>';
   }
 
+  // ── Daily cash-flow forecast (90 days, line) ──
+  if(echStartingBalance > 0 && items.length){
+    const forecastItems = items.filter(it => it.diff >=0 && it.diff <= 90);
+    html += '<div class="card" style="margin-bottom:14px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'
+        + '<div><div class="card-title" style="margin:0">📊 الرصيد المتوقع اليومي — 90 يوم</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">رصيد البداية '+fmtN(echStartingBalance)+' DH ناقص الدفعات الجاية كل يوم</div></div>'
+      + '</div>'
+      + _dailyForecastSVG(forecastItems, echStartingBalance)
+    + '</div>';
+  }
+
+  // ── Per-fournisseur analytics (top 5 + pie) ──
+  const fourTotals = {};
+  items.forEach(it => { const f = it.c.fournisseur||'—'; fourTotals[f] = (fourTotals[f]||0)+(Number(it.c.montant)||0); });
+  const fourSorted = Object.entries(fourTotals).sort((a,b)=>b[1]-a[1]);
+  if(fourSorted.length){
+    const top5 = fourSorted.slice(0,5);
+    const totFour = fourSorted.reduce((s,e)=>s+e[1],0);
+    const otherTot = fourSorted.slice(5).reduce((s,e)=>s+e[1],0);
+    const palette = ['#7c5cfc','#06b6d4','#10b981','#f59e0b','#ef4444','#94a3b8'];
+    // Pie chart (donut)
+    const cx = 80, cy = 80, r = 70, ir = 40;
+    let a0 = -Math.PI/2;
+    const slices = top5.map(([nom,v], i) => {
+      const a1 = a0 + (v/totFour) * Math.PI * 2;
+      const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+      const xi0 = cx + ir*Math.cos(a0), yi0 = cy + ir*Math.sin(a0);
+      const xi1 = cx + ir*Math.cos(a1), yi1 = cy + ir*Math.sin(a1);
+      const large = (a1-a0) > Math.PI ? 1 : 0;
+      const d = `M${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} L${xi1},${yi1} A${ir},${ir} 0 ${large} 0 ${xi0},${yi0} Z`;
+      a0 = a1;
+      return `<path d="${d}" fill="${palette[i]}" stroke="var(--bg)" stroke-width="2"><title>${nom}: ${fmtN(v)}</title></path>`;
+    }).join('');
+    const otherSlice = otherTot>0 ? (() => {
+      const a1 = a0 + (otherTot/totFour) * Math.PI * 2;
+      const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+      const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+      const xi0 = cx + ir*Math.cos(a0), yi0 = cy + ir*Math.sin(a0);
+      const xi1 = cx + ir*Math.cos(a1), yi1 = cy + ir*Math.sin(a1);
+      const large = (a1-a0) > Math.PI ? 1 : 0;
+      return `<path d="M${x0},${y0} A${r},${r} 0 ${large} 1 ${x1},${y1} L${xi1},${yi1} A${ir},${ir} 0 ${large} 0 ${xi0},${yi0} Z" fill="${palette[5]}" stroke="var(--bg)" stroke-width="2"><title>أخرى: ${fmtN(otherTot)}</title></path>`;
+    })() : '';
+    html += '<div class="card" style="margin-bottom:14px">'
+      + '<div class="card-title" style="margin-bottom:14px">🏢 أكبر 5 فورنيسورين (انقر للتفاصيل)</div>'
+      + '<div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap">'
+        + '<svg width="160" height="160" viewBox="0 0 160 160" style="flex-shrink:0">'+slices+otherSlice
+          + '<text x="80" y="74" text-anchor="middle" font-size="11" fill="var(--text3)" font-weight="700">المجموع</text>'
+          + '<text x="80" y="92" text-anchor="middle" font-size="15" fill="var(--text)" font-weight="800">'+fmtK(totFour)+'</text>'
+        + '</svg>'
+        + '<div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:6px">'
+        + top5.map(([nom,v], i) => '<div onclick="echFourSummary(\''+jsStr(nom)+'\')" style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;cursor:pointer" onmouseover="this.style.background=\'var(--bg2)\'" onmouseout="this.style.background=\'var(--bg3)\'">'
+          + '<div style="width:12px;height:12px;border-radius:3px;background:'+palette[i]+';flex-shrink:0"></div>'
+          + '<div style="flex:1;min-width:0;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+escB(nom)+'</div>'
+          + '<div style="font-size:12px;font-weight:800;color:var(--accent)">'+fmtK(v)+'</div>'
+          + '<div style="font-size:10px;color:var(--text3);width:40px;text-align:left">'+Math.round(v/totFour*100)+'%</div>'
+        + '</div>').join('')
+        + (otherTot>0 ? '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:6px">'
+          + '<div style="width:12px;height:12px;border-radius:3px;background:'+palette[5]+';flex-shrink:0"></div>'
+          + '<div style="flex:1;font-size:12px;font-weight:600;color:var(--text2)">+ '+(fourSorted.length-5)+' أخرى</div>'
+          + '<div style="font-size:12px;font-weight:800;color:var(--text2)">'+fmtK(otherTot)+'</div>'
+          + '<div style="font-size:10px;color:var(--text3);width:40px;text-align:left">'+Math.round(otherTot/totFour*100)+'%</div>'
+        + '</div>' : '')
+        + '</div>'
+      + '</div>'
+    + '</div>';
+  }
+
   // ── Year-over-year comparison ──
   const thisMonth = today.toISOString().slice(0,7);
   const sameLastYear = (new Date(today.getFullYear()-1, today.getMonth(), 1)).toISOString().slice(0,7);
@@ -7402,7 +7674,11 @@ function renderEcheancier(){
             +'<div>'+typeBadge(c.type)+'</div>'
             +'<div style="min-width:0"><div style="font-weight:700;color:var(--text);font-size:13px">'+escB(c.fournisseur||'—')+'</div><div style="font-size:11px;color:var(--text3);margin-top:2px">'+escB(c.num||'')+' · '+fmtDay(c.echeance)+' <span style="color:'+bk.col+';font-weight:600">· '+dayLbl+'</span></div></div>'
             +'<div style="font-size:14px;font-weight:800;color:var(--accent);text-align:left;direction:ltr">'+fmt(c.montant)+'</div>'
-            +'<div><button class="btn-ghost" style="padding:6px 10px;font-size:11px" onclick="event.stopPropagation();chSt('+c.id+',\'مدفوع\')" title="علّم كمدفوع">✅</button></div>'
+            +'<div style="display:flex;gap:4px">'
+              +'<button class="btn-ghost" style="padding:6px 8px;font-size:11px" onclick="event.stopPropagation();echPostpone('+c.id+')" title="تأجيل">🗓️</button>'
+              +'<button class="btn-ghost" style="padding:6px 8px;font-size:11px" onclick="event.stopPropagation();echFourSummary(\''+jsStr(c.fournisseur||'')+'\')" title="ملخص الفورنيسور">🏢</button>'
+              +'<button class="btn-ghost" style="padding:6px 10px;font-size:11px" onclick="event.stopPropagation();chSt('+c.id+',\'مدفوع\')" title="علّم كمدفوع">✅</button>'
+            +'</div>'
           +'</div>';
         }).join('')
       +'</div></div>';
@@ -13585,6 +13861,19 @@ function escB(s){
     .replace(/>/g,'&gt;')
     .replace(/"/g,'&quot;')
     .replace(/'/g,'&#39;');
+}
+// jsStr: escape a string for safe embedding inside a single-quoted JS literal
+// that lives inside an HTML attribute value (e.g. onclick="foo('+jsStr(name)+')").
+// Must run BEFORE escB or after it on the encoded string — handles both flows.
+function jsStr(s){
+  return String(s==null?'':s)
+    .replace(/\\/g,'\\\\')
+    .replace(/'/g,"\\'")
+    .replace(/&#39;/g,"\\'")  // also handle escB-encoded apostrophe
+    .replace(/"/g,'\\"')
+    .replace(/\n/g,'\\n')
+    .replace(/\r/g,'\\r')
+    .replace(/</g,'\\u003c');
 }
 
 function bonNomSearch(i, val){

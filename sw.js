@@ -1,5 +1,5 @@
 // Service Worker — سويفي
-const CACHE = 'suivi-v233-calendar-show-fournisseur-full-amount';
+const CACHE = 'suivi-v234-postpone-four-summary-excel-daily-forecast-analytics';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './logo.svg', './chqq-bg.jpg', './effet-bg.jpg'];
 
 self.addEventListener('install', (e) => {
